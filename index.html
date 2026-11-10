@@ -1,0 +1,1118 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Major+Mono+Display&display=swap">
+<style>
+/* Layout: a drafting sheet. The board is the drawing and the score bar above it is its title block. */
+:root {
+  color-scheme: dark;
+  --desk: #0a1b3d;
+  --paper: #11306a;
+  --panel: #0e2858;
+  --wall: #0c2554;
+  --hatch: rgba(219, 231, 255, 0.16);
+  --grid: rgba(166, 196, 255, 0.09);
+  --line: #dbe7ff;
+  --ink: #eef3ff;
+  --ink-dim: #a3b6de;
+  --rule: rgba(219, 231, 255, 0.22);
+  --scrim: rgba(9, 24, 54, 0.66);
+  --accent: #ff8a4c;
+  --on-accent: #1d0d03;
+  --hunter: #ff6f91;
+  --ambusher: #ff8a3d;
+  --guard: #3fe0b0;
+  --drifter: #b9a2ff;
+  --scared: #2546e6;
+  --dot: #b9cdf6;
+  --player: #ffffff;
+  --you: #ffd84a;
+  --font-display: "Major Mono Display", "Courier New", monospace;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+html, body { background: var(--desk); }
+body {
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.page { max-width: 1160px; margin: 0 auto; padding-block: 16px; }
+
+.board-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+/* Title block: as wide as the board */
+.stack { display: flex; flex-direction: column; gap: 10px; width: min-content; }
+.titleblock { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--rule); background: var(--panel); }
+.titleblock > div { padding: 6px 10px 7px; border-left: 1px solid var(--rule); min-width: 0; }
+.titleblock > div:first-child { border-left: 0; }
+.label { display: block; font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
+.value { display: block; font-family: var(--font-mono); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lives { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-height: 30px; font-family: var(--font-mono); font-size: 13px; }
+.lives i { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--you); }
+@media (max-width: 520px) {
+  .titleblock > div { padding: 5px 8px 6px; }
+  .value { font-size: 17px; }
+}
+
+/* Board */
+.sheet-wrap { display: flex; justify-content: center; min-width: 0; }
+.sheet { position: relative; line-height: 0; }
+#board { display: block; touch-action: none; border: 1px solid var(--rule); background: var(--paper); }
+.overlay {
+  position: absolute; inset: 1px; display: grid; place-items: center; padding: 14px;
+  background: var(--scrim); line-height: 1.5; text-align: center;
+}
+.card { background: var(--panel); border: 1px solid var(--rule); padding: 18px 20px 16px; max-width: 320px; }
+.card h2 { font-family: var(--font-display); font-weight: 400; font-size: clamp(22px, 5vw, 34px); line-height: 1.15; margin: 0 0 8px; text-wrap: balance; }
+.card p { margin: 0 0 14px; color: var(--ink-dim); }
+.card .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.card .hint { margin: 12px 0 0; font-size: 13px; }
+
+.btn {
+  font-family: var(--font-mono); font-weight: 600; font-size: 14px; letter-spacing: 0.03em;
+  padding: 9px 16px; border-radius: 3px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer;
+}
+.btn:hover { background: var(--grid); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="page">
+  <main class="board-col" aria-label="Game">
+    <div class="sheet-wrap" id="sheet-wrap">
+      <div class="stack">
+        <div class="titleblock" role="group" aria-label="Score">
+          <div><span class="label">Score</span><span class="value" id="hud-score">0</span></div>
+          <div><span class="label">Best</span><span class="value" id="hud-best">0</span></div>
+          <div><span class="label">Level</span><span class="value" id="hud-level">1</span></div>
+          <div><span class="label">Lives</span><span class="lives" id="hud-lives"></span></div>
+        </div>
+        <div class="sheet">
+          <canvas id="board" role="img" aria-label="Game board"></canvas>
+          <div class="overlay" id="overlay">
+            <div class="card">
+              <h2 id="ov-title" hidden></h2>
+              <p id="ov-text">Eat every dot. You can only catch the squares after a power dot.</p>
+              <div class="actions">
+                <button class="btn primary" id="ov-primary" type="button">Start game</button>
+                <button class="btn" id="ov-secondary" type="button" hidden>New game</button>
+              </div>
+              <p class="hint" id="ov-hint">Arrow keys or WASD to move. P to pause.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script id="core">
+/* Game rules. No page access here, so the same code runs in a test harness. */
+const Core = (() => {
+  const DIRS = [{ x: 0, y: -1 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 0 }]; // up, left, down, right
+  const UP = 0, LEFT = 1;
+  const rev = d => (d < 0 ? -1 : (d + 2) % 4);
+  const PATH = 0, WALL = 1, DOOR = 2, PEN = 3;
+
+  const PLAYER_SPEED = 5.7; // tiles per second
+  const TURN_MEMORY = 0.5;  // seconds an early key press is kept
+  const READY_TIME = 1.8, DEATH_TIME = 1.6, CLEAR_TIME = 2.2;
+  const EXIT = [9, 7], HOME = [9, 10], BANNER_ROW = 13;
+  const PEN_SLOTS = [[9, 9], [9, 10], [9, 11]];
+  const GUARD_LINE = 10;    // the Guard chases only at or below this row
+
+  // Left half of each maze (columns 0-9); the right half mirrors it.
+  // # wall  . dot  o power dot  - pen door  _ pen  (space) open floor
+  const MAZES = [
+    { name: 'Rings', start: [9, 15], half: [
+      '##########',
+      '#o........',
+      '#.###.####',
+      '#.#.......',
+      '#.#.#####.',
+      '#.#.#.....',
+      '#.#.#.#.##',
+      '#.#...#...',
+      '#.#.#.#.#-',
+      '#.#.#.#.#_',
+      ' ...#...#_',
+      '#.#.#.#.#_',
+      '#.#.#.#.##',
+      '#.#...#...',
+      '#.#.#.###.',
+      '#.#.#.....',
+      '#.#.##.###',
+      '#.#.......',
+      '#.#######.',
+      '#o........',
+      '##########',
+    ] },
+    { name: 'Blocks', start: [9, 16], half: [
+      '##########',
+      '#o........',
+      '#.##.#####',
+      '#.##.#####',
+      '#.........',
+      '#.##.##.##',
+      '#.##.##.##',
+      '#.##......',
+      '#.##.##.#-',
+      '#.##.##.#_',
+      ' ....##.#_',
+      '#.##.##.#_',
+      '#.##.##.##',
+      '#.##......',
+      '#.##.##.##',
+      '#.##.##.##',
+      '#.........',
+      '#.##.#####',
+      '#.##.#####',
+      '#o........',
+      '##########',
+    ] },
+  ];
+
+  const SQUARES = [
+    { id: 'hunter', name: 'Hunter', corner: [17, 1] },
+    { id: 'ambusher', name: 'Ambusher', corner: [1, 1] },
+    { id: 'guard', name: 'Guard', corner: [1, 19] },
+    { id: 'drifter', name: 'Drifter', corner: [17, 19] },
+  ];
+
+  // waves: alternating scatter/chase lengths in seconds, starting with scatter
+  const DIFFICULTY = {
+    easy:   { label: 'Easy',   lives: 5, enemy: 0.78, fright: 9,   release: [0, 3, 7, 11], waves: [9, 15, 9, 15, 7, Infinity] },
+    normal: { label: 'Normal', lives: 3, enemy: 0.9,  fright: 6,   release: [0, 2, 5, 8],  waves: [7, 20, 7, 20, 5, Infinity] },
+    hard:   { label: 'Hard',   lives: 3, enemy: 0.98, fright: 3.5, release: [0, 1, 3, 5],  waves: [5, 25, 4, Infinity] },
+  };
+
+  function buildMaze(def) {
+    const rows = def.half.map(h => h + [...h.slice(0, 9)].reverse().join(''));
+    const H = rows.length, W = rows[0].length;
+    const tiles = new Uint8Array(W * H), dots = new Uint8Array(W * H);
+    let total = 0;
+    rows.forEach((row, y) => [...row].forEach((c, x) => {
+      const i = y * W + x;
+      tiles[i] = c === '#' ? WALL : c === '-' ? DOOR : c === '_' ? PEN : PATH;
+      if (c === '.' || c === 'o') { dots[i] = c === 'o' ? 2 : 1; total++; }
+    }));
+    const s = def.start[1] * W + def.start[0];
+    if (dots[s]) { dots[s] = 0; total--; }
+    const m = { name: def.name, W, H, tiles, dots, total, left: total, start: def.start, tunnelRows: new Set() };
+    for (let y = 0; y < H; y++) if (tiles[y * W] !== WALL) m.tunnelRows.add(y);
+    m.distExit = flood(m, EXIT);
+    m.distHome = flood(m, HOME);
+    return m;
+  }
+
+  // Steps from every open tile to (sx, sy), walking through the pen door.
+  function flood(m, [sx, sy]) {
+    const dist = new Int16Array(m.W * m.H).fill(-1);
+    const queue = [[sx, sy]];
+    dist[sy * m.W + sx] = 0;
+    for (let q = 0; q < queue.length; q++) {
+      const [x, y] = queue[q];
+      for (const d of DIRS) {
+        const nx = (x + d.x + m.W) % m.W, ny = y + d.y;
+        if (ny < 0 || ny >= m.H) continue;
+        const i = ny * m.W + nx;
+        if (m.tiles[i] === WALL || dist[i] >= 0) continue;
+        dist[i] = dist[y * m.W + x] + 1;
+        queue.push([nx, ny]);
+      }
+    }
+    return dist;
+  }
+
+  function createGame(diffKey = 'normal', emit = () => {}, rng = Math.random) {
+    const diff = DIFFICULTY[diffKey] || DIFFICULTY.normal;
+    const g = {
+      diffKey, diff, level: 1, score: 0, lives: diff.lives, extraGiven: false,
+      state: 'ready', stateTime: 0, time: 0, maze: null, player: null, enemies: [],
+      want: -1, wantAge: 0, fright: 0, frightTotal: 0, chain: 0,
+      hitStop: 0, lifeTime: 0, modeIndex: 0, modeTime: 0, popups: [],
+    };
+    let m;
+
+    const wrapX = x => ((x % m.W) + m.W) % m.W;
+    const tileAt = (x, y) => (y < 0 || y >= m.H ? WALL : m.tiles[y * m.W + wrapX(x)]);
+    const mode = () => (g.modeIndex % 2 === 0 ? 'scatter' : 'chase');
+    const setState = s => { g.state = s; g.stateTime = 0; };
+
+    function pos(e) {
+      if (e.dir < 0) return [e.x, e.y];
+      const d = DIRS[e.dir];
+      return [e.x + d.x * e.t, e.y + d.y * e.t];
+    }
+
+    function loadLevel() {
+      m = buildMaze(MAZES[(g.level - 1) % MAZES.length]);
+      g.maze = m;
+      resetActors();
+    }
+
+    function resetActors() {
+      g.player = { x: m.start[0], y: m.start[1], dir: LEFT, face: LEFT, t: 0 };
+      g.enemies = SQUARES.map((def, i) => {
+        const [x, y] = i === 0 ? EXIT : PEN_SLOTS[i - 1];
+        return {
+          def, x, y, t: 0, dir: i === 0 ? LEFT : UP, state: i === 0 ? 'active' : 'waiting',
+          releaseAt: diff.release[i], scared: false, flip: false, drift: [0, 0], driftAt: -1,
+        };
+      });
+      Object.assign(g, { want: -1, wantAge: 0, fright: 0, chain: 0, hitStop: 0, lifeTime: 0, modeIndex: 0, modeTime: 0 });
+    }
+
+    function addScore(n) {
+      g.score += n;
+      if (!g.extraGiven && g.score >= 10000) { g.extraGiven = true; g.lives++; emit('extra'); }
+    }
+
+    function steer(d) { g.want = d; g.wantAge = 0; }
+
+    function update(dt) {
+      g.time += dt;
+      g.stateTime += dt;
+      for (const p of g.popups) p.age += dt;
+      g.popups = g.popups.filter(p => p.age < 1);
+      if (g.state === 'ready') { if (g.stateTime >= READY_TIME) setState('playing'); return; }
+      if (g.state === 'dying') {
+        if (g.stateTime < DEATH_TIME) return;
+        if (g.lives <= 0) { setState('over'); emit('over'); } else { resetActors(); setState('ready'); }
+        return;
+      }
+      if (g.state === 'clear') {
+        if (g.stateTime >= CLEAR_TIME) { g.level++; loadLevel(); setState('ready'); emit('level'); }
+        return;
+      }
+      if (g.state !== 'playing') return;
+      if (g.hitStop > 0) { g.hitStop -= dt; return; }
+      step(dt);
+    }
+
+    function step(dt) {
+      g.lifeTime += dt;
+      if (g.want >= 0 && (g.wantAge += dt) > TURN_MEMORY) g.want = -1;
+      if (g.fright > 0) {
+        g.fright -= dt;
+        if (g.fright <= 0) { g.fright = 0; for (const e of g.enemies) e.scared = false; }
+      } else if (g.modeIndex < diff.waves.length - 1) {
+        g.modeTime += dt;
+        if (g.modeTime >= diff.waves[g.modeIndex]) {
+          g.modeIndex++;
+          g.modeTime = 0;
+          for (const e of g.enemies) if (e.state === 'active') e.flip = true;
+          emit('mode', mode());
+        }
+      }
+      for (const e of g.enemies) if (e.state === 'waiting' && g.lifeTime >= e.releaseAt) e.state = 'leaving';
+
+      movePlayer(dt);
+      if (g.state !== 'playing') return;
+      for (const e of g.enemies) moveEnemy(e, dt);
+      checkHits();
+    }
+
+    // ---- player ----
+    const playerCan = (x, y, d) => tileAt(x + DIRS[d].x, y + DIRS[d].y) === PATH;
+
+    function movePlayer(dt) {
+      const p = g.player;
+      if (g.want >= 0 && p.dir >= 0 && g.want === rev(p.dir) && p.t > 0) {
+        const d = DIRS[p.dir];
+        p.x = wrapX(p.x + d.x); p.y += d.y; p.t = 1 - p.t;
+        p.dir = p.face = g.want; g.want = -1;
+      }
+      let dist = PLAYER_SPEED * dt;
+      for (let n = 0; dist > 1e-9 && n < 8; n++) {
+        if (p.t === 0) {
+          if (g.want >= 0 && playerCan(p.x, p.y, g.want)) { p.dir = g.want; g.want = -1; }
+          else if (p.dir < 0 || !playerCan(p.x, p.y, p.dir)) { p.dir = -1; break; }
+          p.face = p.dir;
+        }
+        const s = Math.min(dist, 1 - p.t);
+        p.t += s; dist -= s;
+        if (p.t >= 1 - 1e-9) { const d = DIRS[p.dir]; p.x = wrapX(p.x + d.x); p.y += d.y; p.t = 0; }
+      }
+      // A dot is eaten once the circle is more than halfway onto its tile.
+      const [px, py] = pos(p);
+      eatAt(wrapX(Math.round(px)), Math.round(py));
+    }
+
+    function eatAt(x, y) {
+      const i = y * m.W + x, d = m.dots[i];
+      if (!d) return;
+      m.dots[i] = 0;
+      m.left--;
+      if (d === 2) { addScore(50); startFright(); emit('power', [x, y]); } else { addScore(10); emit('dot', [x, y]); }
+      if (m.left === 0) { setState('clear'); emit('clear'); }
+    }
+
+    function startFright() {
+      g.fright = g.frightTotal = Math.max(2, diff.fright - (g.level - 1) * 0.5);
+      g.chain = 0;
+      // Every square not already heading home turns blue, including the ones still in the pen.
+      for (const e of g.enemies) {
+        if (e.state === 'returning') continue;
+        e.scared = true;
+        if (e.state === 'active') e.flip = true;
+      }
+    }
+
+    // ---- squares ----
+    function enemySpeed(e) {
+      if (e.state === 'returning') return PLAYER_SPEED * 1.9;
+      const base = PLAYER_SPEED * diff.enemy * (1 + Math.min(g.level - 1, 5) * 0.03);
+      if (e.state === 'leaving') return base * 0.55;
+      if (e.scared) return PLAYER_SPEED * 0.55;
+      if (m.tunnelRows.has(e.y) && (e.x <= 1 || e.x >= m.W - 2)) return base * 0.6;
+      return base;
+    }
+
+    function enemyCan(e, d) {
+      const t = tileAt(e.x + DIRS[d].x, e.y + DIRS[d].y);
+      if (t === WALL) return false;
+      if (t === DOOR || t === PEN) return e.state === 'leaving' || e.state === 'returning';
+      return true;
+    }
+
+    function targetOf(e) {
+      const p = g.player, d = DIRS[p.face];
+      if (mode() === 'scatter') return e.def.corner;
+      switch (e.def.id) {
+        case 'ambusher': return [p.x + d.x * 3, p.y + d.y * 3];
+        case 'guard': return p.y >= GUARD_LINE ? [p.x, p.y] : e.def.corner;
+        case 'drifter':
+          if (g.time >= e.driftAt) {
+            e.drift = [Math.round(rng() * 10 - 5), Math.round(rng() * 10 - 5)];
+            e.driftAt = g.time + 2;
+          }
+          return [p.x + e.drift[0], p.y + e.drift[1]];
+        default: return [p.x, p.y];
+      }
+    }
+
+    function chooseDir(e) {
+      const open = [];
+      for (let d = 0; d < 4; d++) if (enemyCan(e, d)) open.push(d);
+      if (!open.length) return -1;
+      if (e.state === 'leaving' || e.state === 'returning') {
+        const dist = e.state === 'leaving' ? m.distExit : m.distHome;
+        let best = open[0], bestD = Infinity;
+        for (const d of open) {
+          const n = dist[(e.y + DIRS[d].y) * m.W + wrapX(e.x + DIRS[d].x)];
+          if (n >= 0 && n < bestD) { bestD = n; best = d; }
+        }
+        return best;
+      }
+      let pool = open.filter(d => d !== rev(e.dir));
+      if (!pool.length) pool = open;
+      if (e.scared) return pool[Math.floor(rng() * pool.length)];
+      const [tx, ty] = targetOf(e);
+      let best = pool[0], bestD = Infinity;
+      for (const d of pool) {
+        const dd = (e.x + DIRS[d].x - tx) ** 2 + (e.y + DIRS[d].y - ty) ** 2;
+        if (dd < bestD) { bestD = dd; best = d; }
+      }
+      return best;
+    }
+
+    function flip(e) {
+      if (e.dir < 0) return;
+      if (e.t > 0) { const d = DIRS[e.dir]; e.x = wrapX(e.x + d.x); e.y += d.y; e.t = 1 - e.t; }
+      e.dir = rev(e.dir);
+    }
+
+    function arrive(e) {
+      // A square that turned blue in the pen stays blue when it comes out; one you ate comes out normal.
+      if (e.state === 'leaving' && e.x === EXIT[0] && e.y === EXIT[1]) e.state = 'active';
+      else if (e.state === 'returning' && e.x === HOME[0] && e.y === HOME[1]) e.state = 'leaving';
+    }
+
+    function moveEnemy(e, dt) {
+      if (e.state === 'waiting') return;
+      if (e.flip) { e.flip = false; flip(e); }
+      let dist = enemySpeed(e) * dt;
+      for (let n = 0; dist > 1e-9 && n < 8; n++) {
+        if (e.t === 0) {
+          arrive(e);
+          e.dir = chooseDir(e);
+          if (e.dir < 0) return;
+        }
+        const s = Math.min(dist, 1 - e.t);
+        e.t += s; dist -= s;
+        if (e.t >= 1 - 1e-9) { const d = DIRS[e.dir]; e.x = wrapX(e.x + d.x); e.y += d.y; e.t = 0; }
+      }
+    }
+
+    function checkHits() {
+      const [px, py] = pos(g.player);
+      for (const e of g.enemies) {
+        if (e.state === 'waiting' || e.state === 'returning') continue;
+        const [ex, ey] = pos(e);
+        let dx = Math.abs(px - ex);
+        dx = Math.min(dx, m.W - dx);
+        const dy = py - ey;
+        if (dx * dx + dy * dy > 0.36) continue;
+        if (e.scared) {
+          g.chain = Math.min(g.chain + 1, 4);
+          const pts = 100 * 2 ** g.chain;
+          addScore(pts);
+          e.scared = false;
+          e.state = 'returning';
+          g.hitStop = 0.35;
+          g.popups.push({ x: ex, y: ey, text: '+' + pts, age: 0 });
+          emit('eat', pts);
+          continue;
+        }
+        g.lives--;
+        setState('dying');
+        emit('die');
+        return;
+      }
+    }
+
+    loadLevel();
+    return Object.assign(g, { update, steer, pos, mode, targetOf });
+  }
+
+  return { createGame, buildMaze, MAZES, SQUARES, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED };
+})();
+</script>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const TAU = Math.PI * 2;
+  const STEP = 1 / 120;
+  const FONT_MONO = '"Atkinson Hyperlegible Mono", ui-monospace, Menlo, monospace';
+  const canvas = $('board'), ctx = canvas.getContext('2d');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const touchUI = matchMedia('(hover: none) and (pointer: coarse)');
+
+  const rootStyle = getComputedStyle(document.documentElement);
+  const C = {};
+  ['paper', 'wall', 'hatch', 'grid', 'line', 'accent', 'hunter', 'ambusher', 'guard', 'drifter',
+    'scared', 'dot', 'player', 'you'].forEach(k => { C[k] = rootStyle.getPropertyValue('--' + k).trim(); });
+
+  const store = {
+    get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
+    set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ } },
+  };
+
+  const settings = { difficulty: 'normal', targets: false, sound: true, ...store.get('circle-chase:settings', {}) };
+  if (!Core.DIFFICULTY[settings.difficulty]) settings.difficulty = 'normal';
+  const scores = { easy: [], normal: [], hard: [] };
+  const savedScores = store.get('circle-chase:scores', {});
+  for (const k of Object.keys(scores)) if (Array.isArray(savedScores[k])) scores[k] = savedScores[k].slice(0, 5);
+
+  let game, running = false, paused = false, overlayMode = 'title';
+  let T = 0, dpr = 1, layers = {}, lastHud = '', readyLabel = 'READY';
+  // Eating animation: dots being swallowed, and when the last one went down (game time).
+  let bites = [], lastBite = -1, biteBig = false;
+  const GULP = 0.16, SWALLOW = 0.12, BURST = 0.35;
+
+  function bite(tile, big) {
+    if (!tile) return;
+    lastBite = game.time;
+    biteBig = big;
+    bites.push({ x: tile[0], y: tile[1], at: game.time, big });
+  }
+
+  // ---------- sound ----------
+  const sfx = (() => {
+    let ac = null, streak = 0, lastDot = 0;
+    function ensure() {
+      if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch { ac = null; } }
+      if (ac && ac.state === 'suspended') ac.resume().catch(() => {});
+    }
+    function tone(freq, dur, { type = 'triangle', vol = 0.06, to = 0, delay = 0 } = {}) {
+      if (!ac || !settings.sound) return;
+      const t0 = ac.currentTime + delay, osc = ac.createOscillator(), gain = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if (to) osc.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(gain).connect(ac.destination);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.03);
+    }
+    const arp = (notes, gap, vol = 0.05) => notes.forEach((f, i) => tone(f, 0.15, { delay: i * gap, vol }));
+    return {
+      ensure,
+      dot() {
+        const now = performance.now();
+        streak = now - lastDot < 400 ? Math.min(streak + 1, 24) : 0;
+        lastDot = now;
+        tone(660 * 2 ** (streak / 24), 0.05, { vol: 0.035 });
+      },
+      power: () => tone(220, 0.35, { type: 'sawtooth', vol: 0.04, to: 880 }),
+      eat(pts) {
+        const f = 440 * (pts / 200) ** 0.25;
+        tone(f, 0.08, { type: 'square', vol: 0.04 });
+        tone(f * 1.5, 0.12, { type: 'square', vol: 0.04, delay: 0.08 });
+      },
+      die: () => tone(520, 0.9, { type: 'sawtooth', vol: 0.05, to: 60 }),
+      start: () => arp([523.25, 659.25, 783.99, 1046.5], 0.12),
+      clear: () => arp([392, 523.25, 659.25, 783.99, 1046.5], 0.09),
+      extra: () => arp([784, 988, 1175, 1568], 0.07),
+    };
+  })();
+
+  // ---------- game flow ----------
+  function onEvent(type, arg) {
+    switch (type) {
+      case 'dot': sfx.dot(); bite(arg, false); break;
+      case 'power': sfx.power(); bite(arg, true); break;
+      case 'eat': sfx.eat(arg); break;
+      case 'die': sfx.die(); readyLabel = 'READY'; break;
+      case 'clear': sfx.clear(); break;
+      case 'level': readyLabel = `LEVEL ${game.level}`; break;
+      case 'extra': sfx.extra(); break;
+      case 'over': gameOver(); break;
+    }
+  }
+
+  function newGame() {
+    game = Core.createGame(settings.difficulty, onEvent);
+    readyLabel = 'READY';
+    bites = [];
+    lastBite = -1;
+    running = false;
+    paused = false;
+    lastHud = '';
+    fit();
+  }
+
+  function begin() {
+    sfx.ensure();
+    running = true;
+    paused = false;
+    hideOverlay();
+    sfx.start();
+  }
+
+  function setPaused(value) {
+    if (!running) return;
+    paused = value;
+    if (paused) showOverlay('paused'); else hideOverlay();
+  }
+
+  function primaryAction() {
+    if (overlayMode === 'paused') setPaused(false);
+    else if (overlayMode === 'over') { newGame(); begin(); }
+    else begin();
+  }
+
+  function gameOver() {
+    running = false;
+    const g = game;
+    let rank = -1;
+    if (g.score > 0) {
+      const list = scores[g.diffKey];
+      const entry = { score: g.score, level: g.level, date: new Date().toISOString().slice(0, 10) };
+      list.push(entry);
+      list.sort((a, b) => b.score - a.score);
+      list.length = Math.min(list.length, 5);
+      rank = list.indexOf(entry);
+      store.set('circle-chase:scores', scores);
+    }
+    const label = g.diff.label;
+    let text = `You scored ${g.score.toLocaleString('en-US')} on ${label} and reached level ${g.level}.`;
+    if (rank === 0) text += ' That is your new best.';
+    else if (rank > 0) text += ` That is #${rank + 1} on your ${label} list.`;
+    showOverlay('over', text);
+  }
+
+  // ---------- overlay ----------
+  function showOverlay(mode, text) {
+    overlayMode = mode;
+    const touch = touchUI.matches;
+    const copy = {
+      title: ['', 'Eat every dot. You can only catch the squares after a power dot.', 'Start game'],
+      paused: ['paused', 'The game is on hold.', 'Resume'],
+      over: ['game over', text, 'Play again'],
+    }[mode];
+    $('ov-title').textContent = copy[0];
+    $('ov-title').hidden = !copy[0];
+    $('ov-text').textContent = copy[1];
+    $('ov-primary').textContent = copy[2];
+    $('ov-secondary').hidden = mode !== 'paused';
+    $('ov-hint').textContent = touch ? 'Swipe on the board to move.' : 'Arrow keys or WASD to move. P to pause.';
+    $('overlay').hidden = false;
+    if (!touch) $('ov-primary').focus({ preventScroll: true });
+  }
+
+  function hideOverlay() {
+    overlayMode = null;
+    $('overlay').hidden = true;
+    if (document.activeElement && document.activeElement.closest('.overlay')) document.activeElement.blur();
+  }
+
+  // ---------- sizing ----------
+  function fit() {
+    const m = game.maze;
+    const width = $('sheet-wrap').clientWidth - 2;
+    const room = Math.max(300, innerHeight - 110);
+    const t = Math.max(12, Math.floor(Math.min(width / m.W, room / m.H)));
+    const r = Math.min(window.devicePixelRatio || 1, 3);
+    if (t === T && r === dpr) return;
+    T = t;
+    dpr = r;
+    layers = {};
+    canvas.style.width = T * m.W + 'px';
+    canvas.style.height = T * m.H + 'px';
+    canvas.width = Math.round(T * m.W * dpr);
+    canvas.height = Math.round(T * m.H * dpr);
+  }
+
+  // ---------- drawing ----------
+  function makeLayer(w, h) {
+    const c = document.createElement('canvas');
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    const x = c.getContext('2d');
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return [c, x];
+  }
+
+  function roundRectPath(c, x, y, w, h, r) {
+    if (c.roundRect) c.roundRect(x, y, w, h, r); else c.rect(x, y, w, h);
+  }
+
+  // Walls are drawn like a section on a blueprint: an outline with hatching inside.
+  function mazeLayer(flash) {
+    const m = game.maze, key = m.name + (flash ? ':flash' : '');
+    if (layers[key]) return layers[key];
+    const W = m.W * T, H = m.H * T;
+    const isWall = (x, y) => x >= 0 && y >= 0 && x < m.W && y < m.H && m.tiles[y * m.W + x] === Core.WALL;
+    const [layer, lx] = makeLayer(W, H);
+    lx.fillStyle = C.paper;
+    lx.fillRect(0, 0, W, H);
+    lx.strokeStyle = C.grid;
+    lx.lineWidth = 1;
+    lx.beginPath();
+    for (let i = 0; i <= m.W; i++) { lx.moveTo(i * T + 0.5, 0); lx.lineTo(i * T + 0.5, H); }
+    for (let j = 0; j <= m.H; j++) { lx.moveTo(0, j * T + 0.5); lx.lineTo(W, j * T + 0.5); }
+    lx.stroke();
+
+    const cut = T * 0.17, lw = Math.max(1.5, T * 0.075);
+    const shape = inset => {
+      const [c, x] = makeLayer(W, H);
+      x.fillStyle = '#fff';
+      x.beginPath();
+      for (let y = 0; y < m.H; y++) for (let i = 0; i < m.W; i++) if (isWall(i, y)) x.rect(i * T, y * T, T, T);
+      x.fill();
+      x.globalCompositeOperation = 'destination-out';
+      x.beginPath();
+      for (let y = -1; y <= m.H; y++) for (let i = -1; i <= m.W; i++) {
+        if (!isWall(i, y)) roundRectPath(x, i * T - inset, y * T - inset, T + 2 * inset, T + 2 * inset, inset);
+      }
+      x.fill();
+      return c;
+    };
+    const outer = shape(cut), inner = shape(cut + lw);
+
+    const ox = outer.getContext('2d');
+    ox.setTransform(1, 0, 0, 1, 0, 0);
+    ox.globalCompositeOperation = 'destination-out';
+    ox.drawImage(inner, 0, 0);
+    ox.globalCompositeOperation = 'source-in';
+    ox.fillStyle = flash ? C.accent : C.line;
+    ox.fillRect(0, 0, outer.width, outer.height);
+
+    const ix = inner.getContext('2d');
+    ix.globalCompositeOperation = 'source-in';
+    ix.fillStyle = C.wall;
+    ix.fillRect(0, 0, W, H);
+    ix.globalCompositeOperation = 'source-atop';
+    ix.strokeStyle = C.hatch;
+    ix.lineWidth = 1;
+    ix.beginPath();
+    const gap = Math.max(4, T / 4);
+    for (let s = -H; s < W; s += gap) { ix.moveTo(s, H); ix.lineTo(s + H, 0); }
+    ix.stroke();
+
+    lx.setTransform(1, 0, 0, 1, 0, 0);
+    lx.drawImage(inner, 0, 0);
+    lx.drawImage(outer, 0, 0);
+    lx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    lx.strokeStyle = C.line;
+    lx.globalAlpha = 0.6;
+    lx.lineWidth = lw;
+    lx.setLineDash([T * 0.12, T * 0.1]);
+    lx.beginPath();
+    for (let y = 0; y < m.H; y++) for (let i = 0; i < m.W; i++) {
+      if (m.tiles[y * m.W + i] === Core.DOOR) { lx.moveTo(i * T - cut, (y + 0.5) * T); lx.lineTo((i + 1) * T + cut, (y + 0.5) * T); }
+    }
+    lx.stroke();
+    lx.setLineDash([]);
+    lx.globalAlpha = 1;
+
+    layers[key] = layer;
+    return layer;
+  }
+
+  // Power timer warning: in the last FLASHES * FLASH_PERIOD seconds the squares flash white
+  // exactly FLASHES times, and the last flash ends as the power runs out.
+  const FLASHES = 5, FLASH_PERIOD = 0.4;
+  function powerFlash(left) {
+    const warn = FLASHES * FLASH_PERIOD;
+    if (left <= 0 || left > warn) return false;
+    return (warn - left) % FLASH_PERIOD < FLASH_PERIOD / 2;
+  }
+
+  function drawSquare(c, cx, cy, t, def, look) {
+    const color = C[def.id];
+    const lw = Math.max(1.5, t * 0.08);
+    if (look === 'eyes') {
+      const s = t * 0.34;
+      c.strokeStyle = color;
+      c.lineWidth = lw;
+      c.strokeRect(cx - s / 2, cy - s / 2, s, s);
+      return;
+    }
+    const s = t * 0.8;
+    c.beginPath();
+    roundRectPath(c, cx - s / 2, cy - s / 2, s, s, t * 0.1);
+    if (look === 'scared' || look === 'scared-flash') {
+      c.fillStyle = look === 'scared-flash' ? C.player : C.scared;
+      c.fill();
+      return;
+    }
+    c.fillStyle = color;
+    c.fill();
+  }
+
+  function drawPowerDot(c, cx, cy, t, pulse) {
+    const r = t * 0.27 * pulse;
+    c.strokeStyle = C.player;
+    c.fillStyle = C.player;
+    c.lineWidth = Math.max(1.5, t * 0.07);
+    c.beginPath();
+    c.arc(cx, cy, r, 0, TAU);
+    c.stroke();
+    c.beginPath();
+    c.moveTo(cx - t * 0.42, cy); c.lineTo(cx - r * 0.45, cy);
+    c.moveTo(cx + r * 0.45, cy); c.lineTo(cx + t * 0.42, cy);
+    c.moveTo(cx, cy - t * 0.42); c.lineTo(cx, cy - r * 0.45);
+    c.moveTo(cx, cy + r * 0.45); c.lineTo(cx, cy + t * 0.42);
+    c.lineWidth = Math.max(1, t * 0.04);
+    c.stroke();
+    c.beginPath();
+    c.arc(cx, cy, t * 0.09, 0, TAU);
+    c.fill();
+  }
+
+  function eachWrap(x, fn) {
+    const W = game.maze.W;
+    for (const off of [-W, 0, W]) { const px = x + off; if (px > -1 && px < W) fn((px + 0.5) * T); }
+  }
+
+  function draw() {
+    const g = game, m = g.maze, reduce = reduceMotion.matches, now = g.time;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const flash = g.state === 'clear' && !reduce && Math.floor(g.stateTime * 4) % 2 === 1;
+    ctx.drawImage(mazeLayer(flash), 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // dots
+    ctx.fillStyle = C.dot;
+    ctx.beginPath();
+    const r = Math.max(1.4, T * 0.09);
+    for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
+      if (m.dots[y * m.W + x] !== 1) continue;
+      const cx = (x + 0.5) * T, cy = (y + 0.5) * T;
+      ctx.moveTo(cx + r, cy);
+      ctx.arc(cx, cy, r, 0, TAU);
+    }
+    ctx.fill();
+    const pulse = reduce ? 1 : 1 + 0.12 * Math.sin(performance.now() / 160);
+    for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
+      if (m.dots[y * m.W + x] === 2) drawPowerDot(ctx, (x + 0.5) * T, (y + 0.5) * T, T, pulse);
+    }
+
+    const showSquares = g.state !== 'clear' && !(g.state === 'dying' && g.stateTime > 0.35);
+
+    // target lines
+    if (settings.targets && showSquares && g.state !== 'over') {
+      ctx.lineWidth = 1.5;
+      for (const e of g.enemies) {
+        if (e.state !== 'active' || e.scared) continue;
+        let [tx, ty] = g.targetOf(e);
+        tx = Math.max(0, Math.min(m.W - 1, tx));
+        ty = Math.max(0, Math.min(m.H - 1, ty));
+        const [ex, ey] = g.pos(e);
+        const ax = (ex + 0.5) * T, ay = (ey + 0.5) * T, bx = (tx + 0.5) * T, by = (ty + 0.5) * T, k = T * 0.22;
+        ctx.strokeStyle = C[e.def.id];
+        ctx.globalAlpha = 0.75;
+        ctx.setLineDash([4, 5]);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(bx - k, by - k); ctx.lineTo(bx + k, by + k);
+        ctx.moveTo(bx + k, by - k); ctx.lineTo(bx - k, by + k);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // squares
+    if (showSquares) {
+      g.enemies.forEach((e, i) => {
+        let [x, y] = g.pos(e);
+        if (e.state === 'waiting' && !reduce) y += Math.sin(now * 4 + i * 2) * 0.16;
+        const look = e.state === 'returning' ? 'eyes'
+          : e.scared ? (powerFlash(g.fright) ? 'scared-flash' : 'scared')
+          : 'normal';
+        eachWrap(x, cx => drawSquare(ctx, cx, (y + 0.5) * T, T, e.def, look));
+      });
+    }
+
+    // player
+    const p = g.player;
+    const [px, py] = g.pos(p);
+    let pr = T * 0.4;
+
+    // Swallowed dots slide into the circle. They are drawn first so the circle covers them.
+    bites = bites.filter(b => now - b.at < SWALLOW && now >= b.at);
+    if (!reduce && g.state === 'playing') {
+      for (const b of bites) {
+        const k = (now - b.at) / SWALLOW;
+        let bx = b.x;
+        if (bx - px > m.W / 2) bx -= m.W; else if (px - bx > m.W / 2) bx += m.W;
+        const x = (bx + (px - bx) * k + 0.5) * T, y = (b.y + (py - b.y) * k + 0.5) * T;
+        ctx.fillStyle = b.big ? C.player : C.dot;
+        ctx.beginPath();
+        ctx.arc(x, y, (b.big ? T * 0.2 : Math.max(1.4, T * 0.09)) * (1 - 0.5 * k), 0, TAU);
+        ctx.fill();
+      }
+    }
+
+    // Gulp: the circle reaches toward each dot it eats, then settles back.
+    const since = now - lastBite;
+    let s = 0;
+    if (!reduce && lastBite >= 0 && since >= 0 && since < GULP && g.state === 'playing') {
+      const amp = biteBig ? 0.24 : 0.14;
+      s = since < 0.1 ? amp * Math.sin((Math.PI * since) / 0.1) : -0.45 * amp * Math.sin((Math.PI * (since - 0.1)) / (GULP - 0.1));
+    }
+    if (g.state === 'dying') {
+      const k = Math.min(1, g.stateTime / 1.1);
+      pr *= 1 - k;
+      if (!reduce) {
+        eachWrap(px, cx => {
+          ctx.strokeStyle = C.you;
+          ctx.globalAlpha = 1 - k;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, (py + 0.5) * T, T * (0.4 + k * 1.2), 0, TAU);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        });
+      }
+    }
+    if (g.state !== 'over' && pr > 0.5) {
+      const face = Core.DIRS[p.face];
+      eachWrap(px, cx => {
+        const cy = (py + 0.5) * T;
+        ctx.save();
+        ctx.translate(cx + face.x * s * pr * 0.5, cy + face.y * s * pr * 0.5);
+        ctx.rotate(Math.atan2(face.y, face.x));
+        ctx.scale(1 + s, 1 - s * 0.6);
+        ctx.fillStyle = C.you;
+        ctx.beginPath();
+        ctx.arc(0, 0, pr, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+        // a power dot sends a ring out from the circle
+        if (!reduce && biteBig && since >= 0 && since < BURST && g.state === 'playing') {
+          const k = since / BURST;
+          ctx.strokeStyle = C.you;
+          ctx.globalAlpha = 1 - k;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, pr * (1 + k), 0, TAU);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      });
+    }
+
+    // Power timer: a bar in the top wall that drains with the power and flashes with the squares.
+    if (g.fright > 0 && g.frightTotal > 0 && g.state === 'playing') {
+      const frac = Math.min(1, g.fright / g.frightTotal);
+      const bx = T, bw = (m.W - 2) * T, by = T * 0.27, bh = T * 0.46;
+      ctx.fillStyle = C.paper;
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = powerFlash(g.fright) ? C.player : C.scared;
+      ctx.fillRect(bx, by, bw * frac, bh);
+      ctx.strokeStyle = C.line;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `600 ${Math.max(10, Math.round(T * 0.4))}px ${FONT_MONO}`;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = C.paper;
+      const label = `${g.fright.toFixed(1)}s`;
+      ctx.strokeText(label, bx + bw / 2, by + bh / 2 + 1);
+      ctx.fillStyle = C.player;
+      ctx.fillText(label, bx + bw / 2, by + bh / 2 + 1);
+    }
+
+    // floating points
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `600 ${Math.round(T * 0.5)}px ${FONT_MONO}`;
+    ctx.lineWidth = 3;
+    for (const pop of g.popups) {
+      const x = (pop.x + 0.5) * T, y = (pop.y + 0.5 - pop.age * 0.8) * T;
+      ctx.globalAlpha = 1 - pop.age;
+      ctx.strokeStyle = C.paper;
+      ctx.strokeText(pop.text, x, y);
+      ctx.fillStyle = C.player;
+      ctx.fillText(pop.text, x, y);
+    }
+    ctx.globalAlpha = 1;
+
+    // banner
+    let text = null;
+    if (g.state === 'ready' && running) text = readyLabel;
+    if (g.state === 'clear') text = 'MAZE CLEAR';
+    if (text) {
+      const fs = Math.round(T * 0.62);
+      ctx.font = `600 ${fs}px ${FONT_MONO}`;
+      const w = ctx.measureText(text).width + fs * 1.2, h = fs * 1.7;
+      const cx = (m.W * T) / 2, cy = (Core.BANNER_ROW + 0.5) * T;
+      ctx.fillStyle = C.paper;
+      ctx.strokeStyle = C.line;
+      ctx.lineWidth = 1;
+      ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
+      ctx.strokeRect(cx - w / 2 + 0.5, cy - h / 2 + 0.5, w - 1, h - 1);
+      ctx.fillStyle = C.player;
+      ctx.fillText(text, cx, cy + 1);
+    }
+  }
+
+  // ---------- HUD ----------
+  function updateHud() {
+    const g = game;
+    const best = Math.max(g.score, scores[g.diffKey][0]?.score || 0);
+    const key = [g.score, best, g.level, g.lives].join('|');
+    if (key === lastHud) return;
+    lastHud = key;
+    $('hud-score').textContent = g.score.toLocaleString('en-US');
+    $('hud-best').textContent = best.toLocaleString('en-US');
+    $('hud-level').textContent = String(g.level);
+    const lives = $('hud-lives');
+    lives.replaceChildren();
+    const shown = Math.min(g.lives, 5);
+    for (let i = 0; i < shown; i++) lives.appendChild(document.createElement('i'));
+    if (g.lives > shown) lives.append(`+${g.lives - shown}`);
+    lives.setAttribute('aria-label', `${g.lives} lives`);
+  }
+
+  // ---------- settings ----------
+  function saveSettings() { store.set('circle-chase:settings', settings); }
+
+  function toggleSetting(name) {
+    settings[name] = !settings[name];
+    saveSettings();
+    if (name === 'sound' && settings.sound) sfx.ensure();
+  }
+
+  // ---------- input ----------
+  const KEYS = { ArrowUp: 0, KeyW: 0, ArrowLeft: 1, KeyA: 1, ArrowDown: 2, KeyS: 2, ArrowRight: 3, KeyD: 3 };
+
+  function bindInput() {
+    addEventListener('keydown', ev => {
+      if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      const tag = ev.target.tagName;
+      if (ev.code in KEYS) {
+        if (tag === 'INPUT' && !running) return;
+        ev.preventDefault();
+        if (running && !paused) game.steer(KEYS[ev.code]);
+        return;
+      }
+      switch (ev.code) {
+        case 'KeyP':
+        case 'Escape':
+          if (running) setPaused(!paused);
+          break;
+        case 'Space':
+          if (tag === 'BUTTON' || tag === 'INPUT') return;
+          ev.preventDefault();
+          if (running) setPaused(!paused); else primaryAction();
+          break;
+        case 'Enter':
+          if (tag === 'BUTTON' || tag === 'INPUT') return;
+          if (overlayMode) { ev.preventDefault(); primaryAction(); }
+          break;
+        case 'KeyM': toggleSetting('sound'); break;
+        case 'KeyT': toggleSetting('targets'); break;
+      }
+    });
+
+    let swipe = null;
+    canvas.addEventListener('pointerdown', ev => { swipe = { x: ev.clientX, y: ev.clientY, id: ev.pointerId }; });
+    canvas.addEventListener('pointermove', ev => {
+      if (!swipe || ev.pointerId !== swipe.id) return;
+      const dx = ev.clientX - swipe.x, dy = ev.clientY - swipe.y;
+      if (Math.hypot(dx, dy) < 18) return;
+      const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 3 : 1) : (dy > 0 ? 2 : 0);
+      if (running && !paused) game.steer(d);
+      swipe.x = ev.clientX;
+      swipe.y = ev.clientY;
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => canvas.addEventListener(t, () => { swipe = null; }));
+
+    $('ov-primary').addEventListener('click', primaryAction);
+    $('ov-secondary').addEventListener('click', () => { newGame(); begin(); });
+
+    document.addEventListener('visibilitychange', () => { if (document.hidden && running && !paused) setPaused(true); });
+    addEventListener('blur', () => { if (running && !paused) setPaused(true); });
+    addEventListener('resize', fit);
+    if (window.ResizeObserver) new ResizeObserver(fit).observe($('sheet-wrap'));
+  }
+
+  // ---------- loop ----------
+  let last = performance.now(), acc = 0;
+  function frame(now) {
+    const dt = Math.min(0.25, (now - last) / 1000);
+    last = now;
+    if (running && !paused) {
+      acc += dt;
+      while (acc >= STEP) { game.update(STEP); acc -= STEP; }
+    } else acc = 0;
+    draw();
+    updateHud();
+    requestAnimationFrame(frame);
+  }
+
+  function start(data) {
+    if (data && data.settings) Object.assign(settings, data.settings);
+    bindInput();
+    newGame();
+    showOverlay('title');
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { layers = {}; });
+    requestAnimationFrame(frame);
+  }
+
+  window.claude?.hot?.snapshot?.(() => ({ settings: { ...settings } }));
+  if (window.claude?.hot?.ready) window.claude.hot.ready(start);
+  else start(window.claude?.hot?.data ?? {});
+})();
+</script>
+
+</body></html>
