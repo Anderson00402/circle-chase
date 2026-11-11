@@ -601,9 +601,10 @@ const Core = (() => {
     // Power-dot nearness: one looping sound whose volume follows how close the circle is to the
     // nearest power dot: sounds/power-near.mp3, or a soft synthesized shimmer without it.
     const NEAR_FILE_MAX = 0.9, NEAR_SYNTH_MAX = 0.05, EAT_FILE_VOL = 0.9;
-    // The chest clip starts with half a second of silence and trails off for seconds after the
-    // opening burst, so play only EAT_FROM..EAT_TO seconds of it, fading out over the last EAT_FADE.
-    const EAT_FROM = 0.5, EAT_TO = 2.3, EAT_FADE = 0.35;
+    // The chest clip is half a second of silence, then about a second of quiet clicks, then the
+    // opening burst (from about 1.52 s), then a long tail. Play only the burst, EAT_FROM..EAT_TO
+    // seconds, fading out over the last EAT_FADE, so the chest opens the moment the dot is eaten.
+    const EAT_FROM = 1.52, EAT_TO = 2.6, EAT_FADE = 0.4;
     let nearGain = null, nearLevel = 0, nearOn = false;
     function nearSynth() {
       if (nearGain || !ac) return;
