@@ -642,6 +642,7 @@ const Core = (() => {
       if (nearClip && nearClip.el) { nearClip.el.volume = 0; nearClip.el.pause(); }
       if (nearGain) nearGain.gain.setTargetAtTime(0, ac.currentTime, 0.03);
       if (eatClip && eatClip.el) eatClip.el.pause();
+      if (screamVoices) screamVoices.forEach(v => v.gain.setTargetAtTime(0, ac.currentTime, 0.03));
     }
     // level runs from 0 (far away, or sound off) to 1 (on top of a power dot); dt smooths the change.
     function near(level, dt) {
@@ -707,9 +708,51 @@ const Core = (() => {
       }
     }
 
+    // Constant screaming: one voice per ghost, a wailing "aah" that keeps rising and falling.
+    // The voices are made the first time a ghost is screamed at and then always run; screamNear()
+    // turns each one up only while its ghost is scared and the circle is close to it.
+    const SCREAM_NEAR_MAX = 0.07;
+    let screamVoices = null;
+    function screamVoice(i) {
+      const base = 560 + i * 110;
+      const osc = ac.createOscillator(), wail = ac.createOscillator(), wailDepth = ac.createGain();
+      const wob = ac.createOscillator(), wobDepth = ac.createGain();
+      const f1 = ac.createBiquadFilter(), f2 = ac.createBiquadFilter(), out = ac.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.value = base * 1.35;
+      wail.frequency.value = 0.9 + i * 0.23; // the slow aaAAaah, a different pace per ghost
+      wailDepth.gain.value = base * 0.3;
+      wob.frequency.value = 11 + i;          // the fast shake in the voice
+      wobDepth.gain.value = base * 0.05;
+      wail.connect(wailDepth).connect(osc.frequency);
+      wob.connect(wobDepth).connect(osc.frequency);
+      f1.type = 'bandpass'; f1.frequency.value = 900; f1.Q.value = 4;
+      f2.type = 'bandpass'; f2.frequency.value = 1500; f2.Q.value = 5;
+      out.gain.value = 0;
+      osc.connect(f1).connect(out);
+      osc.connect(f2).connect(out);
+      out.connect(ac.destination);
+      osc.start();
+      wail.start();
+      wob.start();
+      return out;
+    }
+    // levels: one 0..1 value per ghost (see ghostNearness); an empty list silences them all.
+    function screamNear(levels) {
+      if (!ac) return;
+      if (!screamVoices) {
+        if (!levels.some(l => l > 0)) return;
+        screamVoices = [0, 1, 2, 3].map(screamVoice);
+      }
+      screamVoices.forEach((v, i) => {
+        v.gain.setTargetAtTime(settings.sound ? (levels[i] || 0) * SCREAM_NEAR_MAX : 0, ac.currentTime, 0.06);
+      });
+    }
+
     return {
       ensure,
       scream,
+      screamNear,
       wake,
       hush,
       near,
@@ -960,7 +1003,8 @@ const Core = (() => {
     }
   }
 
-  function drawGhost(c, cx, cy, t, def, look, dir, time, phase) {
+  // loud: 0..1, how hard this ghost is screaming (how close the circle is while it is scared).
+  function drawGhost(c, cx, cy, t, def, look, dir, time, phase, loud = 0) {
     const color = C[def.id];
     const lw = Math.max(1.5, t * 0.07);
     const d = dir >= 0 ? Core.DIRS[dir] : { x: 0, y: 0 };
@@ -990,7 +1034,7 @@ const Core = (() => {
       c.setLineDash([]);
       // Screaming: eyes staring straight out, mouth a wobbling open O.
       ghostEyes(c, cx, hy - t * 0.06, t, { x: 0, y: 0 }, ink, false);
-      const open = 0.8 + 0.2 * Math.sin(time * 18 + phase);
+      const open = (0.75 + 0.45 * loud) * (0.8 + 0.2 * Math.sin(time * 18 + phase)); // wider the closer you are
       c.beginPath();
       c.ellipse(cx, hy + t * 0.16, t * 0.065, t * 0.085 * open, 0, 0, TAU);
       c.fillStyle = C['maze-bg'];
@@ -1080,13 +1124,14 @@ const Core = (() => {
 
     // ghosts
     if (showGhosts) {
+      const loud = ghostNearness();
       g.enemies.forEach((e, i) => {
         let [x, y] = g.pos(e);
         if (e.state === 'waiting' && !reduce) y += Math.sin(now * 4 + i * 2) * 0.16;
         const look = e.state === 'returning' ? 'eyes'
           : e.scared ? (powerFlash(g.fright) ? 'scared-flash' : 'scared')
           : 'normal';
-        eachWrap(x, cx => drawGhost(ctx, cx, (y + 0.5) * T, T, e.def, look, e.dir, reduce ? 0 : now, i));
+        eachWrap(x, cx => drawGhost(ctx, cx, (y + 0.5) * T, T, e.def, look, e.dir, reduce ? 0 : now, i, loud[i] || 0));
       });
     }
 
@@ -1331,6 +1376,22 @@ const Core = (() => {
     return k * k;
   }
 
+  // While a power dot is working, how close the circle is to each scared ghost: one value per ghost,
+  // 0 at SCREAM_RANGE tiles or more and 1 touching it, squared like the power-dot sound. Ghosts that
+  // aren't scared (or were eaten) get 0; outside a power-up the list is empty.
+  const SCREAM_RANGE = 6;
+  function ghostNearness() {
+    const g = game;
+    if (g.state !== 'playing' || g.fright <= 0) return [];
+    const [px, py] = g.pos(g.player);
+    return g.enemies.map(e => {
+      if (!e.scared || e.state === 'returning') return 0;
+      const [ex, ey] = g.pos(e);
+      const k = 1 - Math.min(1, Math.hypot(ex - px, ey - py) / SCREAM_RANGE);
+      return k * k;
+    });
+  }
+
   // ---------- loop ----------
   let last = performance.now(), acc = 0;
   function frame(now) {
@@ -1340,6 +1401,7 @@ const Core = (() => {
       acc += dt;
       while (acc >= STEP) { game.update(STEP); acc -= STEP; }
       sfx.near(powerNearness(), dt);
+      sfx.screamNear(ghostNearness());
     } else acc = 0;
     draw();
     updateHud();
