@@ -51,6 +51,17 @@ for (const def of Core.MAZES) {
     `pen ${slots ? 'ok' : 'BROKEN'}, exit ${exit ? 'ok' : 'BROKEN'}, start ${start ? 'ok' : 'BROKEN'} -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
+// Ghost speed: slower than the player on level 1, faster every level until the cap, never faster
+// than the player.
+for (const key of Object.keys(Core.DIFFICULTY)) {
+  const g = Core.createGame(key);
+  const paces = Array.from({ length: 12 }, (_, i) => g.ghostPace(i + 1));
+  const rising = paces.every((p, i) => i === 0 || p >= paces[i - 1]) && paces[1] > paces[0];
+  const ok = rising && paces[0] < 0.85 && Math.max(...paces) <= 1;
+  if (!ok) fail++;
+  console.log(`${key} ghost speed by level: ${paces.map(p => Math.round(p * 100) + '%').join(' ')} -> ${ok ? 'OK' : 'FAIL'}`);
+}
+
 for (const key of Object.keys(Core.DIFFICULTY)) {
   for (let run = 0; run < 3; run++) {
     const g = Core.createGame(key);
