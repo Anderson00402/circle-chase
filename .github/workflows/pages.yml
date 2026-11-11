@@ -1,6 +1,7 @@
 # Publishes the website with every version of the game (see tools/build_site.py):
 # main at the root, each branch at /v/<branch>/, each open pull request at /pr/<number>/,
-# and a list at /versions/. Runs whenever a branch or pull request changes.
+# and a list at /versions/. Only main ever deploys: a push to any other branch just asks
+# main to rebuild, which picks that branch up.
 name: Website with every version
 
 on:
@@ -12,20 +13,30 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  build:
+  ask-main:
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
     steps:
-      # For pull requests this checks out main, so a pull request can't change how the site is built.
+      - name: Ask main to rebuild the site
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+  build:
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      # Pull requests run this from main too, so a pull request can't change how the site is built.
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
       - name: Build every version
@@ -41,6 +52,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -1,2 +1,3 @@
 # Local-only sounds (e.g. the Fortnite chest clip). Never publish them.
 sounds/
+__pycache__/

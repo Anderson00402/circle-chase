@@ -19,7 +19,11 @@ You need a free GitHub account and [GitHub Desktop](https://desktop.github.com).
 5. **Commit.** In GitHub Desktop, write a short summary of what you changed and click Commit.
 6. **Send it.** Click Publish branch. GitHub Desktop asks whether to fork the repository: choose **To contribute to the parent project**. Then click **Create Pull Request** and say in a sentence or two what you changed and why.
 
-The owner plays your branch, then merges it or leaves a comment on the pull request. For your next idea, switch to `main`, click Fetch origin and then Pull origin to get the latest game, and make a new branch.
+Your version then shows up on the [versions page](https://anderson00402.github.io/circle-chase/versions/) within a few minutes, so anyone can play it. The owner plays it too, then merges it or leaves a comment on the pull request. For your next idea, switch to `main`, click Fetch origin and then Pull origin to get the latest game, and make a new branch.
+
+## Play every version
+
+**https://anderson00402.github.io/circle-chase/versions/** lists the main game, every version branch and every open pull request. Each one has its own page with a label in the corner, so players can tell it apart from the main game.
 
 ## Where things are in index.html
 
