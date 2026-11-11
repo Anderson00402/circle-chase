@@ -102,7 +102,7 @@ body {
           <div class="overlay" id="overlay">
             <div class="card">
               <h2 id="ov-title">circle chase</h2>
-              <p id="ov-text">Eat every dot. You can only catch the squares after a power dot.</p>
+              <p id="ov-text">Eat every dot. You can only catch the ghosts after a power dot.</p>
               <div class="actions">
                 <button class="btn primary" id="ov-primary" type="button">Start game</button>
                 <button class="btn" id="ov-secondary" type="button" hidden>New game</button>
@@ -135,7 +135,7 @@ const Core = (() => {
   // # wall  . dot  o power dot  - pen door  _ pen  (space) open floor
   // A maze can set its own exit, home, pen slots, guard line and banner row; the rest use the defaults above.
   const MAZES = [
-    // Neon: three side tunnels and a wide pen with room for three squares side by side.
+    // Neon: three side tunnels and a wide pen with room for three ghosts side by side.
     { name: 'Neon', start: [9, 15], exit: [9, 7], home: [9, 9], pen: [[8, 9], [9, 9], [10, 9]], guardLine: 9, banner: 11, half: [
       '##########',
       '#o........',
@@ -205,7 +205,7 @@ const Core = (() => {
     ] },
   ];
 
-  const SQUARES = [
+  const GHOSTS = [
     { id: 'hunter', name: 'Hunter', corner: [17, 1] },
     { id: 'ambusher', name: 'Ambusher', corner: [1, 1] },
     { id: 'guard', name: 'Guard', corner: [1, 19] },
@@ -290,7 +290,7 @@ const Core = (() => {
 
     function resetActors() {
       g.player = { x: m.start[0], y: m.start[1], dir: LEFT, face: LEFT, t: 0 };
-      g.enemies = SQUARES.map((def, i) => {
+      g.enemies = GHOSTS.map((def, i) => {
         const [x, y] = i === 0 ? m.exit : m.penSlots[i - 1];
         return {
           def, x, y, t: 0, dir: i === 0 ? LEFT : UP, state: i === 0 ? 'active' : 'waiting',
@@ -391,7 +391,7 @@ const Core = (() => {
       for (const e of g.enemies) if (e.state === 'active') { e.scared = true; e.flip = true; }
     }
 
-    // ---- squares ----
+    // ---- ghosts ----
     function enemySpeed(e) {
       if (e.state === 'returning') return PLAYER_SPEED * 1.9;
       const base = PLAYER_SPEED * diff.enemy * (1 + Math.min(g.level - 1, 5) * 0.03);
@@ -509,7 +509,7 @@ const Core = (() => {
     return Object.assign(g, { update, steer, pos, mode, targetOf });
   }
 
-  return { createGame, buildMaze, MAZES, SQUARES, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED };
+  return { createGame, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED };
 })();
 </script>
 
@@ -664,7 +664,7 @@ const Core = (() => {
     overlayMode = mode;
     const touch = touchUI.matches;
     const copy = {
-      title: ['circle chase', 'Eat every dot. You can only catch the squares after a power dot.', 'Start game'],
+      title: ['circle chase', 'Eat every dot. You can only catch the ghosts after a power dot.', 'Start game'],
       paused: ['paused', 'The game is on hold.', 'Resume'],
       over: ['game over', text, 'Play again'],
     }[mode];
@@ -775,7 +775,7 @@ const Core = (() => {
     return layer;
   }
 
-  // Power timer warning: in the last FLASHES * FLASH_PERIOD seconds the squares flash white
+  // Power timer warning: in the last FLASHES * FLASH_PERIOD seconds the ghosts flash white
   // exactly FLASHES times, and the last flash ends as the power runs out.
   const FLASHES = 5, FLASH_PERIOD = 0.4;
   function powerFlash(left) {
@@ -784,31 +784,74 @@ const Core = (() => {
     return (warn - left) % FLASH_PERIOD < FLASH_PERIOD / 2;
   }
 
-  function drawSquare(c, cx, cy, t, def, look) {
+  // Ghosts: a round head that tapers into a wispy tail. The tail streams away from the way the
+  // ghost is moving and sways as it floats; the eyes look where it is going.
+  function ghostPath(c, cx, cy, t, d, time, phase) {
+    const R = t * 0.37, hy = -t * 0.1;
+    // The tail curls behind a ghost moving sideways; going up or down, each ghost keeps its own side.
+    const side = d.x ? -d.x : (phase % 2 ? 1 : -1);
+    const tx = t * 0.22 + Math.sin(time * 5 + phase * 1.7) * t * 0.06, ty = t * 0.47;
+    c.save();
+    c.translate(cx, cy);
+    c.scale(side, 1); // the path keeps this mirroring after restore()
+    c.beginPath();
+    c.moveTo(-R, hy);
+    c.arc(0, hy, R, Math.PI, 0);
+    c.bezierCurveTo(R, hy + R, tx + t * 0.12, ty - t * 0.1, tx, ty);
+    c.bezierCurveTo(tx - t * 0.1, ty - t * 0.05, -R * 0.9, hy + R * 0.9, -R, hy);
+    c.closePath();
+    c.restore();
+    return cy + hy;
+  }
+
+  function ghostEyes(c, cx, hy, t, d, color, glint) {
+    for (const side of [-1, 1]) {
+      const x = cx + side * t * 0.13 + d.x * t * 0.06, y = hy + d.y * t * 0.05;
+      c.fillStyle = color;
+      c.beginPath();
+      c.ellipse(x, y, t * 0.06, t * 0.09, 0, 0, TAU);
+      c.fill();
+      if (glint) {
+        c.fillStyle = C.player;
+        c.beginPath();
+        c.arc(x + t * 0.018, y - t * 0.035, t * 0.022, 0, TAU);
+        c.fill();
+      }
+    }
+  }
+
+  function drawGhost(c, cx, cy, t, def, look, dir, time, phase) {
     const color = C[def.id];
-    const lw = Math.max(1.5, t * 0.08);
+    const lw = Math.max(1.5, t * 0.07);
+    const d = dir >= 0 ? Core.DIRS[dir] : { x: 0, y: 0 };
+    const hy = ghostPath(c, cx, cy, t, d, time, phase);
     if (look === 'eyes') {
-      const s = t * 0.34;
-      c.strokeStyle = color;
+      // Eaten: a faint dotted outline drifting back to the pen.
+      c.globalAlpha = 0.55;
+      c.setLineDash([t * 0.07, t * 0.07]);
       c.lineWidth = lw;
-      c.strokeRect(cx - s / 2, cy - s / 2, s, s);
+      c.strokeStyle = color;
+      c.stroke();
+      c.setLineDash([]);
+      ghostEyes(c, cx, hy, t, d, color, false);
+      c.globalAlpha = 1;
       return;
     }
-    const s = t * 0.8;
-    c.beginPath();
-    roundRectPath(c, cx - s / 2, cy - s / 2, s, s, t * 0.1);
     if (look === 'scared' || look === 'scared-flash') {
+      const ink = look === 'scared-flash' ? C.player : C.scared;
       c.fillStyle = C['scared-fill'];
       c.fill();
       c.setLineDash([t * 0.14, t * 0.09]);
       c.lineWidth = lw;
-      c.strokeStyle = look === 'scared-flash' ? C.player : C.scared;
+      c.strokeStyle = ink;
       c.stroke();
       c.setLineDash([]);
+      ghostEyes(c, cx, hy, t, d, ink, false);
       return;
     }
     c.fillStyle = color;
     c.fill();
+    ghostEyes(c, cx, hy, t, d, C['maze-bg'], true);
   }
 
   function drawPowerDot(c, cx, cy, t, pulse) {
@@ -859,10 +902,10 @@ const Core = (() => {
       if (m.dots[y * m.W + x] === 2) drawPowerDot(ctx, (x + 0.5) * T, (y + 0.5) * T, T, pulse);
     }
 
-    const showSquares = g.state !== 'clear' && !(g.state === 'dying' && g.stateTime > 0.35);
+    const showGhosts = g.state !== 'clear' && !(g.state === 'dying' && g.stateTime > 0.35);
 
     // target lines
-    if (settings.targets && showSquares && g.state !== 'over') {
+    if (settings.targets && showGhosts && g.state !== 'over') {
       ctx.lineWidth = 1.5;
       for (const e of g.enemies) {
         if (e.state !== 'active' || e.scared) continue;
@@ -884,15 +927,15 @@ const Core = (() => {
       }
     }
 
-    // squares
-    if (showSquares) {
+    // ghosts
+    if (showGhosts) {
       g.enemies.forEach((e, i) => {
         let [x, y] = g.pos(e);
         if (e.state === 'waiting' && !reduce) y += Math.sin(now * 4 + i * 2) * 0.16;
         const look = e.state === 'returning' ? 'eyes'
           : e.scared ? (powerFlash(g.fright) ? 'scared-flash' : 'scared')
           : 'normal';
-        eachWrap(x, cx => drawSquare(ctx, cx, (y + 0.5) * T, T, e.def, look));
+        eachWrap(x, cx => drawGhost(ctx, cx, (y + 0.5) * T, T, e.def, look, e.dir, reduce ? 0 : now, i));
       });
     }
 
@@ -982,7 +1025,7 @@ const Core = (() => {
       });
     }
 
-    // Power timer: a bar in the top wall that drains with the power and flashes with the squares.
+    // Power timer: a bar in the top wall that drains with the power and flashes with the ghosts.
     if (g.fright > 0 && g.frightTotal > 0 && g.state === 'playing') {
       const frac = Math.min(1, g.fright / g.frightTotal);
       const bx = T, bw = (m.W - 2) * T, by = T * 0.27, bh = T * 0.46;
