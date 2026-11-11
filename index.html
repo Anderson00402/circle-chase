@@ -675,8 +675,41 @@ const Core = (() => {
       tone(220, 0.35, { type: 'sawtooth', vol: 0.04, to: 880 });
     }
 
+    // Scared ghosts scream: one wailing "aah" per ghost, each a little higher and a moment later.
+    // A sawtooth shrieks up, wobbles and trails off through two vowel-shaped filters.
+    function scream(count) {
+      if (!ac || !settings.sound || count < 1) return;
+      const t0 = ac.currentTime;
+      for (let i = 0; i < Math.min(count, 4); i++) {
+        const start = t0 + i * 0.07, dur = 0.85, base = 520 + i * 90 + Math.random() * 40;
+        const osc = ac.createOscillator(), wob = ac.createOscillator(), wobDepth = ac.createGain();
+        const f1 = ac.createBiquadFilter(), f2 = ac.createBiquadFilter(), out = ac.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(base, start);
+        osc.frequency.exponentialRampToValueAtTime(base * 1.7, start + 0.12);
+        osc.frequency.exponentialRampToValueAtTime(base * 1.25, start + dur);
+        wob.frequency.value = 11 + i;
+        wobDepth.gain.value = base * 0.06;
+        wob.connect(wobDepth).connect(osc.frequency);
+        f1.type = 'bandpass'; f1.frequency.value = 900; f1.Q.value = 4;
+        f2.type = 'bandpass'; f2.frequency.value = 1500; f2.Q.value = 5;
+        out.gain.setValueAtTime(0.0001, start);
+        out.gain.exponentialRampToValueAtTime(0.06, start + 0.04);
+        out.gain.setValueAtTime(0.06, start + dur * 0.6);
+        out.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+        osc.connect(f1).connect(out);
+        osc.connect(f2).connect(out);
+        out.connect(ac.destination);
+        osc.start(start);
+        wob.start(start);
+        osc.stop(start + dur + 0.05);
+        wob.stop(start + dur + 0.05);
+      }
+    }
+
     return {
       ensure,
+      scream,
       wake,
       hush,
       near,
@@ -703,7 +736,7 @@ const Core = (() => {
   function onEvent(type, arg) {
     switch (type) {
       case 'dot': sfx.dot(); bite(arg, false); break;
-      case 'power': sfx.power(); bite(arg, true); break;
+      case 'power': sfx.power(); sfx.scream(game.enemies.filter(e => e.scared).length); bite(arg, true); break;
       case 'eat': sfx.eat(arg); break;
       case 'die': sfx.die(); readyLabel = 'READY'; break;
       case 'clear': sfx.clear(); break;
@@ -931,6 +964,8 @@ const Core = (() => {
     const color = C[def.id];
     const lw = Math.max(1.5, t * 0.07);
     const d = dir >= 0 ? Core.DIRS[dir] : { x: 0, y: 0 };
+    const scared = look === 'scared' || look === 'scared-flash';
+    if (scared) cx += Math.sin(time * 45 + phase * 2) * t * 0.025; // trembling while they scream
     const hy = ghostPath(c, cx, cy, t, d, time, phase);
     if (look === 'eyes') {
       // Eaten: a faint dotted outline drifting back to the pen.
@@ -944,7 +979,7 @@ const Core = (() => {
       c.globalAlpha = 1;
       return;
     }
-    if (look === 'scared' || look === 'scared-flash') {
+    if (scared) {
       const ink = look === 'scared-flash' ? C.player : C.scared;
       c.fillStyle = C['scared-fill'];
       c.fill();
@@ -953,7 +988,16 @@ const Core = (() => {
       c.strokeStyle = ink;
       c.stroke();
       c.setLineDash([]);
-      ghostEyes(c, cx, hy, t, d, ink, false);
+      // Screaming: eyes staring straight out, mouth a wobbling open O.
+      ghostEyes(c, cx, hy - t * 0.06, t, { x: 0, y: 0 }, ink, false);
+      const open = 0.8 + 0.2 * Math.sin(time * 18 + phase);
+      c.beginPath();
+      c.ellipse(cx, hy + t * 0.16, t * 0.065, t * 0.085 * open, 0, 0, TAU);
+      c.fillStyle = C['maze-bg'];
+      c.fill();
+      c.lineWidth = Math.max(1, lw * 0.8);
+      c.strokeStyle = ink;
+      c.stroke();
       return;
     }
     c.fillStyle = color;
