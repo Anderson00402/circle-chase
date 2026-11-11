@@ -1,0 +1,49 @@
+# Publishes the website with every version of the game (see tools/build_site.py):
+# main at the root, each branch at /v/<branch>/, each open pull request at /pr/<number>/,
+# and a list at /versions/. Runs whenever a branch or pull request changes.
+name: Website with every version
+
+on:
+  push:
+  delete:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # For pull requests this checks out main, so a pull request can't change how the site is built.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build every version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch --quiet --force origin '+refs/heads/*:refs/remotes/origin/*' '+refs/pull/*/head:refs/remotes/pr/*'
+          python3 tools/build_site.py _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
