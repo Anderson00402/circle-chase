@@ -574,22 +574,29 @@ const Core = (() => {
     }
     const arp = (notes, gap, vol = 0.05) => notes.forEach((f, i) => tone(f, 0.15, { delay: i * gap, vol }));
 
-    // Power-dot nearness: one looping sound whose volume follows how close the circle is to the
-    // nearest power dot. It plays sounds/power-near.mp3 when that file sits next to the page (it is
-    // kept out of the published copies) and a soft synthesized shimmer when it does not.
-    const NEAR_FILE = 'sounds/power-near.mp3', NEAR_FILE_MAX = 0.9, NEAR_SYNTH_MAX = 0.05;
-    let nearAudio = null, nearFile = 'unknown', nearGain = null, nearLevel = 0, nearOn = false;
-    function nearLoad() {
-      if (nearAudio || nearFile === 'missing') return;
+    // Optional sound files in sounds/ next to the page. That folder is kept out of the published
+    // copies, so each file has a synthesized stand-in. state: 'unknown' while loading, then 'ok' or 'missing'.
+    function clip(src, loop) {
+      const c = { el: null, state: 'unknown', primed: false };
       try {
-        nearAudio = new Audio(NEAR_FILE);
-        nearAudio.loop = true;
-        nearAudio.volume = 0;
-        nearAudio.addEventListener('canplay', () => { nearFile = 'ok'; }, { once: true });
-        nearAudio.addEventListener('error', () => { nearFile = 'missing'; nearAudio = null; }, { once: true });
-        nearAudio.load();
-      } catch { nearFile = 'missing'; nearAudio = null; }
+        c.el = new Audio(src);
+        c.el.loop = loop;
+        c.el.addEventListener('canplay', () => { c.state = 'ok'; }, { once: true });
+        c.el.addEventListener('error', () => { c.state = 'missing'; c.el = null; }, { once: true });
+        c.el.load();
+      } catch { c.state = 'missing'; c.el = null; }
+      return c;
     }
+    let nearClip = null, eatClip = null;
+    function loadClips() {
+      if (!nearClip) { nearClip = clip('sounds/power-near.mp3', true); if (nearClip.el) nearClip.el.volume = 0; }
+      if (!eatClip) eatClip = clip('sounds/power-eat.mp3', false);
+    }
+
+    // Power-dot nearness: one looping sound whose volume follows how close the circle is to the
+    // nearest power dot: sounds/power-near.mp3, or a soft synthesized shimmer without it.
+    const NEAR_FILE_MAX = 0.9, NEAR_SYNTH_MAX = 0.05, EAT_FILE_VOL = 0.9;
+    let nearGain = null, nearLevel = 0, nearOn = false;
     function nearSynth() {
       if (nearGain || !ac) return;
       nearGain = ac.createGain();
@@ -610,42 +617,67 @@ const Core = (() => {
       trem.connect(nearGain).connect(ac.destination);
       lfo.start();
     }
-    function nearStart() {
+    // Call from a click or key press (Start, Resume): browsers only let sound start from one.
+    function wake() {
       ensure();
-      nearLoad();
+      loadClips();
       nearOn = true;
-      if (nearAudio) nearAudio.play().catch(() => {});
+      if (nearClip.el) nearClip.el.play().catch(() => {});
+      // Safari only plays a sound file later if it was started once from a click, so start the
+      // power-dot clip silently now and rewind it.
+      const e = eatClip.el;
+      if (e && !eatClip.primed) {
+        eatClip.primed = true;
+        e.muted = true;
+        e.play().then(() => { e.pause(); e.currentTime = 0; e.muted = false; }).catch(() => { e.muted = false; });
+      }
     }
-    function nearStop() {
+    // Pause or game over: silence the loop and any power-dot clip still playing.
+    function hush() {
       nearOn = false;
       nearLevel = 0;
-      if (nearAudio) { nearAudio.volume = 0; nearAudio.pause(); }
+      if (nearClip && nearClip.el) { nearClip.el.volume = 0; nearClip.el.pause(); }
       if (nearGain) nearGain.gain.setTargetAtTime(0, ac.currentTime, 0.03);
+      if (eatClip && eatClip.el) eatClip.el.pause();
     }
     // level runs from 0 (far away, or sound off) to 1 (on top of a power dot); dt smooths the change.
     function near(level, dt) {
       if (!nearOn) return;
+      if (!settings.sound && eatClip.el && !eatClip.el.paused) eatClip.el.pause();
       const target = settings.sound ? level : 0;
       nearLevel += (target - nearLevel) * Math.min(1, dt * 10);
-      if (nearFile === 'ok' && nearAudio) nearAudio.volume = Math.min(1, nearLevel * NEAR_FILE_MAX);
-      else if (nearFile === 'missing' && ac) {
+      if (nearClip.state === 'ok' && nearClip.el) nearClip.el.volume = Math.min(1, nearLevel * NEAR_FILE_MAX);
+      else if (nearClip.state === 'missing' && ac) {
         nearSynth();
         nearGain.gain.setTargetAtTime(nearLevel * NEAR_SYNTH_MAX, ac.currentTime, 0.03);
       }
     }
+    // Eating a power dot: sounds/power-eat.mp3 from the start, or the synthesized rising sweep.
+    function power() {
+      if (!settings.sound) return;
+      const e = eatClip && eatClip.state === 'ok' ? eatClip.el : null;
+      if (e) {
+        e.muted = false;
+        e.volume = EAT_FILE_VOL;
+        e.currentTime = 0;
+        e.play().catch(() => {});
+        return;
+      }
+      tone(220, 0.35, { type: 'sawtooth', vol: 0.04, to: 880 });
+    }
 
     return {
       ensure,
-      nearStart,
-      nearStop,
+      wake,
+      hush,
       near,
+      power,
       dot() {
         const now = performance.now();
         streak = now - lastDot < 400 ? Math.min(streak + 1, 24) : 0;
         lastDot = now;
         tone(660 * 2 ** (streak / 24), 0.05, { vol: 0.035 });
       },
-      power: () => tone(220, 0.35, { type: 'sawtooth', vol: 0.04, to: 880 }),
       eat(pts) {
         const f = 440 * (pts / 200) ** 0.25;
         tone(f, 0.08, { type: 'square', vol: 0.04 });
@@ -685,7 +717,7 @@ const Core = (() => {
 
   function begin() {
     sfx.ensure();
-    sfx.nearStart();
+    sfx.wake();
     running = true;
     paused = false;
     hideOverlay();
@@ -695,7 +727,7 @@ const Core = (() => {
   function setPaused(value) {
     if (!running) return;
     paused = value;
-    if (paused) { showOverlay('paused'); sfx.nearStop(); } else { hideOverlay(); sfx.nearStart(); }
+    if (paused) { showOverlay('paused'); sfx.hush(); } else { hideOverlay(); sfx.wake(); }
   }
 
   function primaryAction() {
@@ -706,7 +738,7 @@ const Core = (() => {
 
   function gameOver() {
     running = false;
-    sfx.nearStop();
+    sfx.hush();
     const g = game;
     let rank = -1;
     if (g.score > 0) {
