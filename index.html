@@ -1,4 +1,5 @@
 <!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Circle Chase</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,9 +11,9 @@
   --desk: #0a1b3d;
   --paper: #11306a;
   --panel: #0e2858;
-  --wall: #0c2554;
-  --hatch: rgba(219, 231, 255, 0.16);
   --grid: rgba(166, 196, 255, 0.09);
+  --maze-bg: #000000;
+  --maze-wall: #1c6cfc;
   --line: #dbe7ff;
   --ink: #eef3ff;
   --ink-dim: #a3b6de;
@@ -24,7 +25,8 @@
   --ambusher: #ff8a3d;
   --guard: #3fe0b0;
   --drifter: #b9a2ff;
-  --scared: #2546e6;
+  --scared: #8fd3ff;
+  --scared-fill: rgba(143, 211, 255, 0.12);
   --dot: #b9cdf6;
   --player: #ffffff;
   --you: #ffd84a;
@@ -62,7 +64,7 @@ body {
 /* Board */
 .sheet-wrap { display: flex; justify-content: center; min-width: 0; }
 .sheet { position: relative; line-height: 0; }
-#board { display: block; touch-action: none; border: 1px solid var(--rule); background: var(--paper); }
+#board { display: block; touch-action: none; border: 1px solid var(--rule); background: var(--maze-bg); }
 .overlay {
   position: absolute; inset: 1px; display: grid; place-items: center; padding: 14px;
   background: var(--scrim); line-height: 1.5; text-align: center;
@@ -99,7 +101,7 @@ body {
           <canvas id="board" role="img" aria-label="Game board"></canvas>
           <div class="overlay" id="overlay">
             <div class="card">
-              <h2 id="ov-title" hidden></h2>
+              <h2 id="ov-title">circle chase</h2>
               <p id="ov-text">Eat every dot. You can only catch the squares after a power dot.</p>
               <div class="actions">
                 <button class="btn primary" id="ov-primary" type="button">Start game</button>
@@ -131,7 +133,30 @@ const Core = (() => {
 
   // Left half of each maze (columns 0-9); the right half mirrors it.
   // # wall  . dot  o power dot  - pen door  _ pen  (space) open floor
+  // A maze can set its own exit, home, pen slots, guard line and banner row; the rest use the defaults above.
   const MAZES = [
+    // Neon: three side tunnels and a wide pen with room for three squares side by side.
+    { name: 'Neon', start: [9, 15], exit: [9, 7], home: [9, 9], pen: [[8, 9], [9, 9], [10, 9]], guardLine: 9, banner: 11, half: [
+      '##########',
+      '#o........',
+      '#.##.#####',
+      '#........#',
+      '###.#.#..#',
+      '###.#.#...',
+      '###.#.###.',
+      ' ...#.....',
+      '#####.###-',
+      ' .....##__',
+      '#####.####',
+      ' ...#.....',
+      '###.#.####',
+      '###.#....#',
+      '###.#.#..#',
+      '#.....#...',
+      '#.##.#####',
+      '#o........',
+      '##########',
+    ] },
     { name: 'Rings', start: [9, 15], half: [
       '##########',
       '#o........',
@@ -206,10 +231,14 @@ const Core = (() => {
     }));
     const s = def.start[1] * W + def.start[0];
     if (dots[s]) { dots[s] = 0; total--; }
-    const m = { name: def.name, W, H, tiles, dots, total, left: total, start: def.start, tunnelRows: new Set() };
+    const m = {
+      name: def.name, W, H, tiles, dots, total, left: total, start: def.start, tunnelRows: new Set(),
+      exit: def.exit || EXIT, home: def.home || HOME, penSlots: def.pen || PEN_SLOTS,
+      guardLine: def.guardLine ?? GUARD_LINE, banner: def.banner ?? BANNER_ROW,
+    };
     for (let y = 0; y < H; y++) if (tiles[y * W] !== WALL) m.tunnelRows.add(y);
-    m.distExit = flood(m, EXIT);
-    m.distHome = flood(m, HOME);
+    m.distExit = flood(m, m.exit);
+    m.distHome = flood(m, m.home);
     return m;
   }
 
@@ -262,7 +291,7 @@ const Core = (() => {
     function resetActors() {
       g.player = { x: m.start[0], y: m.start[1], dir: LEFT, face: LEFT, t: 0 };
       g.enemies = SQUARES.map((def, i) => {
-        const [x, y] = i === 0 ? EXIT : PEN_SLOTS[i - 1];
+        const [x, y] = i === 0 ? m.exit : m.penSlots[i - 1];
         return {
           def, x, y, t: 0, dir: i === 0 ? LEFT : UP, state: i === 0 ? 'active' : 'waiting',
           releaseAt: diff.release[i], scared: false, flip: false, drift: [0, 0], driftAt: -1,
@@ -359,12 +388,7 @@ const Core = (() => {
     function startFright() {
       g.fright = g.frightTotal = Math.max(2, diff.fright - (g.level - 1) * 0.5);
       g.chain = 0;
-      // Every square not already heading home turns blue, including the ones still in the pen.
-      for (const e of g.enemies) {
-        if (e.state === 'returning') continue;
-        e.scared = true;
-        if (e.state === 'active') e.flip = true;
-      }
+      for (const e of g.enemies) if (e.state === 'active') { e.scared = true; e.flip = true; }
     }
 
     // ---- squares ----
@@ -386,10 +410,12 @@ const Core = (() => {
 
     function targetOf(e) {
       const p = g.player, d = DIRS[p.face];
-      if (mode() === 'scatter') return e.def.corner;
+      // Corners are set for a 21-row maze; keep them inside shorter ones.
+      const corner = [e.def.corner[0], Math.min(e.def.corner[1], m.H - 2)];
+      if (mode() === 'scatter') return corner;
       switch (e.def.id) {
         case 'ambusher': return [p.x + d.x * 3, p.y + d.y * 3];
-        case 'guard': return p.y >= GUARD_LINE ? [p.x, p.y] : e.def.corner;
+        case 'guard': return p.y >= m.guardLine ? [p.x, p.y] : corner;
         case 'drifter':
           if (g.time >= e.driftAt) {
             e.drift = [Math.round(rng() * 10 - 5), Math.round(rng() * 10 - 5)];
@@ -432,9 +458,8 @@ const Core = (() => {
     }
 
     function arrive(e) {
-      // A square that turned blue in the pen stays blue when it comes out; one you ate comes out normal.
-      if (e.state === 'leaving' && e.x === EXIT[0] && e.y === EXIT[1]) e.state = 'active';
-      else if (e.state === 'returning' && e.x === HOME[0] && e.y === HOME[1]) e.state = 'leaving';
+      if (e.state === 'leaving' && e.x === m.exit[0] && e.y === m.exit[1]) { e.state = 'active'; e.scared = false; }
+      else if (e.state === 'returning' && e.x === m.home[0] && e.y === m.home[1]) e.state = 'leaving';
     }
 
     function moveEnemy(e, dt) {
@@ -500,8 +525,8 @@ const Core = (() => {
 
   const rootStyle = getComputedStyle(document.documentElement);
   const C = {};
-  ['paper', 'wall', 'hatch', 'grid', 'line', 'accent', 'hunter', 'ambusher', 'guard', 'drifter',
-    'scared', 'dot', 'player', 'you'].forEach(k => { C[k] = rootStyle.getPropertyValue('--' + k).trim(); });
+  ['paper', 'maze-bg', 'maze-wall', 'line', 'accent', 'hunter', 'ambusher', 'guard', 'drifter',
+    'scared', 'scared-fill', 'dot', 'player', 'you'].forEach(k => { C[k] = rootStyle.getPropertyValue('--' + k).trim(); });
 
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
@@ -577,7 +602,7 @@ const Core = (() => {
       case 'eat': sfx.eat(arg); break;
       case 'die': sfx.die(); readyLabel = 'READY'; break;
       case 'clear': sfx.clear(); break;
-      case 'level': readyLabel = `LEVEL ${game.level}`; break;
+      case 'level': readyLabel = `LEVEL ${game.level}`; fit(); break; // mazes can differ in size
       case 'extra': sfx.extra(); break;
       case 'over': gameOver(); break;
     }
@@ -639,12 +664,11 @@ const Core = (() => {
     overlayMode = mode;
     const touch = touchUI.matches;
     const copy = {
-      title: ['', 'Eat every dot. You can only catch the squares after a power dot.', 'Start game'],
+      title: ['circle chase', 'Eat every dot. You can only catch the squares after a power dot.', 'Start game'],
       paused: ['paused', 'The game is on hold.', 'Resume'],
       over: ['game over', text, 'Play again'],
     }[mode];
     $('ov-title').textContent = copy[0];
-    $('ov-title').hidden = !copy[0];
     $('ov-text').textContent = copy[1];
     $('ov-primary').textContent = copy[2];
     $('ov-secondary').hidden = mode !== 'paused';
@@ -666,7 +690,7 @@ const Core = (() => {
     const room = Math.max(300, innerHeight - 110);
     const t = Math.max(12, Math.floor(Math.min(width / m.W, room / m.H)));
     const r = Math.min(window.devicePixelRatio || 1, 3);
-    if (t === T && r === dpr) return;
+    if (t === T && r === dpr && canvas.width === Math.round(T * m.W * dpr) && canvas.height === Math.round(T * m.H * dpr)) return;
     T = t;
     dpr = r;
     layers = {};
@@ -690,23 +714,18 @@ const Core = (() => {
     if (c.roundRect) c.roundRect(x, y, w, h, r); else c.rect(x, y, w, h);
   }
 
-  // Walls are drawn like a section on a blueprint: an outline with hatching inside.
+  // Walls are neon outlines on black: each wall block gets a rounded blue outline with a soft glow,
+  // so the one-tile border reads as a double line and walls that reach the edge end in rounded caps.
   function mazeLayer(flash) {
     const m = game.maze, key = m.name + (flash ? ':flash' : '');
     if (layers[key]) return layers[key];
     const W = m.W * T, H = m.H * T;
     const isWall = (x, y) => x >= 0 && y >= 0 && x < m.W && y < m.H && m.tiles[y * m.W + x] === Core.WALL;
     const [layer, lx] = makeLayer(W, H);
-    lx.fillStyle = C.paper;
+    lx.fillStyle = C['maze-bg'];
     lx.fillRect(0, 0, W, H);
-    lx.strokeStyle = C.grid;
-    lx.lineWidth = 1;
-    lx.beginPath();
-    for (let i = 0; i <= m.W; i++) { lx.moveTo(i * T + 0.5, 0); lx.lineTo(i * T + 0.5, H); }
-    for (let j = 0; j <= m.H; j++) { lx.moveTo(0, j * T + 0.5); lx.lineTo(W, j * T + 0.5); }
-    lx.stroke();
 
-    const cut = T * 0.17, lw = Math.max(1.5, T * 0.075);
+    const cut = T * 0.17, lw = Math.max(2, T * 0.1);
     const shape = inset => {
       const [c, x] = makeLayer(W, H);
       x.fillStyle = '#fff';
@@ -728,24 +747,16 @@ const Core = (() => {
     ox.globalCompositeOperation = 'destination-out';
     ox.drawImage(inner, 0, 0);
     ox.globalCompositeOperation = 'source-in';
-    ox.fillStyle = flash ? C.accent : C.line;
+    const wallColor = flash ? C.accent : C['maze-wall'];
+    ox.fillStyle = wallColor;
     ox.fillRect(0, 0, outer.width, outer.height);
 
-    const ix = inner.getContext('2d');
-    ix.globalCompositeOperation = 'source-in';
-    ix.fillStyle = C.wall;
-    ix.fillRect(0, 0, W, H);
-    ix.globalCompositeOperation = 'source-atop';
-    ix.strokeStyle = C.hatch;
-    ix.lineWidth = 1;
-    ix.beginPath();
-    const gap = Math.max(4, T / 4);
-    for (let s = -H; s < W; s += gap) { ix.moveTo(s, H); ix.lineTo(s + H, 0); }
-    ix.stroke();
-
     lx.setTransform(1, 0, 0, 1, 0, 0);
-    lx.drawImage(inner, 0, 0);
+    lx.shadowColor = wallColor;
+    lx.shadowBlur = Math.max(3, T * 0.3) * dpr; // shadow blur ignores the transform, so scale it by hand
     lx.drawImage(outer, 0, 0);
+    lx.shadowBlur = 0;
+    lx.shadowColor = 'transparent';
     lx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     lx.strokeStyle = C.line;
@@ -787,8 +798,13 @@ const Core = (() => {
     c.beginPath();
     roundRectPath(c, cx - s / 2, cy - s / 2, s, s, t * 0.1);
     if (look === 'scared' || look === 'scared-flash') {
-      c.fillStyle = look === 'scared-flash' ? C.player : C.scared;
+      c.fillStyle = C['scared-fill'];
       c.fill();
+      c.setLineDash([t * 0.14, t * 0.09]);
+      c.lineWidth = lw;
+      c.strokeStyle = look === 'scared-flash' ? C.player : C.scared;
+      c.stroke();
+      c.setLineDash([]);
       return;
     }
     c.fillStyle = color;
@@ -907,6 +923,13 @@ const Core = (() => {
       const amp = biteBig ? 0.24 : 0.14;
       s = since < 0.1 ? amp * Math.sin((Math.PI * since) / 0.1) : -0.45 * amp * Math.sin((Math.PI * (since - 0.1)) / (GULP - 0.1));
     }
+
+    // Pac-Man's mouth snaps open and shut during the gulp animation (true = open)
+    let blink = false;
+
+    if (!reduce && lastBite >= 0 && since >= 0 && since < GULP && g.state === 'playing') {
+      blink = Math.floor(since / 0.06) % 2 === 0;
+    }
     if (g.state === 'dying') {
       const k = Math.min(1, g.stateTime / 1.1);
       pr *= 1 - k;
@@ -932,7 +955,17 @@ const Core = (() => {
         ctx.scale(1 + s, 1 - s * 0.6);
         ctx.fillStyle = C.you;
         ctx.beginPath();
-        ctx.arc(0, 0, pr, 0, TAU);
+        if (blink) {
+          // Mouth open: cut a triangular wedge out of the front of the circle.
+          // After rotate(), angle 0 points the way Pac-Man is facing.
+          const mouth = Math.PI / 5; // half the mouth opening (36°)
+          ctx.moveTo(0, 0);
+          ctx.arc(0, 0, pr, mouth, TAU - mouth);
+          ctx.closePath();
+        } else {
+          // Mouth closed: full circle
+          ctx.arc(0, 0, pr, 0, TAU);
+        }
         ctx.fill();
         ctx.restore();
         // a power dot sends a ring out from the circle
@@ -953,7 +986,7 @@ const Core = (() => {
     if (g.fright > 0 && g.frightTotal > 0 && g.state === 'playing') {
       const frac = Math.min(1, g.fright / g.frightTotal);
       const bx = T, bw = (m.W - 2) * T, by = T * 0.27, bh = T * 0.46;
-      ctx.fillStyle = C.paper;
+      ctx.fillStyle = C['maze-bg'];
       ctx.fillRect(bx, by, bw, bh);
       ctx.fillStyle = powerFlash(g.fright) ? C.player : C.scared;
       ctx.fillRect(bx, by, bw * frac, bh);
@@ -964,7 +997,7 @@ const Core = (() => {
       ctx.textBaseline = 'middle';
       ctx.font = `600 ${Math.max(10, Math.round(T * 0.4))}px ${FONT_MONO}`;
       ctx.lineWidth = 3;
-      ctx.strokeStyle = C.paper;
+      ctx.strokeStyle = C['maze-bg'];
       const label = `${g.fright.toFixed(1)}s`;
       ctx.strokeText(label, bx + bw / 2, by + bh / 2 + 1);
       ctx.fillStyle = C.player;
@@ -979,7 +1012,7 @@ const Core = (() => {
     for (const pop of g.popups) {
       const x = (pop.x + 0.5) * T, y = (pop.y + 0.5 - pop.age * 0.8) * T;
       ctx.globalAlpha = 1 - pop.age;
-      ctx.strokeStyle = C.paper;
+      ctx.strokeStyle = C['maze-bg'];
       ctx.strokeText(pop.text, x, y);
       ctx.fillStyle = C.player;
       ctx.fillText(pop.text, x, y);
@@ -994,8 +1027,8 @@ const Core = (() => {
       const fs = Math.round(T * 0.62);
       ctx.font = `600 ${fs}px ${FONT_MONO}`;
       const w = ctx.measureText(text).width + fs * 1.2, h = fs * 1.7;
-      const cx = (m.W * T) / 2, cy = (Core.BANNER_ROW + 0.5) * T;
-      ctx.fillStyle = C.paper;
+      const cx = (m.W * T) / 2, cy = (m.banner + 0.5) * T;
+      ctx.fillStyle = C['maze-bg'];
       ctx.strokeStyle = C.line;
       ctx.lineWidth = 1;
       ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
