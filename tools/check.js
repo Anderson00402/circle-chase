@@ -36,11 +36,18 @@ for (const def of Core.MAZES) {
     if (open < 2) deadEnds++;
   }
 
+  // Lanes are one tile wide: no 2x2 block of open floor anywhere.
+  const wide = [];
+  for (let y = 0; y < m.H - 1; y++) for (let x = 0; x < m.W - 1; x++) {
+    if ([[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]].every(([i, j]) => at(i, j) === Core.PATH)) wide.push(`(${x},${y})`);
+  }
+
   const slots = m.penSlots.every(([x, y]) => at(x, y) === Core.PEN && m.distExit[y * m.W + x] > 0);
   const exit = at(...m.exit) === Core.PATH, start = at(...m.start) === Core.PATH;
-  const ok = !unreachable && !deadEnds && slots && exit && start;
+  const ok = !unreachable && !deadEnds && !wide.length && slots && exit && start;
   if (!ok) fail++;
   console.log(`${def.name}: ${m.W}x${m.H}, ${m.total} dots, unreachable ${unreachable}, dead ends ${deadEnds}, ` +
+    `wide spots ${wide.length}${wide.length ? ' ' + wide.join(' ') : ''}, ` +
     `pen ${slots ? 'ok' : 'BROKEN'}, exit ${exit ? 'ok' : 'BROKEN'}, start ${start ? 'ok' : 'BROKEN'} -> ${ok ? 'OK' : 'FAIL'}`);
 }
 

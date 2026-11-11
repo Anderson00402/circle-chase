@@ -141,8 +141,8 @@ const Core = (() => {
       '#o........',
       '#.##.#####',
       '#........#',
-      '###.#.#..#',
-      '###.#.#...',
+      '###.#.##.#',
+      '###.#.##..',
       '###.#.###.',
       ' ...#.....',
       '#####.###-',
@@ -151,8 +151,8 @@ const Core = (() => {
       ' ...#.....',
       '###.#.####',
       '###.#....#',
-      '###.#.#..#',
-      '#.....#...',
+      '###.#.##.#',
+      '#.....##..',
       '#.##.#####',
       '#o........',
       '##########',
@@ -596,6 +596,9 @@ const Core = (() => {
     // Power-dot nearness: one looping sound whose volume follows how close the circle is to the
     // nearest power dot: sounds/power-near.mp3, or a soft synthesized shimmer without it.
     const NEAR_FILE_MAX = 0.9, NEAR_SYNTH_MAX = 0.05, EAT_FILE_VOL = 0.9;
+    // The chest clip starts with half a second of silence and trails off for seconds after the
+    // opening burst, so play only EAT_FROM..EAT_TO seconds of it, fading out over the last EAT_FADE.
+    const EAT_FROM = 0.5, EAT_TO = 2.3, EAT_FADE = 0.35;
     let nearGain = null, nearLevel = 0, nearOn = false;
     function nearSynth() {
       if (nearGain || !ac) return;
@@ -644,6 +647,12 @@ const Core = (() => {
     function near(level, dt) {
       if (!nearOn) return;
       if (!settings.sound && eatClip.el && !eatClip.el.paused) eatClip.el.pause();
+      const e = eatClip.el;
+      if (e && !e.paused && !e.muted) { // muted means the Safari warm-up in wake(), which stops itself
+        const left = EAT_TO - e.currentTime;
+        if (left <= 0) e.pause();
+        else e.volume = EAT_FILE_VOL * Math.min(1, left / EAT_FADE);
+      }
       const target = settings.sound ? level : 0;
       nearLevel += (target - nearLevel) * Math.min(1, dt * 10);
       if (nearClip.state === 'ok' && nearClip.el) nearClip.el.volume = Math.min(1, nearLevel * NEAR_FILE_MAX);
@@ -652,14 +661,14 @@ const Core = (() => {
         nearGain.gain.setTargetAtTime(nearLevel * NEAR_SYNTH_MAX, ac.currentTime, 0.03);
       }
     }
-    // Eating a power dot: sounds/power-eat.mp3 from the start, or the synthesized rising sweep.
+    // Eating a power dot: the trimmed sounds/power-eat.mp3, or the synthesized rising sweep.
     function power() {
       if (!settings.sound) return;
       const e = eatClip && eatClip.state === 'ok' ? eatClip.el : null;
       if (e) {
         e.muted = false;
         e.volume = EAT_FILE_VOL;
-        e.currentTime = 0;
+        e.currentTime = EAT_FROM;
         e.play().catch(() => {});
         return;
       }
