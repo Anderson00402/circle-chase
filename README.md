@@ -30,7 +30,7 @@ Your version then shows up on the [versions page](https://anderson00402.github.i
 - `MAZES`: the maze layouts, drawn with characters (`#` wall, `.` dot, `o` power dot, space for open floor). Each row is the left half of the maze; the right half is a mirror of it.
 - `DIFFICULTY`: lives, ghost speed and how long a power dot lasts.
 - `drawGhost`, and the player section of `draw()`: how the ghosts and the circle look and move.
-- `sfx`: all the sounds, made in code. (The owner's copy can also play sound files from a `sounds/` folder that isn't shared; without it you hear the built-in sounds.)
+- `sfx`: all the sounds, made in code. (This fortnite version also plays two sound files from `sounds/`: `The stable.mp3` gets louder as you get close to a power dot, and `opened through.mp3` plays when you eat one.)
 - Colors are CSS variables at the top of the file, such as `--maze-wall`, `--you` and the ghost colors.
 
 ## Checks

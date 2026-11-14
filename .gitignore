@@ -1,3 +1,6 @@
-# Local-only sounds (e.g. the Fortnite chest clip). Never publish them.
-sounds/
+# The fortnite branch publishes its two power-dot sounds; anything else dropped into sounds/
+# stays on your computer.
+sounds/*
+!sounds/The stable.mp3
+!sounds/opened through.mp3
 __pycache__/

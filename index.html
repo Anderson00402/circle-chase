@@ -579,29 +579,43 @@ const Core = (() => {
     }
     const arp = (notes, gap, vol = 0.05) => notes.forEach((f, i) => tone(f, 0.15, { delay: i * gap, vol }));
 
-    // Optional sound files in sounds/ next to the page. That folder is kept out of the published
-    // copies, so each file has a synthesized stand-in. state: 'unknown' while loading, then 'ok' or 'missing'.
-    function clip(src, loop) {
+    // Optional sound files in sounds/ next to the page: "The stable" (near a power dot) and
+    // "opened through" (eating one), as .mp3, .m4a, .wav or .ogg. Both are published on the
+    // fortnite branch; if a file can't load, a synthesized stand-in plays instead. state: 'unknown'
+    // while loading, then 'ok' or 'missing'.
+    const CLIP_TYPES = ['mp3', 'm4a', 'wav', 'ogg'];
+    function clip(name, loop, volume = 1) {
       const c = { el: null, state: 'unknown', primed: false };
-      try {
-        c.el = new Audio(src);
-        c.el.loop = loop;
-        c.el.addEventListener('canplay', () => { c.state = 'ok'; }, { once: true });
-        c.el.addEventListener('error', () => { c.state = 'missing'; c.el = null; }, { once: true });
-        c.el.load();
-      } catch { c.state = 'missing'; c.el = null; }
+      const tryType = i => {
+        c.el = null;
+        c.primed = false;
+        if (i >= CLIP_TYPES.length) { c.state = 'missing'; return; }
+        try {
+          const el = new Audio(`sounds/${encodeURIComponent(name)}.${CLIP_TYPES[i]}`);
+          el.loop = loop;
+          el.volume = volume;
+          el.addEventListener('canplay', () => { c.state = 'ok'; }, { once: true });
+          el.addEventListener('error', () => tryType(i + 1), { once: true });
+          c.el = el;
+          el.load();
+        } catch { c.state = 'missing'; c.el = null; }
+      };
+      tryType(0);
       return c;
     }
     let nearClip = null, eatClip = null;
     function loadClips() {
-      if (!nearClip) { nearClip = clip('sounds/power-near.mp3', true); if (nearClip.el) nearClip.el.volume = 0; }
-      if (!eatClip) eatClip = clip('sounds/power-eat.mp3', false);
+      if (!nearClip) nearClip = clip('The stable', true, 0);
+      if (!eatClip) eatClip = clip('opened through', false);
     }
+    // Look for the files as the page opens, so the right one is found before the first Start click.
+    loadClips();
 
     // Power-dot nearness: one looping sound whose volume follows how close the circle is to the
-    // nearest power dot: sounds/power-near.mp3, or a soft synthesized shimmer without it.
+    // nearest power dot: sounds/The stable, silent from NEAR_RANGE tiles away and loudest on top
+    // of the dot, or a soft synthesized shimmer without it.
     const NEAR_FILE_MAX = 0.9, NEAR_SYNTH_MAX = 0.05, EAT_FILE_VOL = 0.9;
-    // The chest clip is half a second of silence, then about a second of quiet clicks, then the
+    // "opened through" is half a second of silence, then about a second of quiet clicks, then the
     // opening burst (from about 1.52 s), then a long tail. Play only the burst, EAT_FROM..EAT_TO
     // seconds, fading out over the last EAT_FADE, so the chest opens the moment the dot is eaten.
     const EAT_FROM = 1.52, EAT_TO = 2.6, EAT_FADE = 0.4;
@@ -667,7 +681,7 @@ const Core = (() => {
         nearGain.gain.setTargetAtTime(nearLevel * NEAR_SYNTH_MAX, ac.currentTime, 0.03);
       }
     }
-    // Eating a power dot: the trimmed sounds/power-eat.mp3, or the synthesized rising sweep.
+    // Eating a power dot: the trimmed sounds/opened through, or the synthesized rising sweep.
     function power() {
       if (!settings.sound) return;
       const e = eatClip && eatClip.state === 'ok' ? eatClip.el : null;
