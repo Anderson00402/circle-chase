@@ -4,7 +4,8 @@ import { filterArgs, scanTrials, type Filter } from './lib/filters';
 import { summarize, type CueSummary } from './lib/stats';
 import type { QueryCtx } from './_generated/server';
 
-async function blockRatings(ctx: QueryCtx, f: Filter): Promise<Doc<'ratings'>[]> {
+/** Block ratings (clarity, distraction) matching a filter. Also used by dashboard.ts. */
+export async function blockRatings(ctx: QueryCtx, f: Filter): Promise<Doc<'ratings'>[]> {
 	const src = f.source ?? 'human';
 	const rows = f.cue
 		? await ctx.db.query('ratings').withIndex('by_cue', (i) => i.eq('cue', f.cue!)).collect()
