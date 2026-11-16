@@ -520,8 +520,8 @@
 					<h2 class="eyebrow">Key numbers</h2>
 					<dl>
 						<div><dt>Power length</dt><dd class="num">{fmt(trial.total)} s</dd></div>
-						<div><dt>{trial.outcome === 'catch' ? 'Ate the ghost' : 'Turned away'} <InfoTip term="Turn-away time">Time left when the player was closest, before they stopped closing in for good (for a chase that ended by eating the ghost: when it was eaten). Negative: after the end.</InfoTip></dt><dd class="num">{trial.turnLeft === null ? 'never' : signed(trial.turnLeft) + ' s'}</dd></div>
-						<div><dt>Distance at the turn</dt><dd class="num">{fmt(trial.turnDist) ?? '-'} {trial.turnDist !== null ? 'tiles' : ''}</dd></div>
+						<div><dt>{trial.outcome === 'catch' || trial.lastChaseEnd === 'eat' ? 'Ate the ghost' : 'Turned away'} <InfoTip term="Turn-away time">Time left when the player was closest, before they stopped closing in for good (for a chase that ended by eating the ghost: when it was eaten). Negative: after the end.</InfoTip></dt><dd class="num">{trial.turnLeft === null ? 'never' : signed(trial.turnLeft) + ' s'}</dd></div>
+						{#if trial.lastChaseEnd !== 'eat' && trial.outcome !== 'catch'}<div><dt>Distance at the turn</dt><dd class="num">{fmt(trial.turnDist) ?? '-'} {trial.turnDist !== null ? 'tiles' : ''}</dd></div>{/if}
 						<div><dt>Distance at the end</dt><dd class="num">{fmt(trial.endDist) ?? '-'} {trial.endDist !== null ? 'tiles' : ''}</dd></div>
 						<div><dt>{trial.outcome === 'caught' ? 'Caught after the end' : 'Died after the end'}</dt><dd class="num" class:bad={trial.after.died}>{trial.after.died && trial.after.timeToCaught !== null ? fmt(trial.after.timeToCaught) + ' s after' : trial.after.died ? 'yes' : 'no'}</dd></div>
 						<div><dt>Ghosts eaten</dt><dd class="num">{trial.eats.length}{isLateCatch(trial) ? ' (late catch)' : ''}</dd></div>

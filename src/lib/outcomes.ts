@@ -134,8 +134,8 @@ export function secs(x: number): string {
  * The turn-away (or eat) moment in words, for tables and lists: "1.4 s left", "0.05 s late",
  * "ate it with 1.1 s left"; null when there is none or it means nothing (cut short).
  */
-export function turnWords(outcome: string, turnLeft: number | null): string | null {
+export function turnWords(outcome: string, turnLeft: number | null, lastChaseEnd?: string | null): string | null {
 	if (turnLeft === null || outcome === 'interrupted') return null;
-	if (outcome === 'catch') return `ate it with ${secs(turnLeft)} left`;
+	if (outcome === 'catch' || lastChaseEnd === 'eat') return `ate it with ${secs(turnLeft)} left`;
 	return turnLeft >= 0 ? `${secs(turnLeft)} left` : `${secs(turnLeft)} late`;
 }

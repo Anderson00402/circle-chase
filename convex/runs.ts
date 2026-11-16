@@ -149,7 +149,7 @@ export const block = query({
 			...tally(trials),
 			rows: trials.map((t, i) => ({
 				_id: t._id, n: i + 1, trialIndex: t.trialIndex, outcome: t.outcome, engaged: t.engaged, counted: isDecision(t), total: t.total,
-				turnLeft: t.turnLeft, eats: t.eats.length, caught: t.after.caught, clipId: t.clipId ?? null,
+				turnLeft: t.turnLeft, lastChaseEnd: t.lastChaseEnd ?? null, eats: t.eats.length, caught: t.after.caught, clipId: t.clipId ?? null,
 				reason: notCountedReason(t, RULES_VERSION)
 			})),
 			clarity: r?.clarity ?? null, distraction: r?.distraction ?? null

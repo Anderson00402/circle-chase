@@ -124,7 +124,7 @@
 										<span class="dot" style:background={outcomeColor(t.outcome)}></span>{outcomeLabel(t.outcome)}
 										{#if t.reason}<small class="why">Not counted: {t.reason.charAt(0).toLowerCase() + t.reason.slice(1)}</small>{/if}
 									</td>
-									<td class="n num">{turnWords(t.outcome, t.turnLeft) ?? '-'}</td>
+									<td class="n num">{turnWords(t.outcome, t.turnLeft, t.lastChaseEnd) ?? '-'}</td>
 									<td class="n num">{t.eats}</td>
 									<td>{#if t.clipId}<a href={replayHref(t._id, { run: blockKey })}>Replay</a>{:else}<a class="dim" href={replayHref(t._id, { run: blockKey })} title="No clip was kept for this one; its numbers and distance chart are there">Details</a>{/if}</td>
 								</tr>
@@ -133,7 +133,7 @@
 					</table>
 				</div>
 				{#if notCounted.length}
-					<p class="note">{notCounted.length} of {d.rows.length} power-up{d.rows.length === 1 ? '' : 's'} do not count toward the rates{d.oldRules ? `, ${d.oldRules} of them because they were recorded under older rules` : ''}; the reason is under each one.</p>
+					<p class="note">{notCounted.length} of {d.rows.length} power-up{d.rows.length === 1 ? '' : 's'} {notCounted.length === 1 ? 'does' : 'do'} not count toward the rates{d.oldRules ? `, ${d.oldRules} of them because they were recorded under older rules` : ''}; the reason is under each one.</p>
 				{/if}
 			{:else if res.isLoading || (!d && recent.length)}
 				<p class="empty">{waiting.current ? "Can't reach the database yet. What was measured is kept on this machine and sent when it is back." : 'Waiting for the server...'}</p>
