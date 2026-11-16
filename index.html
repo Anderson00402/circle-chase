@@ -958,17 +958,10 @@ const Core = (() => {
   }
 
   // ---------- fog ----------
-  // Outside the light the maze sits under FOG_DARK black, so the neon walls only just show. The light's
-  // edge fades over LIGHT_SOFT tiles. Ghosts in the dark show only their eyes, and power dots glow
-  // faintly through the fog so players can head for them.
-  const FOG_DARK = 0.93, LIGHT_SOFT = 1.5, EYES_ALPHA = 0.7, POWER_GLOW = 0.4;
+  // Outside the light the fog is solid black: no walls, dots or ghosts show there at all. Only what
+  // the circle's light reaches is visible. The light's edge fades over LIGHT_SOFT tiles.
+  const FOG_DARK = 1, LIGHT_SOFT = 1.5;
   let fogLayer = null, fogCtx = null;
-
-  // How dark the fog is at a distance (in tiles) from the circle: 0 inside the light, FOG_DARK outside.
-  function fogAt(dist, radius) {
-    const k = (dist - (radius - LIGHT_SOFT / 2)) / LIGHT_SOFT;
-    return FOG_DARK * Math.max(0, Math.min(1, k));
-  }
 
   // One reusable canvas the size of the board: fill it dark, then cut the light out of it.
   function drawFog(px, py, radius) {
@@ -1002,13 +995,6 @@ const Core = (() => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(fogLayer, 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
-  // Distance in tiles from the circle, the short way round through a tunnel.
-  function lightDist(px, py, x, y) {
-    let dx = Math.abs(x - px);
-    dx = Math.min(dx, game.maze.W - dx);
-    return Math.hypot(dx, y - py);
   }
 
   function draw() {
@@ -1163,34 +1149,7 @@ const Core = (() => {
       let radius = Core.lightRadius(m, g.fright, g.frightTotal, reduce ? 0 : Core.LIGHT_OPEN);
       // The light goes out with the circle.
       if (g.state === 'dying') radius *= 1 - 0.6 * Math.min(1, g.stateTime / 1.1);
-      if (radius - LIGHT_SOFT / 2 < Math.hypot(m.W, m.H)) {
-        drawFog(px, py, radius);
-
-        // Eyes in the dark, fading in as the fog thickens over the ghost.
-        if (showGhosts) {
-          g.enemies.forEach((e, i) => {
-            let [x, y] = g.pos(e);
-            if (e.state === 'waiting' && !reduce) y += Math.sin(now * 4 + i * 2) * 0.16;
-            const dark = fogAt(lightDist(px, py, x, y), radius);
-            if (dark <= 0) return;
-            const d = e.dir >= 0 ? Core.DIRS[e.dir] : { x: 0, y: 0 };
-            const color = e.scared ? (powerFlash(g.fright) ? C.player : C.scared) : C[e.def.id];
-            ctx.globalAlpha = EYES_ALPHA * (dark / FOG_DARK);
-            eachWrap(x, cx => ghostEyes(ctx, cx, (y + 0.5) * T - T * 0.1, T, d, color, false));
-          });
-          ctx.globalAlpha = 1;
-        }
-
-        // Power dots glow faintly through the fog.
-        for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
-          if (m.dots[y * m.W + x] !== 2) continue;
-          const dark = fogAt(lightDist(px, py, x, y), radius);
-          if (dark <= 0) continue;
-          ctx.globalAlpha = POWER_GLOW * (dark / FOG_DARK);
-          drawPowerDot(ctx, (x + 0.5) * T, (y + 0.5) * T, T, pulse);
-        }
-        ctx.globalAlpha = 1;
-      }
+      if (radius - LIGHT_SOFT / 2 < Math.hypot(m.W, m.H)) drawFog(px, py, radius);
     }
 
     // Power timer: a bar in the top wall that drains with the power and flashes with the ghosts.
