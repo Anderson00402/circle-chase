@@ -64,7 +64,11 @@
 	<section class="live" aria-labelledby="live-title">
 		<div class="live-head">
 			<h2 id="live-title" class="eyebrow">So far</h2>
-			<Badge tone="live">Live</Badge>
+			{#if live.trials === null}
+				<Badge>Not connected yet</Badge>
+			{:else}
+				<Badge tone="live">Live</Badge>
+			{/if}
 		</div>
 		<div class="live-stats">
 			<Stat

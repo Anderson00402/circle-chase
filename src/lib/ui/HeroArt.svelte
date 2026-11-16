@@ -9,7 +9,7 @@
 
 <svg viewBox="0 0 440 330" role="img" aria-labelledby="hero-art-title">
 	<title id="hero-art-title">
-		A yellow circle chases two scared chasers through a maze while a timer asks how much power is
+		A round player chases two scared chasers through a maze while a timer asks how much power is
 		left.
 	</title>
 	<defs>
@@ -52,12 +52,12 @@
 
 	<!-- two scared chasers running ahead -->
 	<g transform="translate(250 168) scale(0.62)">
-		<path d={GHOST} fill="rgba(143,211,255,0.12)" stroke="var(--scared)" stroke-width="5" stroke-dasharray="14 9" />
+		<path d={GHOST} fill="var(--scared-fill)" fill-opacity="0.35" stroke="var(--scared)" stroke-width="5" stroke-dasharray="14 9" />
 		<ellipse cx="-13" cy="-12" rx="6" ry="9" fill="var(--scared)" />
 		<ellipse cx="13" cy="-12" rx="6" ry="9" fill="var(--scared)" />
 	</g>
 	<g transform="translate(326 214) scale(-0.56 0.56)">
-		<path d={GHOST} fill="rgba(143,211,255,0.12)" stroke="var(--scared)" stroke-width="5" stroke-dasharray="14 9" />
+		<path d={GHOST} fill="var(--scared-fill)" fill-opacity="0.35" stroke="var(--scared)" stroke-width="5" stroke-dasharray="14 9" />
 		<ellipse cx="-13" cy="-12" rx="6" ry="9" fill="var(--scared)" />
 		<ellipse cx="13" cy="-12" rx="6" ry="9" fill="var(--scared)" />
 	</g>

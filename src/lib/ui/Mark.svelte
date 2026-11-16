@@ -24,10 +24,10 @@
 	<path
 		d="M16 6.5a9.5 9.5 0 1 1-9.03 6.56"
 		fill="none"
-		stroke="var(--player)"
+		stroke="var(--accent)"
 		stroke-width="3.2"
 		stroke-linecap="round"
 	/>
 	<circle cx="9.6" cy="7.9" r="2.6" fill="var(--hunter)" />
-	<circle cx="16" cy="16" r="3" fill="var(--scared)" />
+	<circle cx="16" cy="16" r="3" fill="var(--focus)" />
 </svg>

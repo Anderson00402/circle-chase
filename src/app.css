@@ -1,7 +1,7 @@
 /*
  * Circle Chase design tokens and base styles: "arcade lab".
  * Dark, calm surfaces for reading data; the game's neon is kept for accents, ghosts and cue roles.
- * Every text colour below passes WCAG AA (4.5:1) on --bg, --surface and --surface-2.
+ * Every text colour below passes WCAG AA (4.5:1) on --bg, --surface, --surface-2 and --surface-3.
  * The full list with usage notes is in src/lib/ui/README.md.
  */
 
@@ -18,10 +18,10 @@
 
 	/* Text */
 	--ink: #eef3ff; /* 17:1 on --bg */
-	--ink-dim: #a3b3d6; /* 8.9:1 on --bg, 7.4:1 on --surface-2 */
-	--ink-faint: #8090b6; /* 5.6:1 on --bg, 4.7:1 on --surface-2. Captions only. */
+	--ink-dim: #a3b3d6; /* 9.3:1 on --bg, 7.9:1 on --surface-2 */
+	--ink-faint: #8090b6; /* 6.1:1 on --bg, 5.2:1 on --surface-2. Captions only. */
 
-	/* Accent: the player's yellow. Buttons, current page, key numbers. */
+	/* Accent: arcade yellow. The one main action, the current page, key numbers. */
 	--accent: #ffd84a;
 	--accent-soft: rgba(255, 216, 74, 0.12);
 	--on-accent: #1a1404;
@@ -36,12 +36,13 @@
 	--focus: #8fd3ff;
 
 	/* Game colours (match BASE_COLORS in src/lib/game/render/renderer.ts) */
-	--player: #ffd84a;
-	--scared: #8fd3ff;
-	--hunter: #ff6f91;
-	--ambusher: #ff8a3d;
-	--guard: #3fe0b0;
-	--drifter: #b9a2ff;
+	--player: #c6f23a;
+	--scared: #cfe6ff;
+	--scared-fill: #3d4fe6;
+	--hunter: #ff4d6d;
+	--ambusher: #ffa133;
+	--guard: #35e0ff;
+	--drifter: #c08cff;
 
 	/* Cue roles, used by CueChip and charts: references are neutral, the baseline is cool, ideas are warm. */
 	--role-reference: #a3b3d6;

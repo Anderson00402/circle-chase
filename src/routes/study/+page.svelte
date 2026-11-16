@@ -33,6 +33,7 @@
 		{/snippet}
 	</EmptyState>
 
+	<div class="preview">
 	<Panel title="Preview: the question after each round" sub="Nothing is saved from this preview.">
 		<Scale7
 			question="I could tell when the power was about to run out."
@@ -41,6 +42,7 @@
 			bind:value={clarity}
 		/>
 	</Panel>
+	</div>
 </Page>
 
 <Dialog bind:open={about} title="What happens in the study">
@@ -56,7 +58,7 @@
 		margin-bottom: var(--space-5);
 		color: var(--ink-dim);
 	}
-	:global(.panel) {
+	.preview {
 		margin-top: var(--space-5);
 	}
 </style>
