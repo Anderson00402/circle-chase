@@ -12,14 +12,13 @@
  */
 import type { ConvexClient } from 'convex/browser';
 import { api } from '#convex/_generated/api.js';
-import { packSeries } from '#convex/lib/series.ts';
 import type { Game, Scene } from '../game/types';
 import { createRecorder } from './recorder';
 import { createTracker } from './tracker';
 import type { LiveReadout, Outcome, TrialMeasures } from './types';
-import pkg from '../../../package.json';
+import { APP_VERSION, trialWrite } from './write';
 
-export const APP_VERSION: string = pkg.version;
+export { APP_VERSION };
 
 export type Source = 'human' | 'bot';
 export type Mode = 'study' | 'arcade';
@@ -294,14 +293,12 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 
 	function store(trial: TrialMeasures) {
 		const key = uid();
-		const keepClip = trial.engaged || trial.after.caught;
-		const clip = keepClip ? recorder.clipFor(trial, ctx.cue) : null;
-		const { series, ...m } = trial;
-		enqueue('trial', {
-			key, sessionKey, blockKey, trialIndex: trialIndex++, sound: sound(), reducedMotion: reducedMotion(),
-			inputType: inputLabel(trialInput), appVersion: APP_VERSION, difficulty: ctx.difficulty ?? 'normal',
-			...m, series: packSeries(series), ...(clip ? { clip } : {})
-		}, 'trial');
+		const args = trialWrite(trial, recorder, {
+			key, sessionKey, blockKey, trialIndex: trialIndex++, cue: ctx.cue, sound: sound(), reducedMotion: reducedMotion(),
+			inputType: inputLabel(trialInput), difficulty: ctx.difficulty ?? 'normal'
+		});
+		const clip = args.clip ?? null;
+		enqueue('trial', args, 'trial');
 		trialInput.clear();
 		live.recent = [
 			{ key, outcome: trial.outcome, engaged: trial.engaged, total: trial.total, turnLeft: trial.turnLeft, eats: trial.eats.length, hasClip: !!clip, saved: false },

@@ -9,6 +9,7 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { clipFields, device, inputType, measures, mode, source, trialContext, viewport } from './validators';
+import { simInfo } from './sim';
 
 export default defineSchema({
 	/** One per browser (anonymous id kept in localStorage) or per bot. */
@@ -44,7 +45,9 @@ export default defineSchema({
 		inputType,
 		viewport,
 		blocks: v.number(),
-		trials: v.number()
+		trials: v.number(),
+		/** Simulated sessions only: preset, planted levels and the bot's traits (convex/sim.ts). */
+		sim: v.optional(simInfo)
 	})
 		.index('by_key', ['key'])
 		.index('by_participant', ['participantId', 'startedAt'])

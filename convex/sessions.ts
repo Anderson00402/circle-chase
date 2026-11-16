@@ -1,12 +1,15 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import { inputType, mode, source, sourceFilter, viewport } from './validators';
+import { simInfo } from './sim';
 
 /** Open a session (idempotent by `key`). The participant must exist (`participants:ensure`). */
 export const start = mutation({
 	args: {
 		key: v.string(), pid: v.string(), mode, source, cueOrder: v.array(v.string()), appVersion: v.string(),
-		difficulty: v.string(), sound: v.boolean(), reducedMotion: v.boolean(), inputType, viewport
+		difficulty: v.string(), sound: v.boolean(), reducedMotion: v.boolean(), inputType, viewport,
+		/** Simulated sessions only (src/lib/sim): preset, planted levels, the bot's traits. */
+		sim: v.optional(simInfo)
 	},
 	handler: async (ctx, a) => {
 		const old = await ctx.db.query('sessions').withIndex('by_key', (i) => i.eq('key', a.key)).unique();
