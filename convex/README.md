@@ -1,5 +1,13 @@
 # Convex: study data
 
+> **Trial rows no longer hold the 10 Hz series** (since 2026-11-16). It lives in `trialSeries`
+> (one row per trial: `trialId`, `sessionId`, `cue`, `source`, `mode`, `createdAt`, `simRun?`,
+> `series`; indexes `by_trial`, `by_source_cue` [source, cue, createdAt], `by_run` [simRun, cue,
+> createdAt]). Read one with the query `trials.series({ trialId })` (unpacked arrays) or, inside
+> Convex, `packedSeriesOf(ctx, trial)` from `convex/trials.ts`. `trials.series` on a trial row is a
+> legacy optional field that is always empty after `migrations.slimTrials`; do not read it.
+> Simulated trials carry `simRun` (the session's `sim.run`), and the shared filter takes `run`.
+
 Everything the game measures lives here. What each measure means is defined in
 `docs/STUDY.md`; how it is computed is in `src/lib/telemetry/tracker.ts` (header comment) and
 summarised under "Interpretations" below.

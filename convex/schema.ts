@@ -3,12 +3,12 @@
  * every measure means.
  *
  * Writes are idempotent: the browser makes a `key` for every session, block, trial and rating, so
- * a retried write never makes a duplicate. Documents stay small: a trial is about 2 KB (its 10 Hz
- * series is packed into bytes), a clip about 10-15 KB and lives in its own table.
+ * a retried write never makes a duplicate. Documents stay small: a trial is about 1 KB; its 10 Hz
+ * series (about 1 KB packed) and its clip (10-15 KB) live in their own tables.
  */
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { clipFields, device, inputType, measures, mode, source, trialContext, viewport } from './validators';
+import { clipFields, device, inputType, measures, mode, packedSeries, source, trialContext, viewport } from './validators';
 import { runInfo, studyInfo } from './runs';
 import { simInfo } from './sim';
 import { counterFields } from './counters';
@@ -101,10 +101,18 @@ export default defineSchema({
 		clipId: v.optional(v.id('clips')),
 		/** Copied from the block: a study warm-up trial (see blocks.practice). */
 		practice: v.optional(v.boolean()),
+		/** Simulated trials: the simulator run (`sessions.sim.run`), so a query can read one run alone (index `by_run`). */
+		simRun: v.optional(v.string()),
+		/**
+		 * Legacy: the packed series lived here until it moved to `trialSeries`. Only rows not yet moved by
+		 * `migrations.slimTrials` carry it; nothing writes or reads it.
+		 */
+		series: v.optional(packedSeries),
 		...trialContext,
 		...measures
 	})
 		.index('by_key', ['key'])
+		.index('by_run', ['simRun', 'createdAt'])
 		.index('by_created', ['createdAt'])
 		.index('by_source_created', ['source', 'createdAt'])
 		.index('by_cue_created', ['cue', 'createdAt'])
@@ -112,6 +120,24 @@ export default defineSchema({
 		.index('by_session', ['sessionId', 'createdAt'])
 		.index('by_block', ['blockId', 'createdAt'])
 		.index('by_participant', ['participantId', 'createdAt']),
+
+	/**
+	 * The 10 Hz series of one trial (packed with convex/lib/series.ts, about 1 KB). Separate from
+	 * `trials` so scans of trial rows stay light; read one with `trials.series({ trialId })`.
+	 */
+	trialSeries: defineTable({
+		trialId: v.id('trials'),
+		sessionId: v.id('sessions'),
+		cue: v.string(),
+		source,
+		mode,
+		createdAt: v.number(),
+		simRun: v.optional(v.string()),
+		series: packedSeries
+	})
+		.index('by_trial', ['trialId'])
+		.index('by_source_cue', ['source', 'cue', 'createdAt'])
+		.index('by_run', ['simRun', 'cue', 'createdAt']),
 
 	/** Replay clip of one trial: stored for engaged and caught trials. */
 	clips: defineTable({

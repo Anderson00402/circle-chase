@@ -1,9 +1,10 @@
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 import { query } from './_generated/server';
-import { filterArgs, scanTrials } from './lib/filters';
+import { filterArgs, light, scanTrials } from './lib/filters';
 import { isDecision, isLateCatch } from './lib/rules';
 import { unpackSeries } from './lib/series';
+import { packedSeriesOf } from './trials';
 
 /** Flat columns for the CSV, in order. Nested values are spelled out (after.caught...). */
 const COLUMNS: [string, (t: Doc<'trials'>) => unknown][] = [
@@ -49,7 +50,11 @@ export const trials = query({
 			for (const t of rows) lines.push(COLUMNS.map(([, get]) => cell(get(t))).join(','));
 			return { filename: `${name}.csv`, contentType: 'text/csv', rows: rows.length, body: lines.join('\n') + '\n' };
 		}
-		const out = rows.map((t) => ({ ...t, decision: isDecision(t), series: unpackSeries(t.series) }));
+		const out = [];
+		for (const t of rows) {
+			const packed = await packedSeriesOf(ctx, t);
+			out.push({ ...light(t), decision: isDecision(t), series: packed ? unpackSeries(packed) : null });
+		}
 		return { filename: `${name}.json`, contentType: 'application/json', rows: rows.length, body: JSON.stringify(out) };
 	}
 });

@@ -3,8 +3,10 @@
  * Summary queries read all trials of the filter in one go; see convex/README.md for the limit.
  */
 import { v, type Infer } from 'convex/values';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Query } from 'convex/server';
+import type { DataModel, Doc } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
+import type { NamedTableInfo } from 'convex/server';
 import { mode, sourceFilter } from '../validators';
 
 export const filterArgs = {
@@ -17,6 +19,8 @@ export const filterArgs = {
 	to: v.optional(v.number()),
 	participantId: v.optional(v.id('participants')),
 	sessionId: v.optional(v.id('sessions')),
+	/** One simulator run (`sessions.sim.run`, stored on trials as `simRun`). Only simulated rows have one. */
+	run: v.optional(v.string()),
 	/** Include study warm-up trials (left out by default). */
 	includePractice: v.optional(v.boolean())
 };
@@ -30,39 +34,42 @@ export function matches(t: Doc<'trials'>, f: Filter): boolean {
 		&& (!f.cue || t.cue === f.cue)
 		&& (!f.participantId || t.participantId === f.participantId)
 		&& (!f.sessionId || t.sessionId === f.sessionId)
+		&& (!f.run || t.simRun === f.run)
 		&& (!!f.includePractice || !t.practice)
 		&& t.createdAt >= (f.from ?? 0)
 		&& t.createdAt <= (f.to ?? Number.MAX_SAFE_INTEGER);
 }
 
-/** All trials matching the filter, oldest first. Picks the narrowest index. */
-export async function scanTrials(ctx: QueryCtx, f: Filter): Promise<Doc<'trials'>[]> {
+type TrialQuery = Query<NamedTableInfo<DataModel, 'trials'>>;
+
+/**
+ * The narrowest index range for a filter, in `createdAt` order. Rows in the range may still fail
+ * the rest of the filter: check each with `matches` (or use `scanTrials`).
+ */
+export function trialRange(ctx: QueryCtx, f: Filter): TrialQuery {
 	const src = f.source ?? 'human';
 	const from = f.from ?? 0, to = f.to ?? Number.MAX_SAFE_INTEGER;
 	const t = ctx.db.query('trials');
-	let rows: Doc<'trials'>[];
-	if (f.sessionId) {
-		const id: Id<'sessions'> = f.sessionId;
-		rows = await t.withIndex('by_session', (i) => i.eq('sessionId', id).gte('createdAt', from).lte('createdAt', to)).collect();
-	} else if (f.participantId) {
-		const id: Id<'participants'> = f.participantId;
-		rows = await t.withIndex('by_participant', (i) => i.eq('participantId', id).gte('createdAt', from).lte('createdAt', to)).collect();
-	} else if (src !== 'all' && f.cue) {
-		const cue = f.cue;
-		rows = await t.withIndex('by_source_cue', (i) => i.eq('source', src).eq('cue', cue).gte('createdAt', from).lte('createdAt', to)).collect();
-	} else if (src !== 'all') {
-		rows = await t.withIndex('by_source_created', (i) => i.eq('source', src).gte('createdAt', from).lte('createdAt', to)).collect();
-	} else if (f.cue) {
-		const cue = f.cue;
-		rows = await t.withIndex('by_cue_created', (i) => i.eq('cue', cue).gte('createdAt', from).lte('createdAt', to)).collect();
-	} else {
-		rows = await t.withIndex('by_created', (i) => i.gte('createdAt', from).lte('createdAt', to)).collect();
-	}
-	return rows.filter((r) => matches(r, f));
+	const { sessionId, participantId, run, cue } = f;
+	if (sessionId) return t.withIndex('by_session', (i) => i.eq('sessionId', sessionId).gte('createdAt', from).lte('createdAt', to));
+	if (run) return t.withIndex('by_run', (i) => i.eq('simRun', run).gte('createdAt', from).lte('createdAt', to));
+	if (participantId) return t.withIndex('by_participant', (i) => i.eq('participantId', participantId).gte('createdAt', from).lte('createdAt', to));
+	if (src !== 'all' && cue) return t.withIndex('by_source_cue', (i) => i.eq('source', src).eq('cue', cue).gte('createdAt', from).lte('createdAt', to));
+	if (src !== 'all') return t.withIndex('by_source_created', (i) => i.eq('source', src).gte('createdAt', from).lte('createdAt', to));
+	if (cue) return t.withIndex('by_cue_created', (i) => i.eq('cue', cue).gte('createdAt', from).lte('createdAt', to));
+	return t.withIndex('by_created', (i) => i.gte('createdAt', from).lte('createdAt', to));
 }
 
-/** A trial without its packed series: what lists and summaries return. */
-export function light(t: Doc<'trials'>) {
-	const { series: _series, ...rest } = t;
+/** All trials matching the filter, oldest first. Picks the narrowest index. */
+export async function scanTrials(ctx: QueryCtx, f: Filter): Promise<Doc<'trials'>[]> {
+	return (await trialRange(ctx, f).collect()).filter((r) => matches(r, f));
+}
+
+/**
+ * A trial row as lists and summaries return it. Trial rows no longer hold the series (it is in
+ * `trialSeries`); this drops the legacy copy from rows the migration has not reached yet.
+ */
+export function light<T extends Doc<'trials'>>(t: T): Omit<T, 'series'> {
+	const { series: _series, ...rest } = t as T & { series?: unknown };
 	return rest;
 }

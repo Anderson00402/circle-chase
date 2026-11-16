@@ -102,10 +102,14 @@ export const measures = {
 	wasted: maybeNum,
 	diedDuring: v.boolean(),
 	frames: num,
-	fps: num,
-	/** 10 Hz series packed with convex/lib/series.ts (`trials:get` unpacks it). */
-	series: v.bytes()
+	fps: num
 };
+
+/**
+ * The trial's 10 Hz series packed with convex/lib/series.ts. Sent with `trials.save`, stored in its
+ * own table (`trialSeries`) so trial rows stay small; read it with `trials.series({ trialId })`.
+ */
+export const packedSeries = v.bytes();
 
 /** Per-trial context the client knows (who, where and how is filled in from the session and block). */
 export const trialContext = {
