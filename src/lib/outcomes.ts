@@ -45,15 +45,15 @@ export const OUTCOME_INFO: Record<AnyOutcome, OutcomeInfo> = {
 	},
 	overstayed: {
 		id: 'overstayed', label: 'Stayed too long', short: 'Too long', tone: 'warn', color: C.overstayed, decision: true,
-		def: 'Was still chasing when the power ran out (turned with less than 0.2 s left, or never), but was not caught.'
+		def: 'Was still chasing a ghost within 5 tiles when the power ran out (turned with less than 0.2 s left, or never), but was not caught.'
 	},
 	'timely-retreat': {
 		id: 'timely-retreat', label: 'Turned away in time', short: 'In time', tone: 'good', color: C.well, decision: true,
-		def: 'Stopped chasing with 0.2 to 2 s of power left: well timed.'
+		def: 'Turned away from a ghost in reach with 0.2 to 2 s of power left: well timed.'
 	},
 	'early-retreat': {
 		id: 'early-retreat', label: 'Turned away too early', short: 'Too early', tone: 'warn', color: C.early, decision: true,
-		def: 'Stopped chasing with more than 2 s left while a ghost was still in reach: power wasted.'
+		def: 'Turned away from a ghost in reach with more than 2 s left, and chased nothing after it: power wasted.'
 	},
 	catch: {
 		id: 'catch', label: 'Caught the ghost', short: 'Ate ghost', tone: 'neutral', color: C.other, decision: false,
@@ -61,7 +61,7 @@ export const OUTCOME_INFO: Record<AnyOutcome, OutcomeInfo> = {
 	},
 	'not-engaged': {
 		id: 'not-engaged', label: 'Not chasing near the end', short: 'Not chasing', tone: 'neutral', color: C.idle, decision: false,
-		def: 'Was not chasing a ghost in the last 3 s of the power. Kept, but in no rate.'
+		def: 'Was not chasing a ghost in the last 3 s of the power, and gave none up before. Kept, but in no rate.'
 	},
 	interrupted: {
 		id: 'interrupted', label: 'Cut short', short: 'Cut short', tone: 'neutral', color: C.idle, decision: false,
@@ -69,7 +69,7 @@ export const OUTCOME_INFO: Record<AnyOutcome, OutcomeInfo> = {
 	},
 	other: {
 		id: 'other', label: 'Other', short: 'Other', tone: 'neutral', color: C.other, decision: false,
-		def: 'Was chasing near the end, but none of the other classes fits. In no rate.'
+		def: 'Was chasing near the end, but it shows no decision: the ghost was out of reach, or too far off to be a danger. In no rate.'
 	},
 	'late-catch': {
 		id: 'late-catch', label: 'Late catch (older rules)', short: 'Older rules', tone: 'neutral', color: C.other, decision: false,

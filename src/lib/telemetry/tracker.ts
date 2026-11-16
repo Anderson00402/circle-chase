@@ -21,18 +21,20 @@
  *   running sum of `own` and remembers its lowest point: the player's closest point by their own
  *   doing. It is over when the player's steps took them `backoff` tiles back from that point, when
  *   they came no closer for `idle` seconds, when the ghost got out of range, or when a ghost is eaten.
- * - An approach becomes a chase once the player's own steps closed `minGain` tiles. Shorter
- *   approaches leave no trace, so a blip is never a chase.
+ * - An approach becomes a chase once the player's own steps closed `minGain` tiles while the
+ *   power was on. Shorter approaches leave no trace, so a blip is never a chase.
  * - The turn-away moment of a chase is that closest point, not the later frame on which the end
  *   was noticed. An approach is followed past the end of the power with the same rule, so a player
  *   closest with 0.3 s left who then only moves away turned with 0.3 s left.
  * - Eating a ghost ends the chase there (distance 0) and wipes every approach under way: whatever
  *   the player does next has to earn a new chase from nothing. An eat with no chase before it still
  *   counts as a chase that ended in an eat.
- * - No approach starts once the power is over. An approach that began before the end may still
- *   become a chase through steps taken after it (the player kept going at a ghost that had turned).
- * - The final decision is the chase whose turn-away moment came last (a chase still running when
- *   the trial closed counts as latest; of two that turned on the same frame, the nearer ghost).
+ * - Nothing starts, and nothing becomes a chase, once the power is over: after the end every step
+ *   is toward some ghost, so steps taken then prove nothing. A chase under way at the end is
+ *   followed until the player turns.
+ * - The final decision: if chases were still running when the power ran out (their turn-away came
+ *   at or after the end, or never), the one whose ghost was nearest at that moment. Otherwise the
+ *   chase whose turn-away moment came last (of two that turned on the same frame, the nearer ghost).
  * - Engaged: some chase reached into the warning window (its turn-away or eat came with 3 s or
  *   less left, or it was still running).
  * - The outcome, eligibility and the "gave up early" flag come from the shared rules in
@@ -206,8 +208,21 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		r.chases.push({ ghost: i, id: a.id, endedBy: how, startAt: a.startAt, at: a.bestAt, left: a.bestLeft, dist: a.bestDist, gain: -a.best });
 	}
 
-	/** The chase whose turn-away came last: the final decision. */
-	function finalChase(chases: Chase[]): Chase | null {
+	/**
+	 * The final decision. Chases still running when the power ran out come first: of those, the one
+	 * whose ghost was nearest at that moment. Otherwise the chase whose turn-away came last.
+	 */
+	function finalChase(r: Run): Chase | null {
+		const chases = r.chases;
+		let nearest: Chase | null = null, nearestDist = Infinity;
+		if (r.endReason === 'expired') {
+			for (const c of chases) {
+				const d = r.endDistBy[c.ghost];
+				if (c.endedBy === 'eat' || !(c.endedBy === 'open' || c.left <= 0) || d === null || d === undefined) continue;
+				if (d < nearestDist) { nearest = c; nearestDist = d; }
+			}
+		}
+		if (nearest) return nearest;
 		let last: Chase | null = null;
 		for (const c of chases) {
 			if (!last) { last = c; continue; }
@@ -231,7 +246,7 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		const leftNow = r.state === 'power' ? r.leftAtEnd : -(closeT - r.endedAt);
 		const win = Math.min(WARN, r.total);
 		const engaged = r.chases.some((c) => (c.endedBy === 'open' ? Math.min(c.left, leftNow) : c.left) <= win);
-		const last = finalChase(r.chases);
+		const last = finalChase(r);
 		const lastChaseEnd = last ? last.endedBy : null;
 		// A chase still running when the trial closed never turned.
 		const turned = last && last.endedBy !== 'open' ? last : null;
@@ -320,7 +335,8 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 				a.p += own;
 				if (a.p < a.best - 1e-9) { a.best = a.p; a.bestAt = f.t; a.bestLeft = left; a.bestDist = dist; a.bestClock = clock; }
 			}
-			if (!a.confirmed && -a.best >= P.minGain) a.confirmed = true;
+			// Only steps taken while the ghost was edible can make a chase.
+			if (!a.confirmed && inPower && -a.best >= P.minGain) a.confirmed = true;
 			if (a.p - a.best >= P.backoff || clock - a.bestClock >= P.idle || (inPower && dist > P.range)) closeApproach(r, i, 'turn');
 		});
 		prevField = field;
@@ -336,6 +352,8 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		r.endReason = 'expired';
 		r.leftAtEnd = 0;
 		r.state = 'after';
+		// An approach that is not a chase by now never will be.
+		r.approach = r.approach.map((a) => (a && a.confirmed ? a : null));
 		// Exposure: how far each ghost that just turned dangerous is, and the nearest of them.
 		const f = scene.frame;
 		const field = distanceField(scene.maze, f.player.x, f.player.y);

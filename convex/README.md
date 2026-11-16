@@ -161,9 +161,10 @@ seconds if it must also fall back to 0 while nobody plays.
 }
 ```
 
-`inRates` (stored on each trial) = engaged, the power ran out by itself (`endReason: 'expired'`),
-and the player did not leave during the aftermath. **Decision trials** (the denominator of every
-rate, `isDecision` in `convex/lib/rules.ts`) are the `inRates` trials of rules version 2 whose
+`inRates` (stored on each trial) = the power ran out by itself (`endReason: 'expired'`), the
+player did not leave during the aftermath, and the trial is engaged or the player gave up a
+reachable ghost before the warning window (`gaveUpEarly`). **Decision trials** (the denominator of
+every rate, `isDecision` in `convex/lib/rules.ts`) are the `inRates` trials of rules version 3 whose
 outcome is caught, overstayed, timely retreat or early retreat. Catches, other and rows of older
 rules are not decisions. `dashboard.points`, `recent` and `sessions` report `inRates` as "is a
 decision trial".
@@ -177,8 +178,9 @@ says which was used.
 
 ### Clips
 
-Encoded by `src/lib/telemetry/recorder.ts` (`encodeClip` / `decodeClip`): 20 Hz scenes from 6 s
-before the power ended (or its start, if later) to 3 s after; positions to 1/64 tile, times to
+Encoded by `src/lib/telemetry/recorder.ts` (`encodeClip` / `decodeClip`): 20 Hz scenes from 8 s
+before the power ended (or its start, if later: the whole power-up under study rules) to 3 s
+after, always ending on the frame that closed the trial (the death, for a caught one); positions to 1/64 tile, times to
 0.01 s, delta + varint packed. `decodeClip(clipRow)` returns `{ meta, scenes: Scene[], markers }`;
 draw a scene with `renderScene(canvas, scene, { cue })`. Markers: `powerStart`, `eat` (with ghost
 and time left), `turnAway`, `powerEnd`, `death`, each with game time `t`. `numbers` has outcome,
@@ -203,7 +205,7 @@ only on rows from an earlier guided study flow and are no longer written.
 | --- | --- | --- |
 | `admin.deleteBotData` | `{ confirm: 'delete bot data' }` | deletes every row with `source: 'bot'` in every table |
 | `admin.wipeEverything` | `{ confirm: 'wipe everything' }` | deletes all rows of all tables (fresh demo); cannot be undone |
-| `admin.reclassify` | `{ confirm: 'reclassify' }` | recomputes `outcome`, `rulesVersion` and `wasted` of every trial and the outcome of its clip from the stored measures; rows without `lastChaseEnd` keep their class and become `rulesVersion: 1`; recounts `counters` at the end |
+| `admin.reclassify` | `{ confirm: 'reclassify' }` | recomputes `outcome`, `rulesVersion`, `inRates`, `wasted` and `gaveUpEarly` of every trial and the outcome of its clip from the stored measures; rows that lack a measure the rules need (`chaseEndDist` before version 3, `lastChaseEnd` before version 2) keep their class and their older `rulesVersion`; recounts `counters` at the end |
 | `counters.rebuildCounters` | `{ confirm: 'rebuild counters' }` | recounts the `counters` table from trials, sessions and participants |
 
 The deleting ones work in batches and schedule themselves until done; they return
@@ -217,31 +219,37 @@ Places where the definitions needed a concrete reading (full list in `tracker.ts
 - Distances are continuous path distances (fractions of a tile between tile centres) with tunnel
   wrap, to ghosts that are out of the pen. During the power the targets are the scared ghosts;
   after it, the ghosts that were scared when it ran out.
-- **Chasing** (during the power) is literal: nearest target within 8 tiles, closer than the same
-  ghost 0.3 s of play earlier by more than 0.05 tiles, or at most 1 tile away. Game time stands
-  still during the freeze after an eat, so it does not break a chase.
-- **After the end** the ghosts hunt the player, so total distance shrinks even when fleeing. A
-  chase running at the end continues only while the player's own steps still bring them closer
-  (sum over 0.3 s below -0.05 tiles). No new chase starts after the end.
-- **Final decision / turn-away**: the last chase of the trial (`lastChaseEnd`: turn, eat, open).
-  Its moment is when the player was closest (latest moment within 0.05 tiles of the minimum), or,
-  if that chase ran past the end, the last step after the end that still closed in (negative time
-  left), or the end itself (0) when no step did. A chase ending in an eat turns at the eat
-  (distance 0).
-- **Outcome rules** live in `convex/lib/rules.ts` (`classify`), shared by the tracker and Convex.
-  Caught needs `after.caught` and `endDist` of 5 tiles or less. Overstayed: the last chase is open
-  or turned with less than 0.2 s left. This makes the turn-away classes contiguous: under 0.2 s is
-  overstayed, 0.2-2 s timely, over 2 s early (with a ghost reachable).
-- **Early retreat "while a ghost was still reachable"**: at the turn some scared ghost was out
-  and within (time left x level-1 player speed, 7 tiles/s) tiles. Since chasing needs the ghost
-  within 8 tiles, every turn with more than 2 s left is reachable; `other` is a safety net.
-- **Two classes added**: `other` (engaged, none of the classes fits) and `interrupted` (death
-  during the power, level clear, a second power dot `refreshed`, or the player left `quit`).
-  Interrupted trials never count toward the rates.
-- **Early retreat before the warning window** (turned with more than about 3.3 s left) is kept
-  as `early-retreat` but is not engaged, so it is outside the rates; `wasted` covers all early
-  retreats. Other trials that are not engaged are `not-engaged`, whatever they ate.
-- An eat inside the warning window counts as chasing there (engaged).
+- **Chasing** counts only the player's own steps: each frame, how much the player's step changed
+  the path distance to where each scared ghost is now. An approach starts with a step toward a
+  ghost within 6 tiles; it is a chase once those steps closed 3 tiles; it is over when the player
+  is 1 tile back from their closest point, came no closer for 0.5 s, or the ghost is out of range.
+  A ghost walking toward a player who flees or stands still is not chased. Game time stands still
+  during the freeze after an eat, so it does not break a chase. The numbers are `CHASE` in
+  `convex/lib/rules.ts`.
+- **After the end** the same rule goes on for an approach under way (the targets are the ghosts
+  that were scared when the power ran out). No approach starts after the end.
+- **Final decision / turn-away**: the chase whose turn-away moment came last (`lastChaseEnd`:
+  turn, eat, open). The moment is the player's closest point by their own steps, not the frame on
+  which the end was noticed: `turnLeft` is negative after the end, never pushed late by a lag. A
+  chase ending in an eat turns at the eat (distance 0); an eat also wipes every approach under way.
+- **Outcome rules** live in `convex/lib/rules.ts` (`classify`, `derive`), shared by the tracker and
+  Convex. Caught needs `after.caught` and `endDist` of 5 tiles or less. Overstayed: the last chase
+  is open or turned with less than 0.2 s left, and `chaseEndDist` (distance to its ghost when the
+  power ran out) is 5 tiles or less. Timely (0.2-2 s left) and early (over 2 s) retreats need the
+  ghost reachable at the turn: `turnDist` at most `turnLeft` x 5.6 tiles/s.
+- **`other`**: a final chase that shows no decision (turned from a ghost out of reach inside the
+  warning window, or still running at the end farther than 5 tiles from its ghost).
+  **`interrupted`**: death during the power, level clear, a second power dot `refreshed`, or the
+  player left `quit` (stored with the last frame's time as `endedAt` and the power left then).
+  Neither counts toward the rates.
+- **Giving up before the warning window** (final chase turned with more than 3 s left from a
+  reachable ghost, nothing chased or eaten after it) is `early-retreat` with `gaveUpEarly: true`
+  and counts toward the rates. Other trials that are not engaged are `not-engaged`.
+- An eat inside the warning window counts as a chase there (engaged).
+- **Raw measures for recomputing** (rules version 3): `chaseEndDist`, `chaseGain`, `chaseGhost`
+  and `chaseLog` (every chase: ghost, first step, turn-away moment, time left, distance, tiles
+  closed, end, distance at the end). `rescore()` recomputes `outcome`, `inRates`, `wasted` and
+  `gaveUpEarly`; rows without `chaseEndDist` keep their class and their older `rulesVersion`.
 - An aftermath cut short (new power-up, level clear, player left) keeps `after.seen` < 3 and
   `after.cut`; only `cut: 'quit'` leaves the rates.
 

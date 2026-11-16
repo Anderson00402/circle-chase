@@ -59,10 +59,13 @@ try {
 		console.log(`Simulating ${participants} participants, preset ${preset}, ${cues === 'all' ? 'all 13 conditions' : cues}`);
 		await page.evaluate((o) => { window.__simRun = window.__simulate.run(o); }, opts);
 		const until = Date.now() + timeout;
-		let last = -1;
+		let last = -1, started = false;
 		for (;;) {
 			await page.waitForTimeout(500);
-			const p = await page.evaluate(() => window.__simulate.progress);
+			const p = await page.evaluate(() => window.__simulate?.progress ?? null).catch(() => null);
+			// The dev server reloads the page when a source file it uses is saved: the run is gone.
+			if (started && !p) fail('the page was reloaded while simulating (a source file changed). The run is incomplete; start it again.');
+			if (p) started = true;
 			if (p && p.done !== last) {
 				last = p.done;
 				console.log(`  ${p.done}/${p.participants} participants, ${p.trials} trials (${p.engaged} engaged, ${p.clips} clips), ${(p.elapsedMs / 1000).toFixed(1)} s`);

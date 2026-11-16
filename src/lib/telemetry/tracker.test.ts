@@ -332,6 +332,64 @@ describe('tracker: what counts as a chase', () => {
 		expect(t.outcome).toBe('timely-retreat');
 	});
 
+	it('nothing becomes a chase after the end: a run at a ghost that starts 0.4 s before it leaves no trace', () => {
+		// After the end every step is toward some ghost. The player sets off toward this one with
+		// 0.4 s left (1.6 tiles of their own before the end) and runs on for a second after it.
+		const px = line([0, 10], [4.6, 10], [6, 10 + V * 1.4], [9, 10 + V * 1.4 - V * 3]);
+		const { trials } = scenario({ total: 5, px, gx: () => 15 });
+		const t = trials[0];
+		expect(t.chases).toBe(0);
+		expect(t.engaged).toBe(false);
+		expect(t.outcome).toBe('not-engaged');
+		// Setting off 0.9 s before the end (3.6 tiles) is a chase, and still running at the end: stayed too long.
+		const px2 = line([0, 10], [4.1, 10], [5.3, 10 + V * 1.2], [9, 10 + V * 1.2 - V * 3.7]);
+		const u = scenario({ total: 5, px: px2, gx: () => 15 }).trials[0];
+		expect(u.chases).toBe(1);
+		expect(u.turnLeft!).toBeCloseTo(-0.3, 1);
+		expect(u.chaseEndDist!).toBeCloseTo(1.4, 1);
+		expect(u.outcome).toBe('overstayed');
+	});
+
+	it('two chases running at the end: the nearer ghost decides', () => {
+		// On the Plaza board the player runs left along the tunnel row toward a junction. Ghost 0 sits
+		// two tiles up the side corridor; ghost 1 keeps 5.5 tiles ahead on the row. When the power
+		// runs out the player is 2.4 tiles from ghost 0 and still running at both. Just after, they
+		// pass the junction (away from ghost 0) and keep on toward ghost 1 for half a second.
+		const plaza = mazeById('plaza');
+		const s = new Sim();
+		s.maze = plaza;
+		s.dots = plaza.dotsInit.slice();
+		const tracker = createTracker();
+		const trials: TrialMeasures[] = [];
+		const px = line([0, 20], [1.6, 20], [5.6, 4], [9, 17.6]);
+		s.player = { x: 20, y: 9 };
+		s.ghost(0, 6, 7);
+		s.ghost(1, 14.5, 9);
+		tracker.onScene(s.scene());
+		s.startPower(5);
+		while (s.t < 9) {
+			s.step(DT, (sim) => {
+				sim.player.x = px(sim.mt);
+				sim.ghosts[1].x = px(Math.min(sim.mt, 5)) - 5.5;
+			});
+			trials.push(...tracker.onScene(s.scene()));
+		}
+		const t = trials[0];
+		const log = t.chaseLog!;
+		expect(log.map((c) => c.ghost).sort()).toEqual(['ambusher', 'hunter']);
+		const near = log.find((c) => c.ghost === 'hunter')!, far = log.find((c) => c.ghost === 'ambusher')!;
+		// Both were running at the end; the far one turned later.
+		expect(near.left).toBeCloseTo(-0.1, 1);
+		expect(far.left).toBeCloseTo(-0.6, 1);
+		expect(near.endDist!).toBeCloseTo(2.4, 1);
+		expect(far.endDist!).toBeCloseTo(5.5, 1);
+		// The decision is about the ghost the player was exposed to.
+		expect(t.chaseGhost).toBe('hunter');
+		expect(t.turnLeft!).toBeCloseTo(-0.1, 1);
+		expect(t.chaseEndDist!).toBeCloseTo(2.4, 1);
+		expect(t.outcome).toBe('overstayed');
+	});
+
 	it('still chasing at the end but far from every ghost: not "stayed too long"', () => {
 		// The ghost keeps 5.5 tiles ahead of a player who runs after it through the end.
 		const px = line([0, 2], [5.4, 2 + V * 5.4], [5.4 + 22.6 / V, 1]);
@@ -804,10 +862,14 @@ describe('tracker: every decision trial has a last chase that satisfies the defi
 					continue;
 				}
 				// A turn-away or a chase still running: there is a last chase, and it is the log's latest.
-				const last = t.chaseLog!.reduce((a, c) => {
-					const ka = a.end === 'open' ? Infinity : a.at, kc = c.end === 'open' ? Infinity : c.at;
-					return kc > ka || (kc === ka && c.dist < a.dist) ? c : a;
-				});
+				// Chases running at the end (turned at or after it, or never): the nearest ghost at that moment.
+				const running = t.chaseLog!.filter((c) => c.end !== 'eat' && (c.end === 'open' || c.left <= 0) && c.endDist !== null);
+				const last = running.length
+					? running.reduce((a, c) => (c.endDist! < a.endDist! ? c : a))
+					: t.chaseLog!.reduce((a, c) => {
+						const ka = a.end === 'open' ? Infinity : a.at, kc = c.end === 'open' ? Infinity : c.at;
+						return kc > ka || (kc === ka && c.dist < a.dist) ? c : a;
+					});
 				expect(last.end, why).not.toBe('eat');
 				expect(last.ghost, why).toBe(t.chaseGhost);
 				expect(last.gain, why).toBeGreaterThanOrEqual(CHASE.minGain);
@@ -818,10 +880,12 @@ describe('tracker: every decision trial has a last chase that satisfies the defi
 				const i1 = kept.findIndex((k) => k.t >= t.startedAt + last.at - 0.006);
 				// 1. Sustained and by the player's own steps: from the first step to the closest point the
 				// player's steps alone closed the stored gain, and that took a third of a second at least.
-				let own = 0;
+				let own = 0, ownWhileOn = 0;
 				for (let i = Math.max(1, i0); i <= i1; i++) {
 					if (!kept[i].moving) continue;
-					own += distTo(kept[i], last.ghost) - distTo(kept[i], last.ghost, kept[i - 1]);
+					const step = distTo(kept[i], last.ghost) - distTo(kept[i], last.ghost, kept[i - 1]);
+					own += step;
+					if (kept[i].scene.frame.power.left > 0) ownWhileOn += step;
 					// The ghost was a target and in range all along (while the power was on).
 					const g = kept[i].scene.frame.ghosts.find((x) => x.id === last.ghost)!;
 					if (kept[i].scene.frame.power.left > 0) {
@@ -830,6 +894,8 @@ describe('tracker: every decision trial has a last chase that satisfies the defi
 					}
 				}
 				expect(-own, why).toBeGreaterThanOrEqual(CHASE.minGain - 0.2);
+				// The 3 tiles were closed while the power was on.
+				expect(-ownWhileOn, why).toBeGreaterThanOrEqual(CHASE.minGain - 0.2);
 				expect(Math.abs(-own - last.gain), why).toBeLessThan(0.25);
 				expect(last.at - last.from, why).toBeGreaterThan(0.3);
 				// 2. The stored distance at the turn-away is the distance to that ghost at that frame.

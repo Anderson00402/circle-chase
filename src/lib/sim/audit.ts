@@ -177,6 +177,8 @@ export function auditTrial(scenes: Scene[], trial: AuditTrial): AuditResult {
 		// The moment the power ran out: how far is every ghost that just turned dangerous?
 		if (ran && !endSeen) {
 			endSeen = true;
+			// Nothing becomes a chase after the end: approaches that are not one by now are dropped.
+			for (const g of [...going.values()]) if (!g.chase) { near(-g.low, MIN_GAIN, '3 tiles of own approach'); going.delete(g.ghost); }
 			for (const g of f.ghosts) {
 				if (g.mode !== 'active' || Math.abs(g.revertedAt - f.power.endedAt) > 0.011) continue;
 				const d = pathBetween(scene.maze, f.player.x, f.player.y, g.x, g.y);
@@ -207,7 +209,7 @@ export function auditTrial(scenes: Scene[], trial: AuditTrial): AuditResult {
 					cur.sum += step;
 					if (cur.sum < cur.low - 1e-9) { cur.low = cur.sum; cur.at = f.t; cur.left = left; cur.dist = d; cur.since = moved; }
 				}
-				if (-cur.low >= MIN_GAIN) cur.chase = true;
+				if (on && -cur.low >= MIN_GAIN) cur.chase = true; // only while the ghost is edible
 				if (cur.sum - cur.low >= BACK_OFF || moved - cur.since >= STALL || (on && d > RANGE)) stop(cur, 'turn');
 			}
 		}
@@ -217,9 +219,12 @@ export function auditTrial(scenes: Scene[], trial: AuditTrial): AuditResult {
 	for (const g of [...going.values()]) stop(g, 'open');
 	for (const c of chases) if (c.end !== 'eat') c.atEnd = atEnd.get(c.ghost) ?? null;
 
-	// The final decision: the chase whose turn-away came last.
+	// The final decision. First the chases still running when the power ran out (turned at or after
+	// the end, or never): the nearest of their ghosts at that moment. Otherwise the latest turn-away.
 	let last: AuditChase | null = null;
-	for (const c of chases) {
+	const running = chases.filter((c) => c.end !== 'eat' && (c.end === 'open' || c.left <= 0) && c.atEnd !== null);
+	if (trial.endReason === 'expired' && running.length) last = running.reduce((a, c) => (c.atEnd! < a.atEnd! ? c : a));
+	else for (const c of chases) {
 		if (!last) { last = c; continue; }
 		const a = c.end === 'open' ? Infinity : c.at, b = last.end === 'open' ? Infinity : last.at;
 		const together = a === b || Math.abs(a - b) <= 0.001;

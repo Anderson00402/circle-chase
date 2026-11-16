@@ -1,15 +1,18 @@
 // Ad hoc diagnosis: outcome and turn-away time against the bot's own belief error. Run with DIAG=1
 // (DIAG_NOISE, DIAG_CAUTION, DIAG_N); the lines are also written to .logs/diagnose.txt.
 import { describe, it } from 'vitest';
-import { appendFileSync } from 'node:fs';
 import { simulateBlock, type SimTrial } from './block';
 
 declare const process: { env: Record<string, string | undefined> };
 
-const say = (line: string) => { console.log(line); appendFileSync('.logs/diagnose.txt', line + '\n'); };
+// Node's file module, without needing its type package.
+const nodeFs = 'node:fs';
+let lines: string[] = [];
+const say = (line: string) => { console.log(line); lines.push(line); };
 
 describe.runIf(process.env.DIAG)('diagnosis', () => {
-	it('outcome by belief error', () => {
+	it('outcome by belief error', async () => {
+		lines = [];
 		const noise = +(process.env.DIAG_NOISE ?? 1.5), caution = +(process.env.DIAG_CAUTION ?? 0.3);
 		say(`\n== noise ${noise} caution ${caution}`);
 		const all: SimTrial[] = [];
@@ -39,5 +42,7 @@ describe.runIf(process.env.DIAG)('diagnosis', () => {
 		let sxy = 0, sxx = 0, syy = 0;
 		for (const t of pts) { const dx = t.error! - mx, dy = t.measures.turnLeft! - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy; }
 		say(`corr(error, turnLeft) = ${(sxy / Math.sqrt(sxx * syy)).toFixed(2)} over ${pts.length}; in rates ${rated.length} of ${all.length}`);
+		const fs: { appendFileSync(path: string, text: string): void } = await import(/* @vite-ignore */ nodeFs);
+		fs.appendFileSync('.logs/diagnose.txt', lines.join('\n') + '\n');
 	}, 600_000);
 });

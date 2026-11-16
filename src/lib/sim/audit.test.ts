@@ -103,7 +103,9 @@ describe.runIf(process.env.AUDIT_RUN)('audit: a stored simulator run', () => {
 	it('re-classifies every stored clip of the run', async () => {
 		const { ConvexHttpClient } = await import('convex/browser');
 		const { anyApi: api } = await import('convex/server');
-		const { writeFileSync, mkdirSync } = await import('node:fs');
+		// Node's file module, without needing its type package.
+		const nodeFs = 'node:fs';
+		const { writeFileSync, mkdirSync }: { writeFileSync(path: string, text: string): void; mkdirSync(path: string, o: { recursive: boolean }): void } = await import(/* @vite-ignore */ nodeFs);
 		const http = new ConvexHttpClient(process.env.AUDIT_URL ?? 'http://127.0.0.1:3210');
 		const run = process.env.AUDIT_RUN!;
 		const all: any[] = [];
