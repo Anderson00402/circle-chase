@@ -230,6 +230,12 @@ export interface Sfx {
 	tone(freq: number, dur: number, opts?: ToneOptions): void;
 	/** Burst of filtered noise (thumps, puffs, crackle). */
 	noise(dur: number, opts?: { vol?: number; freq?: number; q?: number; delay?: number }): void;
+	/** Notes one after another, `gap` seconds apart (each `opts.dur` long, default 0.12 s). */
+	arp(freqs: number[], gap: number, opts?: ToneOptions & { dur?: number }): void;
+	/** Frequency of a note name such as 'A4', 'C#5' or 'Eb3'. */
+	note(name: string): number;
+	/** False while the player has muted sound (calls are ignored then anyway). */
+	readonly enabled: boolean;
 }
 
 // ---------- countdown cues ----------
@@ -276,6 +282,15 @@ export interface CueContext {
 		elapsed: number;
 		/** Seconds since the last power-up ran out by itself (`endReason === 'expired'`); Infinity otherwise. */
 		sinceExpired: number;
+		/** Seconds since the last power-up ended for any reason; Infinity while one is active or before the first ends. */
+		sinceEnd: number;
+		startedAt: number;
+		endedAt: number;
+		endReason: PowerEndReason | null;
+		/** 1, 2, 3... per power-up: a good seed for `hash`. */
+		serial: number;
+		/** Ghosts eaten in this power-up so far. */
+		chain: number;
 	};
 	reduceMotion: boolean;
 	colors: Palette;
@@ -286,12 +301,117 @@ export interface CueContext {
 	/** True during the default "about to end" blink: the last 2 s, five blinks, ending with the power. */
 	baseFlash(): boolean;
 	/** Default drawings, for cues that decorate rather than replace. */
-	drawGhost(g: GhostView, index: number, look: GhostLook, cx: number, cy: number): void;
-	/** Traces the ghost's body outline as the current path at (cx, cy) and returns the y of its head centre. */
-	ghostPath(g: GhostView, index: number, cx: number, cy: number): number;
-	drawPlayer(cx: number, cy: number, scale?: number): void;
-	/** Cached picture of the maze walls in one colour (full board, device pixels). */
-	wallLayer(color: string, glow?: string): CanvasImageSource;
+	drawGhost(g: GhostView, index: number, look: GhostLook, cx: number, cy: number, opts?: GhostDrawOptions): void;
+	/** Traces the ghost's body outline as the current path at (cx, cy) and returns the y of its head centre. Pass the look to match a scared body. */
+	ghostPath(g: GhostView, index: number, cx: number, cy: number, opts?: { scale?: number; look?: GhostLook }): number;
+	drawPlayer(cx: number, cy: number, scale?: number, opts?: PlayerDrawOptions): void;
+	/** Cached picture of the maze walls in one colour (full board, device pixels). Draw it with `drawLayer`. */
+	wallLayer(color: string, glow?: string, opts?: { outer?: boolean; fill?: boolean }): CanvasImageSource;
+
+	// ----- added for the ten cues (see docs/CUES.md) -----
+	/** Font stacks from the app's design tokens, for `ctx.font` or `text()`. */
+	fonts: { display: string; body: string; mono: string };
+	/** Fixed geometry of the board in CSS pixels: pen box, door, perimeter path, dot spots. */
+	geo: CueGeometry;
+	/** Look the renderer gives this ghost right now ('eyes', 'scared', 'scared-flash' or 'normal'). */
+	ghostLook(g: GhostView): GhostLook;
+	/** Centre of a ghost / the player in CSS pixels (the main copy; use `eachWrap` for tunnels). */
+	ghostPos(g: GhostView): [number, number];
+	playerPos(): [number, number];
+	/** White-where-walls mask, shrunk `inset` CSS pixels away from the floor (default: the neon line's outer edge). Device pixels. */
+	wallMask(inset?: number): CanvasImageSource;
+	/** Draws a full-board, device-pixel layer (wallLayer, wallMask, layer) onto the board. */
+	drawLayer(img: CanvasImageSource, alpha?: number, composite?: GlobalCompositeOperation): void;
+	/** Draws `draw` on a scratch board, keeps only what falls inside `mask`, then puts it on the board. */
+	masked(mask: CanvasImageSource, draw: (ctx: CanvasRenderingContext2D) => void, alpha?: number): void;
+	/** save, clip to `path` (or to the path traced by a function), draw, restore. */
+	clip(path: Path2D | (() => void), draw: () => void): void;
+	/** A cue's own cached full-board picture, built once per maze, tile size and key. Device pixels. */
+	layer(key: string, draw: (ctx: CanvasRenderingContext2D) => void): CanvasImageSource;
+	/** Soft radial glow. */
+	glow(x: number, y: number, r: number, color: string, alpha?: number): void;
+	/** Circle outline. Pass `from`/`to` (radians, 0 = 12 o'clock, clockwise) for an arc. */
+	ring(x: number, y: number, r: number, width: number, color: string, opts?: { alpha?: number; from?: number; to?: number }): void;
+	/** Text in the app fonts, with optional outline, glow and scale. */
+	text(str: string, x: number, y: number, opts?: TextOptions): void;
+	/** Easing curves, each 0..1 -> 0..1. */
+	ease: Record<'linear' | 'inQuad' | 'outQuad' | 'inOutQuad' | 'inCubic' | 'outCubic' | 'inOutCubic' | 'outBack' | 'outElastic' | 'bump', (k: number) => number>;
+	clamp(x: number, lo?: number, hi?: number): number;
+	lerp(a: number, b: number, k: number): number;
+	smoothstep(e0: number, e1: number, x: number): number;
+	/** Deterministic 0..1 from numbers: stateless particles (`hash(i, serial)`). */
+	hash(...n: number[]): number;
+	/** Smooth value noise 0..1 along x. */
+	noise(x: number, seed?: number): number;
+	/** Blend two colours (k 0 -> a, 1 -> b), optional alpha multiplier. */
+	mix(a: string, b: string, k: number, alpha?: number): string;
+	/** A colour with its alpha multiplied. */
+	rgba(color: string, alpha: number): string;
+	/** 0..1 cosine pulse on game time with the given period in seconds (0 at the start of each period). Constant 0.5 with reduced motion. */
+	pulse(period: number, offset?: number): number;
+}
+
+export interface CueGeometry {
+	board: GeoBox;
+	/** The pen floor (PEN tiles). */
+	pen: GeoBox;
+	/** The pen door (DOOR tiles). */
+	door: GeoBox;
+	/** Centre of the tile eaten ghosts return to. */
+	home: [number, number];
+	/** The outermost neon line, clockwise from the top centre. */
+	perimeter: {
+		path: Path2D;
+		length: number;
+		pointAt(d: number): { x: number; y: number; tx: number; ty: number; nx: number; ny: number };
+		slice(from: number, to: number): Path2D;
+	};
+	/** Every tile that starts with a pickup; `scene.dots[i]` says whether it is still there. */
+	dots: { i: number; x: number; y: number; cx: number; cy: number; kind: 1 | 2 }[];
+}
+export interface GeoBox { x: number; y: number; w: number; h: number; cx: number; cy: number }
+
+export interface GhostDrawOptions {
+	/** Multiplies the size. */
+	scale?: number;
+	/** Body colour override (every look but 'eyes'). */
+	color?: string;
+	/** Colour of the face and outline on scared looks, or of the pupils for 'eyes'. */
+	ink?: string;
+	/** 'normal' (own eyes), 'pale', 'dark', 'closed' or 'none'. */
+	eyes?: 'normal' | 'pale' | 'dark' | 'closed' | 'none';
+	alpha?: number;
+	/** Point in CSS pixels the eyes look at, instead of the direction of travel. */
+	lookAt?: [number, number];
+}
+
+export interface PlayerDrawOptions {
+	color?: string;
+	alpha?: number;
+	/** Mouth opening 0..1 instead of the chomp. */
+	open?: number;
+	mood?: 'normal' | 'happy' | 'dizzy';
+	/** Body only, no face. */
+	plain?: boolean;
+}
+
+export interface TextOptions {
+	/** Font size in CSS pixels (default: half a tile). */
+	size?: number;
+	font?: 'display' | 'body' | 'mono';
+	weight?: number;
+	fill?: string;
+	/** Outline colour, drawn under the fill. */
+	stroke?: string;
+	strokeWidth?: number;
+	glow?: string;
+	align?: CanvasTextAlign;
+	baseline?: CanvasTextBaseline;
+	alpha?: number;
+	/** Scale around the anchor point (for slam-in stamps). */
+	scale?: number;
+	/** Extra letter spacing in CSS pixels. */
+	spacing?: number;
 }
 
 export interface Palette {
@@ -307,6 +427,11 @@ export interface Palette {
 	inkDim: string;
 	accent: string;
 	ghost: Record<GhostId, string>;
+	/** Pen door bar. */
+	door: string;
+	/** Body and face colours of the white blink (classic-blink only). */
+	flash: string;
+	flashInk: string;
 }
 
 /**
