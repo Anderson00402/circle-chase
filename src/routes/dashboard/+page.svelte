@@ -131,7 +131,7 @@
 	const runOptions = $derived([
 		...runs.map((r) => ({
 			value: r.run,
-			label: `${presetWord(r.preset)} run, ${plural(r.sessions, 'player')}, ${plural(r.trials, 'power-up')}, ${ago(r.startedAt, now)}${r.complete ? '' : ' (still running)'}`
+			label: `${presetWord(r.preset)}, ${plural(r.sessions, 'player')}, ${plural(r.trials, 'power-up')}, ${ago(r.startedAt, now)}${r.complete ? '' : ' (running)'}`
 		})),
 		...(otherPlay.trials ? [{ value: OTHER_RUN, label: `Other simulated play, ${plural(otherPlay.trials, 'power-up')}` }] : [])
 	]);
@@ -406,7 +406,7 @@
 		min-width: 0;
 	}
 	.f.run :global(select) {
-		max-width: min(420px, 70vw);
+		max-width: min(330px, 70vw);
 	}
 	.f-label {
 		color: var(--ink-faint);
