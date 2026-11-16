@@ -195,6 +195,11 @@ export interface GameConfig {
 	powerRespawn: number;
 	/** Deaths are still counted and animated, but the game never ends. */
 	infiniteLives: boolean;
+	/**
+	 * Clearing the maze restarts the same level instead of moving to the next. Study mode sets this so
+	 * every trial of a session is played on the same maze at the same speeds.
+	 */
+	fixedLevel?: boolean;
 }
 
 export interface Game {

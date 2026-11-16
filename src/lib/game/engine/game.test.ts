@@ -261,3 +261,10 @@ describe('feel', () => {
 	});
 
 });
+
+describe('fixed level', () => {
+	it('study mode keeps the same maze and level settings by default', async () => {
+		const { STUDY_CONFIG } = await import('./game');
+		expect(STUDY_CONFIG.fixedLevel).toBe(true);
+	});
+});

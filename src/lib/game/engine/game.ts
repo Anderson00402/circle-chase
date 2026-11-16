@@ -38,7 +38,7 @@ export const DEFAULT_CONFIG: GameConfig = {
 /** Study mode: random power lengths, power dots that grow back, and no game over. */
 export const STUDY_CONFIG: GameConfig = {
 	mode: 'study', difficulty: 'normal', seed: 1, startLevel: 1,
-	frightRange: [4, 8], powerRespawn: 12, infiniteLives: true
+	frightRange: [4, 8], powerRespawn: 12, infiniteLives: true, fixedLevel: true
 };
 
 /** Small seeded random number generator (mulberry32). */
@@ -218,7 +218,7 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 			return;
 		}
 		if (phase === 'clear') {
-			if (phaseTime >= CLEAR_TIME) { level++; loadLevel(); setPhase('ready'); emit({ type: 'level', level }); }
+			if (phaseTime >= CLEAR_TIME) { if (!config.fixedLevel) level++; loadLevel(); setPhase('ready'); emit({ type: 'level', level }); }
 			return;
 		}
 		if (phase !== 'playing') return;
