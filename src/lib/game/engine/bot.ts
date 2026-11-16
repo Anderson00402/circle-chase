@@ -1,18 +1,26 @@
 import { DIRS, PATH, type Dir, type Facing, type Frame, type GhostView, type Maze } from '../types';
-import { makeRng, type EngineGame } from './game';
+import { DOT_PAUSE, makeRng, type EngineGame } from './game';
 import { pathDistances, tileOf } from './paths';
 
 /**
  * A simulated player. Used for attract-mode previews, automated tests and clearly labelled
  * simulated data (never mixed with human data: a bot cannot see a cue).
  *
- * It plans one tile ahead: from the next tile it searches the maze, skipping tiles a dangerous
- * ghost could reach first, and heads for the best reward (dots, power dots, the bonus, scared
- * ghosts it believes it can still catch). Deterministic for a seed.
+ * How it plays, once per tile (the tile it is about to reach):
+ * - Danger map: for every tile, how soon a dangerous ghost could stand there. Each ghost counts
+ *   fully within a few tiles and along its own predicted route (ghost steering is deterministic
+ *   for a target); further out it counts as slower, except the two that home in on the player.
+ * - Search: breadth-first from the decision tile over tiles it reaches with a safety margin, and
+ *   into a corridor only if it can reach the far end before any ghost could.
+ * - Choice: the move with the best discounted reward (dots, power dots, the bonus, scared ghosts
+ *   it believes it can still catch) plus a bonus for safe room. It keeps going rather than
+ *   turning back unless cornered; when cornered it takes the route with the widest margin.
+ * - `skill` below 1 swaps in a random move now and then. Deterministic for a seed.
  *
  * Time awareness: at each power-up the bot draws an error from a normal distribution with
  * `awarenessNoise` seconds of spread. It believes the power has (true time left + error) and
- * chases scared ghosts only while that belief, minus `caution`, leaves time to reach them.
+ * chases scared ghosts only while that belief, minus `caution`, leaves time to reach them. It
+ * notices a ghost has turned dangerous again `reaction` seconds after it happens.
  */
 export interface BotOptions {
 	seed: number;
@@ -45,10 +53,9 @@ const DISCOUNT = 0.93;
 const SAFETY = 0.35; // seconds the bot wants between itself and a ghost at any tile on its path
 const RETHINK = 0.12; // seconds between plans when nothing else forces one
 const REVERSE_LOCK = 0.4; // after turning back, it does not turn back again this soon unless cornered
-const DOT_PAUSE = 1 / 60; // matches the engine: each dot costs the player a moment
 const NEAR = 4; // tiles around a ghost where any move it could make counts as danger
 const AHEAD = 40; // tiles of a ghost's predicted route that count as danger
-export const TUNE = { roomWeight: 1, roomFull: 60 };
+const ROOM_WEIGHT = 1, ROOM_FULL = 60; // how much open, safe space is worth next to food
 const HAVEN = 0.8; // seconds ahead of every ghost that count as safe ground when fleeing
 const SLACK = 1.6; // beyond NEAR, a ghost is assumed to take this much longer than the shortest path
 
@@ -132,76 +139,77 @@ export function createBot(game: EngineGame, partial: Partial<BotOptions> = {}): 
 		}
 
 		// Breadth-first search from the decision tile over tiles the player reaches safely.
-		const dist = new Int16Array(n), first = new Int8Array(n);
-		const queue = new Int32Array(n);
-		let head = 0, tail = 0;
+		// Careful mode also refuses a corridor unless the bot can reach its far end before any ghost.
+		const dist = new Int16Array(n), first = new Int8Array(n), queue = new Int32Array(n);
 		const s = sy * m.W + sx;
 		const lead = 0.15; // the player is not quite at the decision tile yet
 		const startSafe = danger[s] - lead > SAFETY * 0.5;
-		const search = (careful: boolean) => {
-		dist.fill(-1);
-		first.fill(-1);
-		head = 0; tail = 0;
-		dist[s] = 0;
-		queue[tail++] = s;
-		while (head < tail) {
-			const i = queue[head++], x = i % m.W, y = (i / m.W) | 0;
-			for (let d = 0; d < 4; d++) {
-				const ny = y + DIRS[d].y;
-				if (ny < 0 || ny >= m.H) continue;
-				const j = ny * m.W + (x + DIRS[d].x + m.W) % m.W;
-				if (dist[j] >= 0 || m.tiles[j] !== PATH) continue;
-				const k = dist[i] + 1;
-				if (danger[j] - (k / ps + lead) < SAFETY) continue;
-				// Entering a corridor: only if the far end is still ours by the time we get there.
-				if (careful && shape.deg[j] === 2 && (shape.deg[i] !== 2 || i === s)) {
-					const [e, len] = corridor(m, shape, i, d);
-					if (worst[e] - ((dist[i] + len) / ps + lead) < SAFETY * 0.5) continue;
+		let tail = 0;
+		function search(careful: boolean) {
+			dist.fill(-1);
+			first.fill(-1);
+			let head = 0;
+			tail = 0;
+			dist[s] = 0;
+			queue[tail++] = s;
+			while (head < tail) {
+				const i = queue[head++], x = i % m.W, y = (i / m.W) | 0;
+				for (let d = 0; d < 4; d++) {
+					const ny = y + DIRS[d].y;
+					if (ny < 0 || ny >= m.H) continue;
+					const j = ny * m.W + (x + DIRS[d].x + m.W) % m.W;
+					if (dist[j] >= 0 || m.tiles[j] !== PATH) continue;
+					const k = dist[i] + 1;
+					if (danger[j] - (k / ps + lead) < SAFETY) continue;
+					if (careful && shape.deg[j] === 2 && (shape.deg[i] !== 2 || i === s)) {
+						const [e, len] = corridor(m, shape, i, d);
+						if (worst[e] - ((dist[i] + len) / ps + lead) < SAFETY * 0.5) continue;
+					}
+					dist[j] = k;
+					first[j] = i === s ? d : first[i];
+					queue[tail++] = j;
 				}
-				dist[j] = k;
-				first[j] = i === s ? d : first[i];
-				queue[tail++] = j;
 			}
 		}
 
-		};
-
-		// Score each first move by its best discounted reward, and by how much room it leaves.
+		// Score each first move by its best discounted reward, and count the safe room behind it.
 		const value = [-Infinity, -Infinity, -Infinity, -Infinity];
 		const room = [0, 0, 0, 0];
-		const rewards = (): boolean => {
-		value.fill(-Infinity);
-		room.fill(0);
-		let any = false;
 		const powerUseful = f.power.left <= 0 && f.ghosts.some((g) => g.mode === 'active' && !g.scared);
-		for (let q = 1; q < tail; q++) {
-			const j = queue[q], d = first[j];
-			room[d]++;
-			let r = 0;
-			const pick = game.dots[j];
-			if (pick === 1) r = REWARD.dot;
-			else if (pick === 2) r = powerUseful ? REWARD.power : REWARD.powerIdle;
-			if (f.bonus && j === f.bonus.y * m.W + f.bonus.x) r += REWARD.bonus;
-			if (r > 0) { value[d] = Math.max(value[d], r * DISCOUNT ** dist[j]); any = true; }
-		}
-		// Scared ghosts: worth chasing only if the bot believes it can get there in time.
+		// Scared ghosts are worth chasing only if the bot believes it can get there in time.
 		const chaseSpeed = Math.max(0.5, ps - info.ghostScaredSpeed * 0.5);
-		for (const { i } of prey) {
-			if (dist[i] < 0) continue;
-			const need = dist[i] / chaseSpeed;
-			if (belief - options.caution > need) { value[first[i]] = Math.max(value[first[i]], REWARD.ghost * DISCOUNT ** dist[i]); any = true; }
+		function score(): boolean {
+			value.fill(-Infinity);
+			room.fill(0);
+			let any = false;
+			const take = (d: number, r: number, k: number) => {
+				value[d] = Math.max(value[d], r * DISCOUNT ** k);
+				any = true;
+			};
+			for (let q = 1; q < tail; q++) {
+				const j = queue[q], d = first[j];
+				room[d]++;
+				const pick = game.dots[j];
+				let r = pick === 1 ? REWARD.dot : pick === 2 ? (powerUseful ? REWARD.power : REWARD.powerIdle) : 0;
+				if (f.bonus && j === f.bonus.y * m.W + f.bonus.x) r += REWARD.bonus;
+				if (r > 0) take(d, r, dist[j]);
+			}
+			for (const { i } of prey)
+				if (dist[i] >= 0 && belief - options.caution > dist[i] / chaseSpeed) take(first[i], REWARD.ghost, dist[i]);
+			return any;
 		}
-		return any;
-		};
-		// Careful first (no corridor whose far end a ghost could close); if that leaves nothing
-		// to eat, accept corridors that are only safe if the ghosts keep to their routes.
+		// Careful first; if that leaves nothing to eat, accept corridors that are only safe as long
+		// as the ghosts keep to their likely routes (otherwise the last dots would never get eaten).
 		search(true);
-		if (!rewards()) { search(false); rewards(); }
+		if (!score()) {
+			search(false);
+			score();
+		}
 		for (let d = 0; d < 4; d++) {
 			if (room[d] === 0) continue;
 			if (value[d] === -Infinity) value[d] = 0;
 			// Prefer the side with more safe room; a small pocket is a trap the ghosts can close.
-			value[d] += TUNE.roomWeight * Math.min(1, room[d] / TUNE.roomFull);
+			value[d] += ROOM_WEIGHT * Math.min(1, room[d] / ROOM_FULL);
 			if (room[d] < 8) value[d] -= 2;
 		}
 

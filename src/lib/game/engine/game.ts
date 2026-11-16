@@ -17,7 +17,9 @@ const TURN_MEMORY = 0.5; // seconds an early key press is kept
 /** How far before a tile centre (in tiles) the player may already start a turn. Ghosts never do. */
 export const CORNER_WINDOW = 0.35;
 const EAT_FREEZE = 0.35; // the board holds still for a moment when a ghost is eaten
-const DOT_PAUSE = 1 / 60, POWER_PAUSE = 3 / 60; // the player loses a moment for each dot eaten
+/** The player loses a moment for each dot eaten (genre convention), a little more for a power dot. */
+export const DOT_PAUSE = 1 / 60;
+const POWER_PAUSE = 3 / 60;
 const HIT_RADIUS2 = 0.36; // squared distance in tiles at which player and ghost touch
 const BONUS_AT = [0.3, 0.7]; // share of the level's dots eaten at which the bonus item appears
 const EXTRA_LIFE_AT = 10000;

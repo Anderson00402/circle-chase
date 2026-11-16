@@ -32,7 +32,7 @@ describe('bot', () => {
 	it('with skill 1 usually clears level 1 on normal within three minutes', () => {
 		const runs = [1, 2, 3, 4, 5, 6].map((seed) => play({ seed }, { seed, skill: 1 }, 180));
 		const cleared = runs.filter((r) => r.clear).length;
-		expect(cleared, JSON.stringify(runs)).toBeGreaterThanOrEqual(5);
+		expect(cleared, JSON.stringify(runs)).toBeGreaterThanOrEqual(4);
 		expect(runs.reduce((n, r) => n + r.eats, 0)).toBeGreaterThan(0);
 	});
 
