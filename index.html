@@ -107,7 +107,7 @@ body {
                 <button class="btn primary" id="ov-primary" type="button">Start game</button>
                 <button class="btn" id="ov-secondary" type="button" hidden>New game</button>
               </div>
-              <p class="hint" id="ov-hint">Arrow keys or WASD to move. P to pause.</p>
+              <p class="hint" id="ov-hint">Arrow keys or WASD to move, Shift to dash. P to pause.</p>
             </div>
           </div>
         </div>
@@ -125,6 +125,9 @@ const Core = (() => {
   const PATH = 0, WALL = 1, DOOR = 2, PEN = 3;
 
   const PLAYER_SPEED = 5.7; // tiles per second
+  // Dash: a short burst of speed, then a wait before the next one. It is pure speed, with no
+  // shield, so a dash into a ghost still costs a life. The wait counts from the start of the dash.
+  const DASH_TIME = 0.3, DASH_MULT = 2.2, DASH_COOLDOWN = 3;
   const TURN_MEMORY = 0.5;  // seconds an early key press is kept
   const READY_TIME = 1.8, DEATH_TIME = 1.6, CLEAR_TIME = 2.2;
   const EXIT = [9, 7], HOME = [9, 10], BANNER_ROW = 13;
@@ -270,6 +273,7 @@ const Core = (() => {
       state: 'ready', stateTime: 0, time: 0, maze: null, player: null, enemies: [],
       want: -1, wantAge: 0, fright: 0, frightTotal: 0, chain: 0,
       hitStop: 0, lifeTime: 0, modeIndex: 0, modeTime: 0, popups: [],
+      dashLeft: 0, dashCool: 0, // seconds of dash left, and until the next dash is allowed
     };
     let m;
 
@@ -299,7 +303,7 @@ const Core = (() => {
           releaseAt: diff.release[i], scared: false, flip: false, drift: [0, 0], driftAt: -1,
         };
       });
-      Object.assign(g, { want: -1, wantAge: 0, fright: 0, chain: 0, hitStop: 0, lifeTime: 0, modeIndex: 0, modeTime: 0 });
+      Object.assign(g, { want: -1, wantAge: 0, fright: 0, chain: 0, hitStop: 0, lifeTime: 0, modeIndex: 0, modeTime: 0, dashLeft: 0, dashCool: 0 });
     }
 
     function addScore(n) {
@@ -308,6 +312,17 @@ const Core = (() => {
     }
 
     function steer(d) { g.want = d; g.wantAge = 0; }
+
+    // Starts a dash if one is allowed: only while playing, not while recharging, and only when the
+    // circle is moving or has a turn queued (a dash while stuck against a wall would waste it).
+    function dash() {
+      if (g.state !== 'playing' || g.dashCool > 0) return false;
+      if (g.player.dir < 0 && g.want < 0) return false;
+      g.dashLeft = DASH_TIME;
+      g.dashCool = DASH_COOLDOWN;
+      emit('dash');
+      return true;
+    }
 
     function update(dt) {
       g.time += dt;
@@ -345,8 +360,13 @@ const Core = (() => {
         }
       }
       for (const e of g.enemies) if (e.state === 'waiting' && g.lifeTime >= e.releaseAt) e.state = 'leaving';
+      if (g.dashCool > 0) {
+        g.dashCool = Math.max(0, g.dashCool - dt);
+        if (g.dashCool === 0) emit('dash-ready');
+      }
 
       movePlayer(dt);
+      if (g.dashLeft > 0) g.dashLeft = Math.max(0, g.dashLeft - dt); // after the move, so a dash lasts exactly DASH_TIME
       if (g.state !== 'playing') return;
       for (const e of g.enemies) moveEnemy(e, dt);
       checkHits();
@@ -362,7 +382,7 @@ const Core = (() => {
         p.x = wrapX(p.x + d.x); p.y += d.y; p.t = 1 - p.t;
         p.dir = p.face = g.want; g.want = -1;
       }
-      let dist = PLAYER_SPEED * dt;
+      let dist = PLAYER_SPEED * (g.dashLeft > 0 ? DASH_MULT : 1) * dt;
       for (let n = 0; dist > 1e-9 && n < 8; n++) {
         if (p.t === 0) {
           if (g.want >= 0 && playerCan(p.x, p.y, g.want)) { p.dir = g.want; g.want = -1; }
@@ -372,8 +392,12 @@ const Core = (() => {
         const s = Math.min(dist, 1 - p.t);
         p.t += s; dist -= s;
         if (p.t >= 1 - 1e-9) { const d = DIRS[p.dir]; p.x = wrapX(p.x + d.x); p.y += d.y; p.t = 0; }
+        // A dot is eaten once the circle is more than halfway onto its tile. Checking after every
+        // sub-step means even a dash never skips a dot, whatever the step size.
+        const [px, py] = pos(p);
+        eatAt(wrapX(Math.round(px)), Math.round(py));
+        if (g.state !== 'playing') break;
       }
-      // A dot is eaten once the circle is more than halfway onto its tile.
       const [px, py] = pos(p);
       eatAt(wrapX(Math.round(px)), Math.round(py));
     }
@@ -511,10 +535,11 @@ const Core = (() => {
     }
 
     loadLevel();
-    return Object.assign(g, { update, steer, pos, mode, targetOf, ghostPace });
+    return Object.assign(g, { update, steer, dash, pos, mode, targetOf, ghostPace });
   }
 
-  return { createGame, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED };
+  return { createGame, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED,
+    DASH_TIME, DASH_MULT, DASH_COOLDOWN };
 })();
 </script>
 
@@ -549,6 +574,9 @@ const Core = (() => {
   // Eating animation: dots being swallowed, and when the last one went down (game time).
   let bites = [], lastBite = -1, biteBig = false;
   const GULP = 0.16, SWALLOW = 0.12, BURST = 0.35;
+  // Dash look: afterimages left behind during a dash (game time), and a ring when it is ready again.
+  let dashTrail = [], dashReadyAt = -1;
+  const TRAIL_LIFE = 0.16, TRAIL_GAP = 0.025, READY_PULSE = 0.4;
 
   function bite(tile, big) {
     if (!tile) return;
@@ -626,6 +654,28 @@ const Core = (() => {
     function power() {
       tone(220, 0.35, { type: 'sawtooth', vol: 0.04, to: 880 });
     }
+    // Dash: a quick airy whoosh, made from noise swept up through a band-pass filter.
+    let noise = null;
+    function dash() {
+      if (!ac || !settings.sound) return;
+      if (!noise) {
+        noise = ac.createBuffer(1, Math.round(ac.sampleRate * 0.3), ac.sampleRate);
+        const data = noise.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      }
+      const t0 = ac.currentTime, src = ac.createBufferSource(), band = ac.createBiquadFilter(), gain = ac.createGain();
+      src.buffer = noise;
+      band.type = 'bandpass';
+      band.Q.value = 0.9;
+      band.frequency.setValueAtTime(500, t0);
+      band.frequency.exponentialRampToValueAtTime(2600, t0 + 0.2);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.09, t0 + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.24);
+      src.connect(band).connect(gain).connect(ac.destination);
+      src.start(t0);
+      src.stop(t0 + 0.26);
+    }
 
     return {
       ensure,
@@ -633,6 +683,8 @@ const Core = (() => {
       hush,
       near,
       power,
+      dash,
+      ready: () => tone(1568, 0.05, { type: 'sine', vol: 0.03 }), // dash recharged: a soft tick
       dot() {
         const now = performance.now();
         streak = now - lastDot < 400 ? Math.min(streak + 1, 24) : 0;
@@ -656,6 +708,8 @@ const Core = (() => {
     switch (type) {
       case 'dot': sfx.dot(); bite(arg, false); break;
       case 'power': sfx.power(); bite(arg, true); break;
+      case 'dash': sfx.dash(); break;
+      case 'dash-ready': sfx.ready(); dashReadyAt = game.time; break;
       case 'eat': sfx.eat(arg); break;
       case 'die': sfx.die(); readyLabel = 'READY'; break;
       case 'clear': sfx.clear(); break;
@@ -670,6 +724,8 @@ const Core = (() => {
     readyLabel = 'READY';
     bites = [];
     lastBite = -1;
+    dashTrail = [];
+    dashReadyAt = -1;
     running = false;
     paused = false;
     lastHud = '';
@@ -731,7 +787,7 @@ const Core = (() => {
     $('ov-text').textContent = copy[1];
     $('ov-primary').textContent = copy[2];
     $('ov-secondary').hidden = mode !== 'paused';
-    $('ov-hint').textContent = touch ? 'Swipe on the board to move.' : 'Arrow keys or WASD to move. P to pause.';
+    $('ov-hint').textContent = touch ? 'Swipe to move. Tap to dash.' : 'Arrow keys or WASD to move, Shift to dash. P to pause.';
     $('overlay').hidden = false;
     if (!touch) $('ov-primary').focus({ preventScroll: true });
   }
@@ -1047,6 +1103,25 @@ const Core = (() => {
         });
       }
     }
+    // Dash trail: fading afterimages where the circle just was.
+    if (!reduce && g.state === 'playing') {
+      if (g.dashLeft > 0 && (!dashTrail.length || now - dashTrail[dashTrail.length - 1].at >= TRAIL_GAP)) {
+        dashTrail.push({ x: px, y: py, at: now });
+      }
+      dashTrail = dashTrail.filter(d => now - d.at < TRAIL_LIFE && now >= d.at);
+      ctx.fillStyle = C.you;
+      for (const d of dashTrail) {
+        const k = (now - d.at) / TRAIL_LIFE;
+        ctx.globalAlpha = 0.45 * (1 - k);
+        eachWrap(d.x, cx => {
+          ctx.beginPath();
+          ctx.arc(cx, (d.y + 0.5) * T, pr * (1 - 0.35 * k), 0, TAU);
+          ctx.fill();
+        });
+      }
+      ctx.globalAlpha = 1;
+    } else dashTrail = [];
+
     if (g.state !== 'over' && pr > 0.5) {
       const face = Core.DIRS[p.face];
       eachWrap(px, cx => {
@@ -1082,6 +1157,41 @@ const Core = (() => {
           ctx.globalAlpha = 1;
         }
       });
+    }
+
+    // Dash recharge: a thin arc around the circle that fills clockwise from the top, and a ring
+    // that pulses out once the next dash is ready.
+    if (g.state === 'playing') {
+      const ring = T * 0.53, cy = (py + 0.5) * T;
+      if (g.dashCool > 0 && g.dashLeft <= 0) {
+        const frac = 1 - g.dashCool / Core.DASH_COOLDOWN;
+        eachWrap(px, cx => {
+          ctx.lineWidth = Math.max(1.5, T * 0.06);
+          ctx.strokeStyle = C.you;
+          ctx.globalAlpha = 0.2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, ring, 0, TAU);
+          ctx.stroke();
+          ctx.globalAlpha = 0.9;
+          ctx.beginPath();
+          ctx.arc(cx, cy, ring, -Math.PI / 2, -Math.PI / 2 + frac * TAU);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        });
+      }
+      const since = now - dashReadyAt;
+      if (!reduce && dashReadyAt >= 0 && since >= 0 && since < READY_PULSE) {
+        const k = since / READY_PULSE;
+        eachWrap(px, cx => {
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = C.you;
+          ctx.globalAlpha = 1 - k;
+          ctx.beginPath();
+          ctx.arc(cx, cy, ring * (1 + 0.7 * k), 0, TAU);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        });
+      }
     }
 
     // Power timer: a bar in the top wall that drains with the power and flashes with the ghosts.
@@ -1169,6 +1279,8 @@ const Core = (() => {
 
   // ---------- input ----------
   const KEYS = { ArrowUp: 0, KeyW: 0, ArrowLeft: 1, KeyA: 1, ArrowDown: 2, KeyS: 2, ArrowRight: 3, KeyD: 3 };
+  const DASH_KEYS = new Set(['ShiftLeft', 'ShiftRight', 'KeyX']);
+  const TAP_MS = 250; // a touch shorter than this that doesn't move far enough to steer is a tap: dash
 
   function bindInput() {
     addEventListener('keydown', ev => {
@@ -1178,6 +1290,13 @@ const Core = (() => {
         if (tag === 'INPUT' && !running) return;
         ev.preventDefault();
         if (running && !paused) game.steer(KEYS[ev.code]);
+        return;
+      }
+      if (DASH_KEYS.has(ev.code)) {
+        if (tag === 'INPUT') return;
+        ev.preventDefault();
+        // Holding the key down doesn't keep dashing: each dash needs a fresh press.
+        if (!ev.repeat && running && !paused) game.dash();
         return;
       }
       switch (ev.code) {
@@ -1200,17 +1319,27 @@ const Core = (() => {
     });
 
     let swipe = null;
-    canvas.addEventListener('pointerdown', ev => { swipe = { x: ev.clientX, y: ev.clientY, id: ev.pointerId }; });
+    canvas.addEventListener('pointerdown', ev => {
+      swipe = { x: ev.clientX, y: ev.clientY, id: ev.pointerId, at: performance.now(), moved: false };
+    });
     canvas.addEventListener('pointermove', ev => {
       if (!swipe || ev.pointerId !== swipe.id) return;
       const dx = ev.clientX - swipe.x, dy = ev.clientY - swipe.y;
       if (Math.hypot(dx, dy) < 18) return;
       const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 3 : 1) : (dy > 0 ? 2 : 0);
       if (running && !paused) game.steer(d);
+      swipe.moved = true;
       swipe.x = ev.clientX;
       swipe.y = ev.clientY;
     });
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => canvas.addEventListener(t, () => { swipe = null; }));
+    // A quick tap that didn't steer is a dash. Touch only, so clicking the board with a mouse doesn't dash.
+    canvas.addEventListener('pointerup', ev => {
+      const tap = swipe && ev.pointerId === swipe.id && !swipe.moved && ev.pointerType !== 'mouse' &&
+        performance.now() - swipe.at < TAP_MS;
+      swipe = null;
+      if (tap && running && !paused) game.dash();
+    });
+    ['pointercancel', 'pointerleave'].forEach(t => canvas.addEventListener(t, () => { swipe = null; }));
 
     $('ov-primary').addEventListener('click', primaryAction);
     $('ov-secondary').addEventListener('click', () => { newGame(); begin(); });

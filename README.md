@@ -1,5 +1,7 @@
 # Circle Chase
 
+**This version: dash.** Press Shift or X (or tap the board on a phone) for a short burst of speed. It recharges in 3 seconds.
+
 A maze game made for a UX design class. Eat every dot and keep away from the ghosts. After a power dot the ghosts turn blue and can be caught for a few seconds; the bar in the top wall shows how long you have.
 
 **Play:** https://anderson00402.github.io/circle-chase/ (the main game, with a tab for every other version)
