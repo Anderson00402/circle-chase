@@ -175,7 +175,7 @@
 				{/if}
 				{#if rules === 'arcade'}<span class="tag">{MODE_LABEL.arcade}</span>{/if}
 			</div>
-			<span class="who" title="Participant (change it on the console)"><span class="dim">Participant</span> <strong class="num">{run.p.label || '-'}</strong>{#if !done}<span class="dim">run {orderIndex + 1}</span>{/if}</span>
+			<span class="who" title="Participant (change it on the console)"><span class="dim">Participant</span> <strong class="num">{run.p.label || '-'}</strong>{#if !done} <span class="dim">run {orderIndex + 1}</span>{/if}</span>
 
 			<div class="tools" role="toolbar" aria-label="Run controls">
 				{#if !done}
