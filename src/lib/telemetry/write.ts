@@ -8,7 +8,11 @@ import pkg from '../../../package.json';
 import type { Recorder } from './recorder';
 import type { TrialMeasures } from './types';
 
-export const APP_VERSION: string = pkg.version;
+/** Injected by vite.config.ts (`define`): package version + git commit. */
+declare const __APP_BUILD__: string | undefined;
+
+/** Build identifier stored as `appVersion`: "0.0.1+e8606d3" (".dev" from the dev server); the bare version outside Vite. */
+export const APP_VERSION: string = typeof __APP_BUILD__ === 'string' ? __APP_BUILD__ : pkg.version;
 
 /** Context of a trial that the tracker does not know: who, where, with what settings. */
 export interface TrialWriteContext {

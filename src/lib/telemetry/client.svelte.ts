@@ -5,14 +5,16 @@
  *   <Game onframe={tel.onFrame} onstart={tel.onStart} />
  *   tel.live.readout / tel.live.recent  (reactive)
  *
- * It never blocks or breaks the game: every write goes through a queue that is processed one item
- * at a time in the background, retried with back-off, kept in localStorage so nothing is lost when
- * the page closes or Convex is unreachable, and picked up again on the next visit. All writes are
- * idempotent by a key made here, so sending one twice is harmless.
+ * It never blocks or breaks the game: every write goes through the app's outbox
+ * (src/lib/study/outbox.svelte.ts), in order per session, retried with back-off for as long as the
+ * page lives, kept in localStorage so nothing is lost when the page closes or Convex is unreachable,
+ * and picked up by the next page (the root layout starts the outbox). All writes are idempotent by
+ * a key made here, so sending one twice is harmless.
  */
 import type { ConvexClient } from 'convex/browser';
 import { api } from '#convex/_generated/api.js';
 import type { Game, Scene } from '../game/types';
+import { getOutbox, type OutboxFn } from '../study/outbox.svelte.ts';
 import { createRecorder } from './recorder';
 import { createTracker } from './tracker';
 import type { LiveReadout, Outcome, TrialMeasures } from './types';
@@ -81,50 +83,8 @@ export interface Telemetry {
 	destroy(): void;
 }
 
-// ---------- write queue ----------
-
-const FNS = {
-	ensure: api.participants.ensure,
-	sessionStart: api.sessions.start,
-	sessionUpdate: api.sessions.update,
-	blockStart: api.blocks.start,
-	blockEnd: api.blocks.end,
-	trial: api.trials.save,
-	rateBlock: api.ratings.saveBlock,
-	rateSession: api.ratings.saveSession
-} as const;
-type FnName = keyof typeof FNS;
-interface Item { fn: FnName; args: Record<string, unknown>; tries: number; tag?: string }
-
-const STORE_PREFIX = 'cc.queue.';
-const MAX_TRIES = 6;
-
 function storage(): Storage | null {
 	try { return window.localStorage; } catch { return null; }
-}
-
-/** ArrayBuffers do not survive JSON; store them as base64. */
-function toJSON(items: Item[]): string {
-	return JSON.stringify(items, (_k, v) => {
-		if (v instanceof ArrayBuffer) {
-			let s = '';
-			const b = new Uint8Array(v);
-			for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
-			return { __b64: btoa(s) };
-		}
-		return v;
-	});
-}
-function fromJSON(text: string): Item[] {
-	return JSON.parse(text, (_k, v) => {
-		if (v && typeof v === 'object' && typeof v.__b64 === 'string') {
-			const s = atob(v.__b64);
-			const b = new Uint8Array(s.length);
-			for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
-			return b.buffer;
-		}
-		return v;
-	});
 }
 
 function uid(): string {
@@ -176,10 +136,19 @@ function deviceInfo() {
 const viewport = () => ({ w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 });
 const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 
-function inputLabel(seen: Set<string>): string {
-	if (seen.size === 0) return 'none';
-	if (seen.size > 1) return 'mixed';
-	return [...seen][0];
+function automated(): boolean {
+	try { return !!navigator.webdriver; } catch { return false; }
+}
+
+/**
+ * keyboard, touch, mouse, mixed (more than one), none (nothing pressed yet). In a browser driven
+ * by automation the events are synthetic, so it says so: `automated` (no input events, steered by a
+ * script) or `automated-keyboard` and so on.
+ */
+export function inputLabel(seen: Set<string>, auto = automated()): string {
+	const kind = seen.size === 0 ? 'none' : seen.size > 1 ? 'mixed' : [...seen][0];
+	if (!auto) return kind;
+	return kind === 'none' ? 'automated' : `automated-${kind}`;
 }
 
 const MOVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD']);
@@ -197,87 +166,20 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		recent: [], pending: 0, online: true, saved: 0, source, participantNumber: null
 	});
 
-	// ----- queue -----
-	let queue: Item[] = [];
-	let busy = false, retryTimer: ReturnType<typeof setTimeout> | null = null, destroyed = false;
-	// A write that hangs means Convex cannot be reached (a stalled socket does not always close).
-	let stuck = false;
-
-	function persist() {
-		const s = storage();
-		if (!s) return;
-		try {
-			if (queue.length) s.setItem(STORE_PREFIX + instance, toJSON(queue));
-			else s.removeItem(STORE_PREFIX + instance);
-		} catch { /* storage full: the in-memory queue still works */ }
-	}
-
-	/** Writes left behind by an earlier page (closed before they were sent). */
-	function adoptLeftovers() {
-		const s = storage();
-		if (!s) return;
-		for (let i = s.length - 1; i >= 0; i--) {
-			const k = s.key(i);
-			if (!k || !k.startsWith(STORE_PREFIX) || k === STORE_PREFIX + instance) continue;
-			try { queue.push(...fromJSON(s.getItem(k) ?? '[]').map((it) => ({ ...it, tries: 0 }))); } catch { /* broken entry */ }
-			s.removeItem(k);
-		}
-	}
-
-	function enqueue(fn: FnName, args: Record<string, unknown>, tag?: string) {
-		queue.push({ fn, args, tries: 0, tag });
-		live.pending = queue.length;
-		persist();
-		pump();
-	}
-
-	async function pump() {
-		if (busy || destroyed && !queue.length) return;
-		busy = true;
-		try {
-			while (queue.length) {
-				const item = queue[0];
-				const watch = setTimeout(() => { stuck = true; live.online = false; }, 4000);
-				try {
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					const res = await client.mutation(FNS[item.fn] as any, item.args as any);
-					queue.shift();
-					onSent(item, res);
-				} catch (err) {
-					item.tries++;
-					if (item.tries >= MAX_TRIES) {
-						console.warn('[telemetry] giving up on', item.fn, err);
-						queue.shift();
-					} else {
-						const wait = Math.min(30_000, 500 * 2 ** item.tries);
-						retryTimer = setTimeout(() => { retryTimer = null; pump(); }, wait);
-						break;
-					}
-				} finally {
-					clearTimeout(watch);
-					stuck = false;
-				}
-				live.pending = queue.length;
-				persist();
-			}
-		} finally {
-			busy = false;
-		}
-	}
-
-	function onSent(item: Item, res: unknown) {
-		if (item.fn === 'ensure') live.participantNumber = (res as { number: number }).number;
-		if (item.fn === 'trial') {
-			live.saved++;
-			const r = live.recent.find((x) => x.key === item.args.key);
-			if (r) r.saved = true;
-		}
+	// ----- writes (through the app's outbox, in order for this session) -----
+	const outbox = getOutbox(client);
+	const mine = `tel:${instance}:`;
+	let seq = 0;
+	function enqueue(fn: OutboxFn, args: Record<string, unknown>, onDone?: (r: unknown) => void) {
+		outbox.send(fn, args, { id: `${mine}${seq++}`, lane: sessionKey, onDone });
+		live.pending = outbox.count(mine);
 	}
 
 	// ----- session and block -----
 	const inputSeen = new Set<string>(), trialInput = new Set<string>();
-	adoptLeftovers();
-	enqueue('ensure', { pid, source, device: deviceInfo(), ...(ctx.nickname ? { nickname: ctx.nickname } : {}) });
+	enqueue('ensure', { pid, source, device: deviceInfo(), ...(ctx.nickname ? { nickname: ctx.nickname } : {}) }, (r) => {
+		live.participantNumber = (r as { number: number }).number;
+	});
 	// The session and block are opened with the first live frame, so a page that is opened and left
 	// without playing leaves no empty block behind.
 	let opened = false;
@@ -296,7 +198,7 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 	const recorder = createRecorder();
 	let trialIndex = 0, deathsBefore = 0, scoreBefore = 0, lastScore = 0, lastLevel = 1, powerLeft = 0;
 	let game: Game | null = null;
-	let lastFrameAt = 0, lastLiveAt = 0, ended = false;
+	let lastFrameAt = 0, lastLiveAt = 0, ended = false, pauses = 0, pausedSeconds = 0;
 
 	function store(trial: TrialMeasures) {
 		const key = uid();
@@ -305,7 +207,12 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 			inputType: inputLabel(trialInput), difficulty: ctx.difficulty ?? 'normal'
 		});
 		const clip = args.clip ?? null;
-		enqueue('trial', args, 'trial');
+		enqueue('trial', args, () => {
+			live.saved++;
+			const r = live.recent.find((x) => x.key === key);
+			if (r) r.saved = true;
+			live.pending = outbox.count(mine);
+		});
 		trialInput.clear();
 		live.recent = [
 			{ key, outcome: trial.outcome, engaged: trial.engaged, total: trial.total, turnLeft: trial.turnLeft, eats: trial.eats.length, hasClip: !!clip, saved: false },
@@ -324,6 +231,8 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		lastLevel = f.level;
 		powerLeft = f.power.left;
 		const now = performance.now();
+		// The game sends no frames while paused (or while the tab is hidden): a gap is a pause.
+		if (lastFrameAt && now - lastFrameAt > 400) { pauses++; pausedSeconds += (now - lastFrameAt) / 1000; }
 		lastFrameAt = now;
 		// The panel does not need 60 updates a second.
 		if (now - lastLiveAt > 100) {
@@ -369,7 +278,8 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 	}
 	const beat = setInterval(heartbeat, 5000);
 	const conn = setInterval(() => {
-		try { live.online = !stuck && client.connectionState().isWebSocketConnected; } catch { /* ignore */ }
+		live.online = outbox.state.state !== 'offline';
+		live.pending = outbox.count(mine);
 	}, 1000);
 
 	function closeBlock() {
@@ -377,25 +287,26 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		ended = true;
 		if (!opened) return;
 		for (const t of tracker.finish()) store(t);
-		enqueue('blockEnd', { key: blockKey, deaths: deathsBefore + (game?.deaths ?? 0), score: scoreBefore + lastScore });
+		enqueue('blockEnd', {
+			key: blockKey, deaths: deathsBefore + (game?.deaths ?? 0), score: scoreBefore + lastScore,
+			pauses, pausedSeconds: Math.round(pausedSeconds * 10) / 10
+		});
 		client.mutation(api.presence.leave, { sessionKey }).catch(() => {});
 	}
 
 	function onHide() {
 		closeBlock();
-		persist();
+		outbox.persist();
 	}
 	function onShow(ev: PageTransitionEvent) {
 		// Back from the back/forward cache: keep recording into the same block.
-		if (ev.persisted) { ended = false; pump(); }
+		if (ev.persisted) ended = false;
 	}
-	function onVisibility() { if (document.visibilityState === 'hidden') persist(); }
 
 	window.addEventListener('keydown', onKey, true);
 	window.addEventListener('pointerdown', onPointer, true);
 	window.addEventListener('pagehide', onHide);
 	window.addEventListener('pageshow', onShow);
-	document.addEventListener('visibilitychange', onVisibility);
 
 	return {
 		onFrame,
@@ -404,31 +315,27 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		keys: { pid, sessionKey, blockKey },
 		async endBlock(timeout = 3000) {
 			closeBlock();
-			const until = Date.now() + timeout;
-			while (queue.length && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+			await outbox.flush(timeout, mine);
 		},
 		endSession() {
 			if (opened) enqueue('sessionUpdate', { key: sessionKey, end: true });
 		},
 		rateBlock(clarity, distraction) {
 			if (!opened) open();
-			enqueue('rateBlock', { key: blockKey + ':rating', blockKey, clarity, distraction });
+			outbox.send('rateBlock', { key: blockKey + ':rating', blockKey, clarity, distraction }, { id: `rate:${blockKey}` });
 		},
 		rateSession(a) {
 			if (!opened) open();
-			enqueue('rateSession', { key: sessionKey + ':rating', sessionKey, ...a });
+			outbox.send('rateSession', { key: sessionKey + ':rating', sessionKey, ...a }, { id: `rate:${sessionKey}` });
 		},
 		destroy() {
-			destroyed = true;
 			clearInterval(beat);
 			clearInterval(conn);
-			if (retryTimer) clearTimeout(retryTimer);
-			persist();
+			outbox.persist();
 			window.removeEventListener('keydown', onKey, true);
 			window.removeEventListener('pointerdown', onPointer, true);
 			window.removeEventListener('pagehide', onHide);
 			window.removeEventListener('pageshow', onShow);
-			document.removeEventListener('visibilitychange', onVisibility);
 		}
 	};
 }

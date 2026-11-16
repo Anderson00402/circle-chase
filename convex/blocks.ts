@@ -22,18 +22,38 @@ export const start = mutation({
 			mode: a.mode ?? s.mode, source: s.source, startedAt: now, trialCount: 0, engagedCount: 0, deaths: 0, score: 0,
 			...(a.practice ? { practice: true } : {})
 		});
-		await ctx.db.patch(s._id, { blocks: s.blocks + 1, lastActiveAt: now });
+		// A session is open while it has an open block (`endedAt` is set again when a block closes).
+		await ctx.db.patch(s._id, { blocks: s.blocks + 1, lastActiveAt: now, endedAt: undefined });
 		return { blockId };
 	}
 });
 
-/** Close a block with its deaths and score (safe to call more than once; the last call wins). */
+/**
+ * Close a block with its deaths, score and pauses (safe to call more than once; the last call
+ * wins). The session's `endedAt` becomes the time its latest block closed, so a session ends with
+ * its last block (End run, switching case, or the page closing). Null until the block exists.
+ */
 export const end = mutation({
-	args: { key: v.string(), deaths: v.number(), score: v.number() },
+	args: {
+		key: v.string(), deaths: v.number(), score: v.number(),
+		/** How often the game was paused during the block, and for how long in total (s). */
+		pauses: v.optional(v.number()), pausedSeconds: v.optional(v.number())
+	},
 	handler: async (ctx, a) => {
 		const b = await ctx.db.query('blocks').withIndex('by_key', (i) => i.eq('key', a.key)).unique();
 		if (!b) return null;
-		await ctx.db.patch(b._id, { endedAt: Date.now(), deaths: a.deaths, score: a.score });
+		const now = Date.now();
+		await ctx.db.patch(b._id, {
+			endedAt: now, deaths: a.deaths, score: a.score,
+			...(a.pauses !== undefined ? { pauses: a.pauses } : {}),
+			...(a.pausedSeconds !== undefined ? { pausedSeconds: a.pausedSeconds } : {})
+		});
+		const s = await ctx.db.get(b.sessionId);
+		if (s) {
+			const open = (await ctx.db.query('blocks').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect())
+				.some((x) => x._id !== b._id && x.endedAt === undefined);
+			await ctx.db.patch(s._id, { lastActiveAt: now, ...(open ? {} : { endedAt: now }) });
+		}
 		return b._id;
 	}
 });

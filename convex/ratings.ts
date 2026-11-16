@@ -5,7 +5,7 @@ const scale = (n: number, what: string) => {
 	if (!Number.isInteger(n) || n < 1 || n > 7) throw new Error(`${what} must be a whole number from 1 to 7`);
 };
 
-/** After a block: clarity and distraction, 1-7 (idempotent by `key`; a second save updates). */
+/** After a block: clarity and distraction, 1-7 (idempotent by `key`; a second save updates). Null until the block exists. */
 export const saveBlock = mutation({
 	args: {
 		key: v.string(), blockKey: v.string(), clarity: v.number(), distraction: v.number(),
@@ -16,7 +16,8 @@ export const saveBlock = mutation({
 		scale(a.clarity, 'clarity');
 		scale(a.distraction, 'distraction');
 		const b = await ctx.db.query('blocks').withIndex('by_key', (i) => i.eq('key', a.blockKey)).unique();
-		if (!b) throw new Error('unknown block');
+		// Null while the block has not arrived (its writes may still be queued): the caller tries again.
+		if (!b) return null;
 		const old = await ctx.db.query('ratings').withIndex('by_key', (i) => i.eq('key', a.key)).unique();
 		const note = a.note?.trim() ? { note: a.note.trim().slice(0, 300) } : {};
 		if (old) { await ctx.db.patch(old._id, { clarity: a.clarity, distraction: a.distraction, ...note }); return old._id; }
@@ -28,7 +29,7 @@ export const saveBlock = mutation({
 	}
 });
 
-/** End of a session: the clearest and least clear cue, and a free comment. */
+/** End of a session: the clearest and least clear cue, and a free comment. Null until the session exists. */
 export const saveSession = mutation({
 	args: {
 		key: v.string(), sessionKey: v.string(), clearest: v.optional(v.string()), leastClear: v.optional(v.string()),
@@ -36,7 +37,7 @@ export const saveSession = mutation({
 	},
 	handler: async (ctx, a) => {
 		const s = await ctx.db.query('sessions').withIndex('by_key', (i) => i.eq('key', a.sessionKey)).unique();
-		if (!s) throw new Error('unknown session');
+		if (!s) return null;
 		const fields = {
 			...(a.clearest ? { clearest: a.clearest } : {}),
 			...(a.leastClear ? { leastClear: a.leastClear } : {}),

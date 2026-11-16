@@ -1,8 +1,24 @@
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vitest/config';
+// @ts-ignore: the project has no Node type definitions; this runs in Node when Vite loads the config.
+import { execSync } from 'node:child_process';
+import pkg from './package.json';
 
-export default defineConfig({
+/**
+ * The build identifier stored with every session and trial (`appVersion`): package version plus the
+ * git commit, e.g. "0.0.1+e8606d3" for a build, "0.0.1+e8606d3.dev" from the dev server (whose code
+ * may be ahead of the commit).
+ */
+function appBuild(command: string): string {
+	const version = pkg.version;
+	let commit = 'nogit';
+	try { commit = (execSync as (cmd: string, o: object) => { toString(): string })('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* not a checkout */ }
+	return `${version}+${commit}${command === 'serve' ? '.dev' : ''}`;
+}
+
+export default defineConfig(({ command }) => ({
+	define: { __APP_BUILD__: JSON.stringify(appBuild(command)) },
 	plugins: [
 		sveltekit({
 			compilerOptions: {
@@ -18,4 +34,4 @@ export default defineConfig({
 	envPrefix: ['VITE_', 'PUBLIC_'],
 	server: { port: 5173, strictPort: true },
 	test: { include: ['src/**/*.test.ts', 'convex/**/*.test.ts'] }
-});
+}));
