@@ -3,23 +3,26 @@ import { boardLayer } from '../render/board';
 import { finalBeat, hotness, penBlock } from './shared-maze';
 
 /**
- * 4 · Wall tide. Taking a power dot charges every wall white. The maze's own colour then floods
- * back in from the edges towards the pen as a shrinking box, so the white area still around the
+ * 4 · Wall tide. Taking a power dot charges every wall a bright electric yellow. The maze's own colour then floods
+ * back in from the edges towards the pen as a shrinking box, so the lit area still around the
  * middle is the power left: the area between the box and the pen block is always exactly that
  * share of the area between the board edge and the pen block (half the time left, half the area).
  *
  * The charge fades in over a moment rather than flashing the whole board, the box starts moving
  * the moment the power starts and has a crisp, lit edge. In the last 2 s the tide line and the
- * board's outer border throb white on five beats (so the warning reaches the player wherever the
- * chase is), and so do the white walls left round the pen; when it runs out the pen flashes once
+ * board's outer border throb bright on five beats (so the warning reaches the player wherever the
+ * chase is), and so do the lit walls left in the box; when it runs out the pen flashes once
  * and the tide closes over it. With reduced motion the throb is a steady glow that grows instead.
  *
  * Cost: one cached picture of the board with charged walls, drawn through a rectangle clip.
  */
 
-const CHARGED = '#ffffff';
-const CHARGED_GLOW = '#9fd8ff';
-const EDGE = '#e9f6ff';
+/** Charged walls are a warm electric yellow: white would hardly differ from the silver maze. */
+const CHARGED = '#ffe45c';
+const CHARGED_GLOW = '#ffb52e';
+const EDGE = '#fff6c8';
+/** The final throb: a near-white warm light, so it shows on every theme including the silver one. */
+const THROB = '#fff1a0';
 /** Seconds the charge takes to come in at the start (a fade, not a flash). */
 const CHARGE_IN = 0.35;
 /** How strongly the charged walls cover the maze colour: just short of full, so the start is not a white-out. */
@@ -37,7 +40,7 @@ function onBoard(e: Edges, W: number, H: number): number {
 
 /**
  * The charged box for a fraction of the power left: the whole board at 1, the pen block at 0.
- * Each edge moves by the same share `s` of its way in, and `s` is solved so that the white area
+ * Each edge moves by the same share `s` of its way in, and `s` is solved so that the lit area
  * on the board outside the pen block is exactly `frac` of its starting size.
  */
 function tideBox(k: CueContext, frac: number): GeoBox {
@@ -76,11 +79,11 @@ function drawTide(k: CueContext) {
 	k.clip(box, () => {
 		k.drawLayer(charged(k), charge);
 		// Final warning: what is left throbs brighter on the five beats.
-		if (beat > 0) k.drawLayer(k.wallLayer('#ffffff', '#ffffff'), 0.8 * beat, 'lighter');
+		if (beat > 0) k.drawLayer(k.wallLayer(THROB, '#ffffff'), 0.8 * beat, 'lighter');
 	});
 
-	// Final warning near the player too: the board's outer border throbs white on the same beats.
-	if (beat > 0) k.drawLayer(k.wallLayer('#ffffff', CHARGED_GLOW, { outer: true }), 0.9 * beat);
+	// Final warning near the player too: the board's outer border throbs bright on the same beats.
+	if (beat > 0) k.drawLayer(k.wallLayer(THROB, CHARGED_GLOW, { outer: true }), 0.95 * beat);
 
 	// The tide line: a crisp lit edge that also shows across the corridors; thicker and brighter on the beats.
 	ctx.save();
@@ -126,9 +129,9 @@ export const wallTide: Cue = {
 	role: 'idea',
 	code: '4',
 	name: 'Wall tide',
-	tagline: 'The walls turn white and their colour floods back in towards the middle.',
+	tagline: 'The walls light up and their own colour floods back in towards the middle.',
 	description:
-		'When you take a power dot the walls turn white. The maze colour then floods back in from the edges as a shrinking box, so the white area left around the middle is the power left: half the area, half the time. In the last 2 seconds the edge of the box, the white walls inside it and the outer border of the board throb white; when the power runs out the pen flashes and the box closes over it.',
+		'When you take a power dot the walls light up yellow. The maze colour then floods back in from the edges as a shrinking box, so the lit area left around the middle is the power left: half the area, half the time. In the last 2 seconds the edge of the box, the lit walls inside it and the outer border of the board throb bright five times; when the power runs out the pen flashes and the box closes over it.',
 	channel: 'maze',
 	baseFlash: false,
 
