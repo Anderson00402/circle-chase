@@ -563,14 +563,25 @@ function spearman(xs: number[], ys: number[]): number | null {
  * clear differences.
  */
 export const simCheck = query({
-	args: { run: v.string() },
+	args: { run: v.optional(v.string()) },
 	handler: async (ctx, a) => {
-		const sessions = (await ctx.db.query('sessions').withIndex('by_source_started', (i) => i.eq('source', 'bot')).collect())
-			.filter((s) => s.sim?.run === a.run);
-		if (!sessions.length) return null;
+		const bot = await ctx.db.query('sessions').withIndex('by_source_started', (i) => i.eq('source', 'bot')).order('desc').collect();
+		// Every run, newest first (scripts/simulate.mjs prints them; the page has its own list in `facets`).
+		const runMap = new Map<string, { run: string; preset: string; sessions: number; startedAt: number }>();
+		for (const s of bot) {
+			if (!s.sim) continue;
+			const r = runMap.get(s.sim.run) ?? { run: s.sim.run, preset: s.sim.preset, sessions: 0, startedAt: s.startedAt };
+			r.sessions++;
+			r.startedAt = Math.min(r.startedAt, s.startedAt);
+			runMap.set(s.sim.run, r);
+		}
+		const runs = [...runMap.values()].sort((x, y) => y.startedAt - x.startedAt);
+		const run = a.run && runMap.has(a.run) ? a.run : runs[0]?.run;
+		if (!run) return null;
+		const sessions = bot.filter((s) => s.sim?.run === run);
 		const planted = new Map<string, { noise: number; distraction: number }>();
 		for (const s of sessions) for (const p of s.sim!.planted) planted.set(p.cue, { noise: p.noise, distraction: p.distraction });
-		const f: Filter = { source: 'bot', run: a.run };
+		const f: Filter = { source: 'bot', run };
 		const { rows, digests: ds } = await readRows(ctx, f);
 		const ratings = await ratingsOf(ctx, f, ds);
 		const cues = [...planted.entries()].map(([cue, p]) => {
@@ -586,7 +597,8 @@ export const simCheck = query({
 		const ok = cues.filter((c) => c.wellTimed.rate !== null);
 		const rhoOf = (get: (c: (typeof ok)[number]) => number | null) => spearman(ok.map((c) => c.plantedNoise), ok.map((c) => get(c) ?? 0));
 		return {
-			run: a.run,
+			runs,
+			run,
 			preset: sessions[0].sim!.preset,
 			cues,
 			rhos: {
