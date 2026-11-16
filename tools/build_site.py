@@ -92,6 +92,13 @@ def last_commit(ref):
     return subject, date
 
 
+def short_rev(ref):
+    """The newest commit on ref, short. The home page adds it to each game's address, so a game
+    that changed is never served from a browser's cache (GitHub Pages lets browsers keep pages for
+    10 minutes, and a frame the page adds with script doesn't get refreshed by a normal reload)."""
+    return git('rev-parse', '--short', ref).strip()
+
+
 def short_date(iso):
     d = datetime.date.fromisoformat(iso)
     return f'{d:%b} {d.day}, {d.year}'
@@ -275,6 +282,8 @@ HOME = '''<!doctype html>
   let current = null;
 
   const urlFor = v => (v === main ? location.pathname : location.pathname + '?v=' + encodeURIComponent(v.key));
+  // Each game's address carries its latest commit, so a changed game always loads fresh.
+  const gameUrl = v => v.path + (v.rev ? '?b=' + encodeURIComponent(v.rev) : '');
 
   function show(v, focus) {
     current = v;
@@ -292,7 +301,7 @@ HOME = '''<!doctype html>
     const meta = document.createElement('span');
     meta.className = 'meta';
     const own = document.createElement('a');
-    own.href = v.path;
+    own.href = gameUrl(v);
     own.target = '_blank';
     own.rel = 'noopener';
     own.textContent = 'Open on its own page \\u2197';
@@ -306,7 +315,7 @@ HOME = '''<!doctype html>
     frame.allow = 'autoplay; fullscreen';
     if (v.sandbox) frame.setAttribute('sandbox', 'allow-scripts allow-pointer-lock');
     frame.addEventListener('load', () => { if (focus) frame.focus(); }, { once: true });
-    frame.src = v.path;
+    frame.src = gameUrl(v);
     stage.querySelectorAll('iframe').forEach(f => f.remove());
     stage.append(frame);
   }
@@ -370,7 +379,7 @@ def write_home(versions):
     tabs += ''.join(map(tab, pulls))
     if fun:
         tabs += '<li class="group fun" aria-hidden="true">Fun modes</li>' + ''.join(map(tab, fun))
-    data =[{k: v[k] for k in ('key', 'name', 'kind', 'path', 'note', 'updated', 'sandbox')} for v in versions]
+    data =[{k: v[k] for k in ('key', 'name', 'kind', 'path', 'note', 'updated', 'sandbox', 'rev')} for v in versions]
     page = (HOME.replace('__FONTS__', html.escape(FONTS))
                 .replace('__README__', html.escape(f'https://github.com/{REPO}#make-your-own-version'))
                 .replace('__TABS__', tabs)
@@ -437,11 +446,11 @@ fun modes change it just for fun. You can also switch between them on the <a hre
         f.write(page)
 
 
-def version(key, kind, name, tab, path, note, date, kind_label='', sandbox=False):
+def version(key, kind, name, tab, path, note, date, kind_label='', sandbox=False, rev=''):
     return {
         'key': key, 'kind': kind, 'name': name, 'tab': tab, 'kind_label': kind_label,
         'path': path, 'href': '?v=' + key if kind != 'main' else './',
-        'note': note, 'updated': short_date(date) if date else '', 'sandbox': sandbox,
+        'note': note, 'updated': short_date(date) if date else '', 'sandbox': sandbox, 'rev': rev,
     }
 
 
@@ -454,7 +463,8 @@ def main():
     export(ref, os.path.join(OUT, 'v', 'main'))
     if not add_badge(os.path.join(OUT, 'v', 'main'), 'main', 'Main game'):
         raise SystemExit('main has no index.html')
-    versions = [version('main', 'main', 'Main game', 'Main game', 'v/main/', NOTES['main'], last_commit(ref)[1])]
+    versions = [version('main', 'main', 'Main game', 'Main game', 'v/main/', NOTES['main'], last_commit(ref)[1],
+                        rev=short_rev(ref))]
 
     taken = {'main'}
     for b in sorted(git('for-each-ref', '--format=%(refname:strip=3)', 'refs/remotes/origin/').split(), key=str.lower):
@@ -465,7 +475,7 @@ def main():
         export(ref, dest)
         if add_badge(dest, s, f'Version: {b}'):
             subject, date = last_commit(ref)
-            versions.append(version(s, 'branch', b, b, f'v/{s}/', NOTES.get(b, subject), date))
+            versions.append(version(s, 'branch', b, b, f'v/{s}/', NOTES.get(b, subject), date, rev=short_rev(ref)))
 
     for pr in sorted(open_pulls(), key=lambda p: p['number']):
         n, ref = pr['number'], f'refs/remotes/pr/{pr["number"]}'
@@ -476,7 +486,7 @@ def main():
         if add_badge(dest, f'pr-{n}', f'Pull request #{n} (not merged)'):
             note = f'{pr["title"]} — by {pr["user"]["login"]}, not reviewed or merged yet.'
             versions.append(version(f'pr-{n}', 'pr', f'Pull request #{n}', f'#{n}', f'pr/{n}/', note,
-                                    last_commit(ref)[1], kind_label='PR', sandbox=True))
+                                    last_commit(ref)[1], kind_label='PR', sandbox=True, rev=short_rev(ref)))
 
     write_home(versions)
     write_versions_page(versions)
