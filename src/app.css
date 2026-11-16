@@ -46,7 +46,7 @@
 
 	/* Cue roles, used by CueChip and charts: references are neutral, the baseline is cool, ideas are warm. */
 	--role-reference: #a3b3d6;
-	--role-baseline: #8fd3ff;
+	--role-baseline: #4f9bf0; /* clearly bluer than the reference grey */
 	--role-idea: #ffd84a;
 	/* Simulated (bot) data, always visibly different from human data */
 	--sim: #b9a2ff;
