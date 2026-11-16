@@ -2,7 +2,7 @@
 // Records a deterministic GIF of a power-up countdown in Circle Chase.
 //
 //   node tools/record-gif.mjs [--html index.html] [--out media/countdown.gif]
-//                             [--difficulty normal] [--eat 1] [--fps 50] [--tail 1.6]
+//                             [--difficulty normal] [--eat 1] [--hold 9] [--fps 50] [--tail 1.6]
 //                             [--width 760] [--scale 2]
 //
 // How it works
@@ -13,8 +13,9 @@
 //   advances the clock by exactly 1/fps seconds, so the GIF plays at real speed no matter how slow
 //   the screenshots are. Anything you animate must therefore be driven by game time or
 //   performance.now (both follow the virtual clock), not CSS animations or setTimeout.
-// - During READY the player is placed three tiles from the bottom-left power dot. Capture starts
-//   when play starts; an autopilot eats the power dot, chases and eats --eat scared ghosts, then
+// - During READY the player is placed three tiles from the bottom-left power dot and parked for --hold
+//   seconds (unrecorded) so most ghosts are out and get scared. Capture starts
+//   after the hold; an autopilot eats the power dot, chases and eats --eat scared ghosts, then
 //   grazes dots while keeping clear of ghosts. Capture ends --tail seconds after the power runs out.
 // - Frames are element screenshots of the score bar + board (.stack), so canvas and DOM both show.
 import { chromium } from 'playwright';
@@ -32,6 +33,8 @@ const html = resolve(args.html || join(root, 'index.html'));
 const out = resolve(args.out || join(root, 'media', 'countdown.gif'));
 const difficulty = args.difficulty || 'normal';
 const eatTarget = Number(args.eat ?? 1);
+// Seconds of play (not recorded) before the power dot, so more ghosts are out of the pen and scared.
+const hold = Number(args.hold ?? 9);
 const fps = Number(args.fps || 50); // 50 = 2 cs per GIF frame, the smoothest rate browsers honour
 const tail = Number(args.tail || 1.6);
 const maxSeconds = Number(args.max || 16);
@@ -144,9 +147,19 @@ try {
     if (st === 'playing') break;
     await page.evaluate(ms => window.__advance(ms), step);
   }
+  // Hold: the player waits beside the power dot while the ghosts leave the pen. The player is parked
+  // (re-placed every tick) so it neither eats the power dot nor wanders off.
+  const holdInfo = await page.evaluate(({ hold, step }) => {
+    const g = window.__game, p = g.player, park = { x: p.x, y: p.y, dir: -1, face: 1, t: 0 };
+    const end = g.time + hold;
+    while (g.time < end && g.state === 'playing') { Object.assign(g.player, park); window.__advance(step); }
+    Object.assign(g.player, park, { dir: 1 });
+    return { state: g.state, active: g.enemies.filter(e => e.state === 'active').length };
+  }, { hold, step });
+  if (holdInfo.state !== 'playing') console.warn('WARNING: player was caught during the hold', holdInfo);
 
   const stack = await page.$('.stack');
-  let frame = 0, poweredSeen = false, endAt = null, lastStates = null;
+  let frame = 0, poweredSeen = false, endAt = null, scaredAtEnd = 0;
   for (; frame < maxSeconds * fps; frame++) {
     const s = await page.evaluate(({ ms }) => {
       const g = window.__game;
@@ -156,16 +169,17 @@ try {
       const chunk = ms / 4;
       for (let k = 0; k < 4; k++) { window.__advance(chunk); window.__pilot(); }
       g.enemies.forEach((e, i) => { if (before[i] !== 'returning' && e.state === 'returning') window.__onEat(); });
-      return { state: g.state, fright: g.fright, time: g.time };
+      return { state: g.state, fright: g.fright, time: g.time, scared: g.enemies.filter(e => e.scared).length };
     }, { ms: step });
     await stack.screenshot({ path: join(framesDir, `f${String(frame).padStart(4, '0')}.png`) });
-    if (s.fright > 0) poweredSeen = true;
+    if (s.fright > 0) { poweredSeen = true; scaredAtEnd = s.scared; }
     if (poweredSeen && s.fright <= 0 && endAt === null) endAt = frame;
     if (endAt !== null && frame - endAt >= tail * fps) break;
     if (s.state === 'dying' && endAt === null && poweredSeen) { console.warn('player died during power'); }
     if (s.state === 'over') break;
   }
   if (!poweredSeen) console.warn('WARNING: power never started');
+  console.log(`ghosts out at power: ${holdInfo.active}, scared at end: ${scaredAtEnd}`);
   console.log(`captured ${frame + 1} frames (${((frame + 1) / fps).toFixed(1)}s)`);
 } finally {
   await browser.close();
