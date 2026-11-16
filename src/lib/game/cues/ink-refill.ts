@@ -11,10 +11,61 @@ import { carries, scaredShiver, sinceWoke, warnDepth, warnOn, wispUnit } from '.
 /** Seconds the "solid again" outline lasts after the power ran out. */
 const SEAL = 0.35;
 
-/** Liquid surface height for a fill 0..1, linear from the tail tip to over the top of the head. */
-function surfaceY(cy: number, t: number, fill: number, amp: number): number {
-	// Top is lifted by the wave height so the head is covered completely when fill reaches 1.
-	return cy + t * 0.44 + (-(t * 0.91) - amp * 1.6) * fill;
+/** Top and bottom of the scared body, in units of the wisp size, from its centre. */
+const TOP = -0.45, BOTTOM = 0.49;
+
+/**
+ * Height of the liquid surface (from the wisp centre, in wisp units) that leaves `fill` of the
+ * body's area below it. The body is round at the top and tapers to a tail, so filling by height
+ * would look nearly full well before the end; filling by area keeps "half full" at half time.
+ * Worked out once from the scared body's outline (the same curves the renderer traces, at rest).
+ */
+const levelFor = (() => {
+	let rows: number[] | null = null;
+	const N = 240;
+	const build = () => {
+		const c = document.createElement('canvas');
+		c.width = c.height = N;
+		const x = c.getContext('2d', { willReadFrequently: true })!;
+		const t = N * 0.95, R = 0.37 * t, hy = -0.08 * t, tx = 0.135 * t, ty = 0.49 * t, fx = -0.14 * t, fy = 0.42 * t;
+		x.translate(N / 2, N / 2);
+		x.beginPath();
+		x.moveTo(-R, hy);
+		x.arc(0, hy, R, Math.PI, 0);
+		x.bezierCurveTo(R * 1.02, hy + R * 0.8, tx + t * 0.1, ty - t * 0.16, tx, ty);
+		x.quadraticCurveTo(t * 0.06, ty - t * 0.02, t * 0.02, fy - t * 0.07);
+		x.quadraticCurveTo(-t * 0.02, fy + t * 0.03, fx, fy);
+		x.bezierCurveTo(-R * 0.75, fy - t * 0.04, -R * 1.02, hy + R * 0.75, -R, hy);
+		x.closePath();
+		x.fillStyle = '#fff';
+		x.fill();
+		const d = x.getImageData(0, 0, N, N).data;
+		// Area below each row, from the bottom up, as a share of the whole body.
+		const area = new Array(N + 1).fill(0);
+		for (let y = N - 1; y >= 0; y--) {
+			let n = 0;
+			for (let i = 0; i < N; i++) n += d[(y * N + i) * 4 + 3] / 255;
+			area[y] = area[y + 1] + n;
+		}
+		const total = area[0] || 1;
+		rows = area.map((a) => a / total);
+	};
+	return (fill: number): number => {
+		if (!rows) build();
+		const t = N * 0.95, r = rows!;
+		if (fill <= 0) return BOTTOM;
+		if (fill >= 1) return TOP;
+		// First row (from the bottom) whose area below reaches `fill`.
+		let y = N - 1;
+		while (y > 0 && r[y] < fill) y--;
+		const span = r[y] - r[y + 1] || 1, u = (fill - r[y + 1]) / span;
+		return Math.max(TOP, Math.min(BOTTOM, (y + 1 - u - N / 2) / t));
+	};
+})();
+
+/** Liquid surface height for a fill 0..1: by area, from the tail tip to the top of the head. */
+function surfaceY(cy: number, t: number, fill: number): number {
+	return cy + t * levelFor(fill);
 }
 
 function traceSurface(k: CueContext, cx: number, t: number, y: (x: number) => number) {
@@ -36,10 +87,13 @@ function drawFilling(k: CueContext, g: GhostView, i: number, cx: number, cy: num
 	const dark = k.mix(color, '#000000', 0.62);
 
 	// Surface: a lazy slosh while calm, choppy and boiling in the last 2 s.
-	const amp = still ? 0 : t * (0.022 + warn * (0.035 + 0.03 * deep));
+	const sy = surfaceY(cy, t, fill);
+	// The waves never cover more than a third of what is still uncoloured, so the cap at the top
+	// stays clearly visible until the very end: "almost", not "done".
+	const cap = sy - (cy + t * TOP);
+	const amp = still ? 0 : Math.min(t * (0.022 + warn * (0.035 + 0.03 * deep)), cap * 0.3);
 	const kx = (Math.PI * 2) / (t * (0.95 - 0.3 * warn));
 	const w = 2.2 + warn * 9;
-	const sy = surfaceY(cy, t, fill, amp);
 	const y = (x: number) => sy
 		+ amp * Math.sin((x - cx) * kx + k.now * w + i * 2.1)
 		+ amp * 0.5 * Math.sin((x - cx) * kx * 1.9 - k.now * w * 1.4 + i);
@@ -91,6 +145,20 @@ function drawFilling(k: CueContext, g: GhostView, i: number, cx: number, cy: num
 	}
 	ctx.restore();
 
+	// Final warning: the part still uncoloured lights up pale, so even a thin cap at the top reads
+	// as "not yet" until the liquid closes over it at the very end.
+	if (warn > 0) {
+		k.clip(body, () => {
+			ctx.beginPath();
+			traceSurface(k, cx, t, y);
+			ctx.lineTo(cx + t * 0.6, cy - t);
+			ctx.lineTo(cx - t * 0.6, cy - t);
+			ctx.closePath();
+			ctx.fillStyle = k.rgba(k.mix(colors.scared, '#ffffff', 0.4), 0.85 * warn);
+			ctx.fill();
+		});
+	}
+
 	// 3. The surface line, light and clear against both the dark body and the colour; hotter and
 	// thicker once it boils.
 	k.clip(body, () => {
@@ -120,7 +188,7 @@ function drawFilling(k: CueContext, g: GhostView, i: number, cx: number, cy: num
 				if (age < 0 || age > LIFE) continue;
 				const u = age / LIFE;
 				const dx = (k.hash(n, i, 3) - 0.5) * t * 0.5;
-				const h = t * (0.08 + 0.1 * deep) * (0.6 + 0.4 * k.hash(n, i, 4));
+				const h = Math.min(t * (0.08 + 0.1 * deep), cap * 0.4) * (0.6 + 0.4 * k.hash(n, i, 4));
 				ctx.beginPath();
 				ctx.arc(cx + dx, y(cx + dx) - 4 * h * u * (1 - u), Math.max(0.7, t * 0.04), 0, Math.PI * 2);
 				ctx.fill();
@@ -136,7 +204,7 @@ export const inkRefill: Cue = {
 	name: 'Ink refill',
 	tagline: "Each scared ghost's colour rises back inside it as the power runs out.",
 	description:
-		"Scared ghosts start empty of colour. Their own colour rises inside them like liquid, steadily, so a ghost half full means half the time is gone. In the last 2 seconds the liquid boils, and when it reaches the top of the head the ghost is solid and dangerous again.",
+		"Scared ghosts start empty of colour. Their own colour rises inside them like liquid, steadily, so a ghost half full means half the time is gone. In the last 2 seconds the liquid boils and the part still empty glows pale; when the liquid reaches the top of the head the ghost is solid and dangerous again.",
 	channel: 'ghosts',
 	baseFlash: false,
 
