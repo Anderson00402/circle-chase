@@ -637,7 +637,9 @@
 			height: auto;
 			min-height: 0;
 		}
-		.boards { flex: none; aspect-ratio: calc(var(--aspect) * var(--n)); }
+		.boards, .player.compare .boards { flex: none; aspect-ratio: calc(var(--aspect) * var(--n)); gap: var(--space-2); }
+		.player.compare .stage { width: 100%; }
+		.cap { flex-direction: column; align-items: flex-start; gap: 4px; }
 		.readouts { grid-template-columns: 1fr 1fr; }
 		.keys { display: none; }
 		.headline { flex-basis: 100%; order: -1; }
