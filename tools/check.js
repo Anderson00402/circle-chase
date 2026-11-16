@@ -1,6 +1,7 @@
 // Checks the game rules in index.html without a browser: node tools/check.js
 // For every maze: all dots reachable, pen slots lead to the exit, no dead ends.
-// Then plays random games on each difficulty to catch runtime errors.
+// Then checks the speeds, that the computer's circle can clear every maze and that every level
+// ends, and plays random games on each difficulty to catch runtime errors.
 const fs = require('fs');
 const path = require('path');
 
@@ -51,15 +52,79 @@ for (const def of Core.MAZES) {
     `pen ${slots ? 'ok' : 'BROKEN'}, exit ${exit ? 'ok' : 'BROKEN'}, start ${start ? 'ok' : 'BROKEN'} -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
-// Ghost speed: slower than the player on level 1, faster every level until the cap, never faster
-// than the player.
+// Speeds: the computer ghosts keep one speed every level (a sharper circle makes later levels
+// harder instead), and the circle is a little faster than your ghost.
 for (const key of Object.keys(Core.DIFFICULTY)) {
   const g = Core.createGame(key);
   const paces = Array.from({ length: 12 }, (_, i) => g.ghostPace(i + 1));
-  const rising = paces.every((p, i) => i === 0 || p >= paces[i - 1]) && paces[1] > paces[0];
-  const ok = rising && paces[0] < 0.85 && Math.max(...paces) <= 1;
+  const ok = paces.every(p => p === paces[0]) && paces[0] < 1 && Core.YOU_PACE < 1;
   if (!ok) fail++;
-  console.log(`${key} ghost speed by level: ${paces.map(p => Math.round(p * 100) + '%').join(' ')} -> ${ok ? 'OK' : 'FAIL'}`);
+  console.log(`${key} teammate speed by level: ${paces.map(p => Math.round(p * 100) + '%').join(' ')}, ` +
+    `yours ${Math.round(Core.YOU_PACE * 100)}% -> ${ok ? 'OK' : 'FAIL'}`);
+}
+
+// With every ghost held in the pen, the computer's circle must clear each maze on its own
+// (it never gets stuck going back and forth).
+for (let level = 1; level <= Core.MAZES.length; level++) {
+  const g = Core.createGame('normal');
+  g.startLevel(level);
+  for (const e of g.enemies) { e.state = 'waiting'; e.releaseAt = Infinity; }
+  g.state = 'playing';
+  let i = 0;
+  for (; i < 120 * 180 && g.state === 'playing'; i++) g.update(1 / 120);
+  const ok = g.state === 'escaped' && g.maze.left === 0;
+  if (!ok) fail++;
+  console.log(`${g.maze.name}: the circle alone ${ok ? `cleared it in ${(i / 120).toFixed(0)} s` : `left ${g.maze.left} dots`} -> ${ok ? 'OK' : 'FAIL'}`);
+}
+
+// After a power dot your ghost is scared like the rest; if the circle eats it, it floats home on
+// its own and comes back under your control.
+{
+  const g = Core.createGame('normal');
+  for (const e of g.enemies.slice(1)) { e.state = 'waiting'; e.releaseAt = Infinity; }
+  const m = g.maze, you = g.enemies[0];
+  const power = m.dots.findIndex(d => d === 2);
+  Object.assign(g.player, { x: power % m.W, y: Math.floor(power / m.W), dir: -1, t: 0 });
+  g.state = 'playing';
+  g.update(1 / 120);
+  const scared = g.fright > 0 && you.scared;
+  // Put your ghost right on the circle while it is scared.
+  Object.assign(you, { x: g.player.x, y: g.player.y, t: 0, dir: -1 });
+  let i = 0, eaten = false, back = false;
+  for (; i < 120 * 30 && !back; i++) {
+    g.update(1 / 120);
+    if (you.state === 'returning') eaten = true;
+    if (eaten && you.state === 'active') back = true;
+  }
+  // Once back, a key press turns it.
+  const before = you.dir;
+  for (let d = 0; d < 4; d++) if (d !== before) { g.steer(d); break; }
+  for (let k = 0; k < 120 && you.dir === before; k++) g.update(1 / 120);
+  const steers = you.dir !== before;
+  const ok = scared && eaten && back && steers;
+  if (!ok) fail++;
+  console.log(`your ghost: scared by a power dot ${scared ? 'yes' : 'NO'}, eaten ${eaten ? 'yes' : 'NO'}, ` +
+    `back in ${(i / 120).toFixed(1)} s ${back ? 'yes' : 'NO'}, steers again ${steers ? 'yes' : 'NO'} -> ${ok ? 'OK' : 'FAIL'}`);
+}
+
+// Every level ends one way or the other: the circle is caught 3 times or eats every dot.
+const LEVEL_LIMIT = 600; // seconds; an idle player's level can run a few minutes, a stuck one forever
+for (const [name, steer] of [['idle', () => {}], ['random', (g, i) => { if (i % 30 === 0) g.steer(Math.floor(Math.random() * 4)); }]]) {
+  let longest = 0, levels = 0, ok = true;
+  for (let run = 0; run < 6; run++) {
+    const g = Core.createGame('normal');
+    let since = 0;
+    for (let i = 0; i < 120 * 900 && g.state !== 'over'; i++) {
+      const was = g.state;
+      steer(g, i);
+      g.update(1 / 120);
+      if (g.state === 'playing' || g.state === 'dying' || g.state === 'ready') since += 1 / 120;
+      if (was !== g.state && (g.state === 'clear' || g.state === 'escaped')) { longest = Math.max(longest, since); since = 0; levels++; }
+      if (since > LEVEL_LIMIT) { ok = false; break; }
+    }
+  }
+  if (!ok) fail++;
+  console.log(`${name} player: ${levels} levels ended, longest ${longest.toFixed(0)} s (limit ${LEVEL_LIMIT} s) -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
 for (const key of Object.keys(Core.DIFFICULTY)) {
@@ -69,13 +134,11 @@ for (const key of Object.keys(Core.DIFFICULTY)) {
     for (let i = 0; i < 120 * 600 && g.state !== 'over'; i++) {
       if (i % 30 === 0) g.steer(Math.floor(Math.random() * 4));
       g.update(1 / 120);
-      // now and then clear most dots so later mazes get played too
-      if (g.state === 'playing' && Math.random() < 0.0005) {
-        for (let j = 0; j < g.maze.dots.length && g.maze.left > 1; j++) if (g.maze.dots[j]) { g.maze.dots[j] = 0; g.maze.left--; }
-      }
+      // now and then skip ahead a level so later mazes get played too
+      if (g.state === 'playing' && Math.random() < 0.0005) g.startLevel(g.level + 1);
     }
   }
-  console.log(`${key}: random play ran without errors`);
+  console.log(`${key}: random play (your ghost steered at random) ran without errors`);
 }
 
 process.exit(fail ? 1 : 0);

@@ -95,14 +95,14 @@ body {
           <div><span class="label">Score</span><span class="value" id="hud-score">0</span></div>
           <div><span class="label">Best</span><span class="value" id="hud-best">0</span></div>
           <div><span class="label">Level</span><span class="value" id="hud-level">1</span></div>
-          <div><span class="label">Lives</span><span class="lives" id="hud-lives"></span></div>
+          <div><span class="label">Circle</span><span class="lives" id="hud-lives"></span></div>
         </div>
         <div class="sheet">
           <canvas id="board" role="img" aria-label="Game board"></canvas>
           <div class="overlay" id="overlay">
             <div class="card">
               <h2 id="ov-title">circle chase</h2>
-              <p id="ov-text">Eat every dot. You can only catch the ghosts after a power dot.</p>
+              <p id="ov-text">You are the pink ghost. Catch the circle 3 times before it eats every dot. After it eats a power dot, run.</p>
               <div class="actions">
                 <button class="btn primary" id="ov-primary" type="button">Start game</button>
                 <button class="btn" id="ov-secondary" type="button" hidden>New game</button>
@@ -130,6 +130,24 @@ const Core = (() => {
   const EXIT = [9, 7], HOME = [9, 10], BANNER_ROW = 13;
   const PEN_SLOTS = [[9, 9], [9, 10], [9, 11]];
   const GUARD_LINE = 10;    // the Guard chases only at or below this row
+
+  // Play as the ghost: you steer the first ghost and the computer plays the circle.
+  const YOU_PACE = 0.95;    // your ghost's speed as a share of the circle's: the circle can outrun you
+  const CIRCLE_LIVES = 3;   // catches needed to win a level
+  const CATCH_YOU = 500, CATCH_TEAM = 200;
+  // The circle's brain: it runs from ghosts this many steps away. Seeing farther made it worse in
+  // testing (it fled instead of eating), so later levels get harder through fewer slips instead:
+  // the chance it takes its second-best move.
+  const CIRCLE_SIGHT = 3;
+  const circleSlip = level => Math.max(0.04, 0.14 - 0.025 * (level - 1));
+  const HUNT_STEPS = 6;     // a scared ghost this close is worth chasing
+  const SAFE_HUNT = 2;      // ...but only with more than this many seconds of power left
+  const EAT_PACE = 0.88;    // the circle slows a little while it eats, so a chaser can gain on it
+  const HUNGRY = 8;         // after this many seconds without a dot it only runs from ghosts 2 steps
+                            // away and dares to pass right by one, so parking your ghost on the last
+                            // dot can't stall the level forever
+  const HUNGRY_SIGHT = 2;
+  // (YOU_PACE, CIRCLE_SIGHT and HUNGRY were tuned by simulating chasing, idle and random players.)
 
   // Left half of each maze (columns 0-9); the right half mirrors it.
   // # wall  . dot  o power dot  - pen door  _ pen  (space) open floor
@@ -212,8 +230,10 @@ const Core = (() => {
     { id: 'drifter', name: 'Drifter', corner: [17, 19] },
   ];
 
-  // enemy: ghost speed on level 1 as a share of the player's; it rises by enemyStep every level
-  //        until it reaches enemyMax (never faster than the player, so a level can always be won).
+  // enemy: the computer ghosts' speed as a share of the circle's. In this version it stays the same
+  //        every level (enemyStep and enemyMax are unused): faster teammates would make later
+  //        levels easier for you, and the circle's brain already gets sharper instead.
+  // lives: unused here; the circle always has CIRCLE_LIVES a level.
   // waves: alternating scatter/chase lengths in seconds, starting with scatter
   const DIFFICULTY = {
     easy:   { label: 'Easy',   lives: 5, enemy: 0.6, enemyStep: 0.03, enemyMax: 0.85, fright: 9,   release: [0, 3, 7, 11], waves: [9, 15, 9, 15, 7, Infinity] },
@@ -266,7 +286,7 @@ const Core = (() => {
   function createGame(diffKey = 'normal', emit = () => {}, rng = Math.random) {
     const diff = DIFFICULTY[diffKey] || DIFFICULTY.normal;
     const g = {
-      diffKey, diff, level: 1, score: 0, lives: diff.lives, extraGiven: false,
+      diffKey, diff, level: 1, score: 0, lives: CIRCLE_LIVES,
       state: 'ready', stateTime: 0, time: 0, maze: null, player: null, enemies: [],
       want: -1, wantAge: 0, fright: 0, frightTotal: 0, chain: 0,
       hitStop: 0, lifeTime: 0, modeIndex: 0, modeTime: 0, popups: [],
@@ -287,27 +307,30 @@ const Core = (() => {
     function loadLevel() {
       m = buildMaze(MAZES[(g.level - 1) % MAZES.length]);
       g.maze = m;
+      g.lives = CIRCLE_LIVES;
       resetActors();
     }
 
+    // The circle is g.player; the ghost you steer is enemies[0] (you: true).
     function resetActors() {
       g.player = { x: m.start[0], y: m.start[1], dir: LEFT, face: LEFT, t: 0 };
       g.enemies = GHOSTS.map((def, i) => {
         const [x, y] = i === 0 ? m.exit : m.penSlots[i - 1];
         return {
-          def, x, y, t: 0, dir: i === 0 ? LEFT : UP, state: i === 0 ? 'active' : 'waiting',
+          def, x, y, t: 0, dir: i === 0 ? LEFT : UP, state: i === 0 ? 'active' : 'waiting', you: i === 0,
           releaseAt: diff.release[i], scared: false, flip: false, drift: [0, 0], driftAt: -1,
         };
       });
-      Object.assign(g, { want: -1, wantAge: 0, fright: 0, chain: 0, hitStop: 0, lifeTime: 0, modeIndex: 0, modeTime: 0 });
+      Object.assign(g, { want: -1, wantAge: 0, fright: 0, chain: 0, hitStop: 0, lifeTime: 0, lastDot: 0, modeIndex: 0, modeTime: 0 });
     }
 
-    function addScore(n) {
-      g.score += n;
-      if (!g.extraGiven && g.score >= 10000) { g.extraGiven = true; g.lives++; emit('extra'); }
-    }
+    function addScore(n) { g.score += n; }
 
+    // Your input steers your ghost.
     function steer(d) { g.want = d; g.wantAge = 0; }
+
+    // Tests start on any level, so every maze can be checked.
+    function startLevel(n) { g.level = n; loadLevel(); setState('ready'); }
 
     function update(dt) {
       g.time += dt;
@@ -317,11 +340,17 @@ const Core = (() => {
       if (g.state === 'ready') { if (g.stateTime >= READY_TIME) setState('playing'); return; }
       if (g.state === 'dying') {
         if (g.stateTime < DEATH_TIME) return;
-        if (g.lives <= 0) { setState('over'); emit('over'); } else { resetActors(); setState('ready'); }
+        // Caught for the last time: you win the level.
+        if (g.lives <= 0) { setState('clear'); emit('clear'); } else { resetActors(); setState('ready'); }
         return;
       }
       if (g.state === 'clear') {
         if (g.stateTime >= CLEAR_TIME) { g.level++; loadLevel(); setState('ready'); emit('level'); }
+        return;
+      }
+      // The circle ate every dot: it got away and the game ends.
+      if (g.state === 'escaped') {
+        if (g.stateTime >= CLEAR_TIME) { setState('over'); emit('over'); }
         return;
       }
       if (g.state !== 'playing') return;
@@ -340,7 +369,8 @@ const Core = (() => {
         if (g.modeTime >= diff.waves[g.modeIndex]) {
           g.modeIndex++;
           g.modeTime = 0;
-          for (const e of g.enemies) if (e.state === 'active') e.flip = true;
+          // Your ghost never turns around on its own.
+          for (const e of g.enemies) if (e.state === 'active' && !e.you) e.flip = true;
           emit('mode', mode());
         }
       }
@@ -352,21 +382,85 @@ const Core = (() => {
       checkHits();
     }
 
-    // ---- player ----
+    // ---- the circle, played by the computer ----
     const playerCan = (x, y, d) => tileAt(x + DIRS[d].x, y + DIRS[d].y) === PATH;
+    const FAR = 999;
+
+    // Steps from the given tiles to every open tile, through the tunnels (-1 = can't get there).
+    function stepsFrom(sources) {
+      const dist = new Int16Array(m.W * m.H).fill(-1);
+      const queue = [];
+      for (const [x, y] of sources) {
+        const i = y * m.W + wrapX(x);
+        if (y >= 0 && y < m.H && m.tiles[i] === PATH && dist[i] < 0) { dist[i] = 0; queue.push(i); }
+      }
+      for (let q = 0; q < queue.length; q++) {
+        const i = queue[q], x = i % m.W, y = (i - x) / m.W;
+        for (const d of DIRS) {
+          const ny = y + d.y;
+          if (ny < 0 || ny >= m.H) continue;
+          const n = ny * m.W + wrapX(x + d.x);
+          if (m.tiles[n] !== PATH || dist[n] >= 0) continue;
+          dist[n] = dist[i] + 1;
+          queue.push(n);
+        }
+      }
+      return dist;
+    }
+    const stepsAt = (dist, x, y) => { const v = dist[y * m.W + wrapX(x)]; return v < 0 ? FAR : v; };
+    const tileOf = e => { const [x, y] = pos(e); return [wrapX(Math.round(x)), Math.round(y)]; };
+
+    // Picks the circle's next direction at a tile center. It goes for the nearest dot, runs from
+    // ghosts it can see, races for a power dot it can reach first, and hunts scared ghosts while
+    // the power lasts. Now and then it takes its second-best move, so it can be caught.
+    function circleChoice(p) {
+      const opts = [];
+      for (let d = 0; d < 4; d++) if (playerCan(p.x, p.y, d)) opts.push(d);
+      if (!opts.length) return -1;
+      const hungry = g.lifeTime - g.lastDot > HUNGRY;
+      const sight = hungry ? HUNGRY_SIGHT : CIRCLE_SIGHT;
+      const threats = g.enemies.filter(e => e.state === 'active' && !e.scared).map(e => stepsFrom([tileOf(e)]));
+      const safety = (x, y) => threats.reduce((s, d) => Math.min(s, stepsAt(d, x, y)), FAR);
+      const danger = safety(p.x, p.y) <= sight;
+      const dots = [], powers = [];
+      for (let i = 0; i < m.dots.length; i++) if (m.dots[i]) (m.dots[i] === 2 ? powers : dots).push([i % m.W, Math.floor(i / m.W)]);
+      const toDot = stepsFrom(dots.concat(powers));
+      const fromMe = stepsFrom([[p.x, p.y]]);
+
+      let goal = toDot, run = danger;
+      if (danger && powers.length) {
+        let best = null;
+        for (const pd of powers) if (!best || stepsAt(fromMe, ...pd) < stepsAt(fromMe, ...best)) best = pd;
+        if (stepsAt(fromMe, ...best) < safety(...best)) { goal = stepsFrom([best]); run = false; }
+      } else if (!danger && g.fright > SAFE_HUNT) {
+        let prey = null, preyD = HUNT_STEPS + 1;
+        for (const e of g.enemies) {
+          if (e.state !== 'active' || !e.scared) continue;
+          const d = stepsAt(fromMe, ...tileOf(e));
+          if (d < preyD) { prey = e; preyD = d; }
+        }
+        if (prey) goal = stepsFrom([tileOf(prey)]);
+      }
+
+      const scored = opts.map(d => {
+        const nx = wrapX(p.x + DIRS[d].x), ny = p.y + DIRS[d].y, safe = safety(nx, ny);
+        let cost = run ? -3 * safe + 0.3 * stepsAt(toDot, nx, ny) : stepsAt(goal, nx, ny);
+        if (safe <= (hungry ? 0 : 1)) cost += 100;        // never step next to a ghost (onto one, when hungry)
+        if (!danger && d === rev(p.dir)) cost += 1.5;     // no dithering back and forth
+        return { d, cost, safe };
+      }).sort((a, b) => a.cost - b.cost);
+      if (scored.length > 1 && scored[1].safe > 1 && rng() < circleSlip(g.level)) return scored[1].d;
+      return scored[0].d;
+    }
 
     function movePlayer(dt) {
       const p = g.player;
-      if (g.want >= 0 && p.dir >= 0 && g.want === rev(p.dir) && p.t > 0) {
-        const d = DIRS[p.dir];
-        p.x = wrapX(p.x + d.x); p.y += d.y; p.t = 1 - p.t;
-        p.dir = p.face = g.want; g.want = -1;
-      }
-      let dist = PLAYER_SPEED * dt;
+      const ahead = p.dir >= 0 ? m.dots[(p.y + DIRS[p.dir].y) * m.W + wrapX(p.x + DIRS[p.dir].x)] : 0;
+      let dist = PLAYER_SPEED * (ahead ? EAT_PACE : 1) * dt;
       for (let n = 0; dist > 1e-9 && n < 8; n++) {
         if (p.t === 0) {
-          if (g.want >= 0 && playerCan(p.x, p.y, g.want)) { p.dir = g.want; g.want = -1; }
-          else if (p.dir < 0 || !playerCan(p.x, p.y, p.dir)) { p.dir = -1; break; }
+          p.dir = circleChoice(p);
+          if (p.dir < 0) break;
           p.face = p.dir;
         }
         const s = Math.min(dist, 1 - p.t);
@@ -378,31 +472,33 @@ const Core = (() => {
       eatAt(wrapX(Math.round(px)), Math.round(py));
     }
 
+    // The circle's dots score nothing for you; its last dot ends the game.
     function eatAt(x, y) {
       const i = y * m.W + x, d = m.dots[i];
       if (!d) return;
       m.dots[i] = 0;
       m.left--;
-      if (d === 2) { addScore(50); startFright(); emit('power', [x, y]); } else { addScore(10); emit('dot', [x, y]); }
-      if (m.left === 0) { setState('clear'); emit('clear'); }
+      g.lastDot = g.lifeTime;
+      if (d === 2) { startFright(); emit('power', [x, y]); } else emit('dot', [x, y]);
+      if (m.left === 0) { setState('escaped'); emit('escaped'); }
     }
 
     function startFright() {
       g.fright = g.frightTotal = Math.max(2, diff.fright - (g.level - 1) * 0.5);
       g.chain = 0;
-      for (const e of g.enemies) if (e.state === 'active') { e.scared = true; e.flip = true; }
+      for (const e of g.enemies) if (e.state === 'active') { e.scared = true; e.flip = !e.you; }
     }
 
     // ---- ghosts ----
-    // Ghosts start slow and get faster every level, up to the difficulty's cap.
-    const ghostPace = (level = g.level) => Math.min(diff.enemyMax, diff.enemy + (level - 1) * diff.enemyStep);
+    // The computer ghosts keep one speed; see DIFFICULTY.
+    const ghostPace = () => diff.enemy;
 
     function enemySpeed(e) {
       if (e.state === 'returning') return PLAYER_SPEED * 1.9;
-      const base = PLAYER_SPEED * ghostPace();
+      const base = PLAYER_SPEED * (e.you ? YOU_PACE : ghostPace());
       if (e.state === 'leaving') return base * 0.55;
       if (e.scared) return PLAYER_SPEED * 0.55;
-      if (m.tunnelRows.has(e.y) && (e.x <= 1 || e.x >= m.W - 2)) return base * 0.6;
+      if (!e.you && m.tunnelRows.has(e.y) && (e.x <= 1 || e.x >= m.W - 2)) return base * 0.6;
       return base;
     }
 
@@ -467,8 +563,26 @@ const Core = (() => {
       else if (e.state === 'returning' && e.x === m.home[0] && e.y === m.home[1]) e.state = 'leaving';
     }
 
+    // Your ghost moves like the circle used to: it turns where you ask, reverses at once and stops
+    // at a wall. It keeps out of the pen; once eaten, it finds its own way home and back out.
+    function moveYou(e, dt) {
+      e.flip = false;
+      if (g.want >= 0 && e.dir >= 0 && g.want === rev(e.dir) && e.t > 0) { flip(e); g.want = -1; }
+      let dist = enemySpeed(e) * dt;
+      for (let n = 0; dist > 1e-9 && n < 8; n++) {
+        if (e.t === 0) {
+          if (g.want >= 0 && enemyCan(e, g.want)) { e.dir = g.want; g.want = -1; }
+          else if (e.dir < 0 || !enemyCan(e, e.dir)) { e.dir = -1; break; }
+        }
+        const s = Math.min(dist, 1 - e.t);
+        e.t += s; dist -= s;
+        if (e.t >= 1 - 1e-9) { const d = DIRS[e.dir]; e.x = wrapX(e.x + d.x); e.y += d.y; e.t = 0; }
+      }
+    }
+
     function moveEnemy(e, dt) {
       if (e.state === 'waiting') return;
+      if (e.you && e.state === 'active') { moveYou(e, dt); return; }
       if (e.flip) { e.flip = false; flip(e); }
       let dist = enemySpeed(e) * dt;
       for (let n = 0; dist > 1e-9 && n < 8; n++) {
@@ -492,29 +606,30 @@ const Core = (() => {
         dx = Math.min(dx, m.W - dx);
         const dy = py - ey;
         if (dx * dx + dy * dy > 0.36) continue;
+        // A scared ghost gets eaten and floats home; that includes yours.
         if (e.scared) {
-          g.chain = Math.min(g.chain + 1, 4);
-          const pts = 100 * 2 ** g.chain;
-          addScore(pts);
           e.scared = false;
           e.state = 'returning';
           g.hitStop = 0.35;
-          g.popups.push({ x: ex, y: ey, text: '+' + pts, age: 0 });
-          emit('eat', pts);
+          emit('eat', 200);
           continue;
         }
+        // Caught: the circle loses a life, and you score more for catching it yourself.
+        const pts = e.you ? CATCH_YOU : CATCH_TEAM;
+        addScore(pts);
+        g.popups.push({ x: px, y: py, text: '+' + pts, age: 0 });
         g.lives--;
         setState('dying');
-        emit('die');
+        emit('die', e.you);
         return;
       }
     }
 
     loadLevel();
-    return Object.assign(g, { update, steer, pos, mode, targetOf, ghostPace });
+    return Object.assign(g, { update, steer, pos, mode, targetOf, ghostPace, startLevel });
   }
 
-  return { createGame, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED };
+  return { createGame, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED, YOU_PACE, CIRCLE_LIVES };
 })();
 </script>
 
@@ -540,8 +655,10 @@ const Core = (() => {
 
   const settings = { difficulty: 'normal', targets: false, sound: true, ...store.get('circle-chase:settings', {}) };
   if (!Core.DIFFICULTY[settings.difficulty]) settings.difficulty = 'normal';
+  // Ghost scores aren't comparable with the main game's, so they get their own list.
+  const SCORES_KEY = 'circle-chase:ghost-scores';
   const scores = { easy: [], normal: [], hard: [] };
-  const savedScores = store.get('circle-chase:scores', {});
+  const savedScores = store.get(SCORES_KEY, {});
   for (const k of Object.keys(scores)) if (Array.isArray(savedScores[k])) scores[k] = savedScores[k].slice(0, 5);
 
   let game, running = false, paused = false, overlayMode = 'title';
@@ -647,7 +764,7 @@ const Core = (() => {
       die: () => tone(520, 0.9, { type: 'sawtooth', vol: 0.05, to: 60 }),
       start: () => arp([523.25, 659.25, 783.99, 1046.5], 0.12),
       clear: () => arp([392, 523.25, 659.25, 783.99, 1046.5], 0.09),
-      extra: () => arp([784, 988, 1175, 1568], 0.07),
+      lose: () => arp([783.99, 659.25, 523.25, 392], 0.14),
     };
   })();
 
@@ -657,10 +774,10 @@ const Core = (() => {
       case 'dot': sfx.dot(); bite(arg, false); break;
       case 'power': sfx.power(); bite(arg, true); break;
       case 'eat': sfx.eat(arg); break;
-      case 'die': sfx.die(); readyLabel = 'READY'; break;
-      case 'clear': sfx.clear(); break;
+      case 'die': sfx.die(); readyLabel = 'READY'; break; // the circle was caught
+      case 'clear': sfx.clear(); break;                     // ...for the last time this level
+      case 'escaped': sfx.lose(); break;                    // it ate every dot
       case 'level': readyLabel = `LEVEL ${game.level}`; fit(); break; // mazes can differ in size
-      case 'extra': sfx.extra(); break;
       case 'over': gameOver(); break;
     }
   }
@@ -709,10 +826,10 @@ const Core = (() => {
       list.sort((a, b) => b.score - a.score);
       list.length = Math.min(list.length, 5);
       rank = list.indexOf(entry);
-      store.set('circle-chase:scores', scores);
+      store.set(SCORES_KEY, scores);
     }
     const label = g.diff.label;
-    let text = `You scored ${g.score.toLocaleString('en-US')} on ${label} and reached level ${g.level}.`;
+    let text = `The circle cleared the maze. You scored ${g.score.toLocaleString('en-US')} and reached level ${g.level}.`;
     if (rank === 0) text += ' That is your new best.';
     else if (rank > 0) text += ` That is #${rank + 1} on your ${label} list.`;
     showOverlay('over', text);
@@ -723,7 +840,7 @@ const Core = (() => {
     overlayMode = mode;
     const touch = touchUI.matches;
     const copy = {
-      title: ['circle chase', 'Eat every dot. You can only catch the ghosts after a power dot.', 'Start game'],
+      title: ['circle chase', 'You are the pink ghost. Catch the circle 3 times before it eats every dot. After it eats a power dot, run.', 'Start game'],
       paused: ['paused', 'The game is on hold.', 'Resume'],
       over: ['game over', text, 'Play again'],
     }[mode];
@@ -731,7 +848,7 @@ const Core = (() => {
     $('ov-text').textContent = copy[1];
     $('ov-primary').textContent = copy[2];
     $('ov-secondary').hidden = mode !== 'paused';
-    $('ov-hint').textContent = touch ? 'Swipe on the board to move.' : 'Arrow keys or WASD to move. P to pause.';
+    $('ov-hint').textContent = touch ? 'Swipe to move.' : 'Arrow keys or WASD to move. P to pause.';
     $('overlay').hidden = false;
     if (!touch) $('ov-primary').focus({ preventScroll: true });
   }
@@ -913,6 +1030,24 @@ const Core = (() => {
     ghostEyes(c, cx, hy, t, d, C['maze-bg'], true);
   }
 
+  // Your ghost: a small white arrow hovers over its head so you can always find it.
+  function drawYouMarker(c, cx, cy, t, alpha) {
+    const tip = cy - t * 0.6, top = cy - t * 0.86, half = t * 0.15;
+    c.globalAlpha = alpha;
+    c.beginPath();
+    c.moveTo(cx - half, top);
+    c.lineTo(cx + half, top);
+    c.lineTo(cx, tip);
+    c.closePath();
+    c.lineJoin = 'round';
+    c.lineWidth = Math.max(2, t * 0.08);
+    c.strokeStyle = C['maze-bg'];
+    c.stroke();
+    c.fillStyle = C.player;
+    c.fill();
+    c.globalAlpha = 1;
+  }
+
   function drawPowerDot(c, cx, cy, t, pulse) {
     const r = t * 0.27 * pulse;
     c.strokeStyle = C.player;
@@ -967,7 +1102,7 @@ const Core = (() => {
     if (settings.targets && showGhosts && g.state !== 'over') {
       ctx.lineWidth = 1.5;
       for (const e of g.enemies) {
-        if (e.state !== 'active' || e.scared) continue;
+        if (e.state !== 'active' || e.scared || e.you) continue;
         let [tx, ty] = g.targetOf(e);
         tx = Math.max(0, Math.min(m.W - 1, tx));
         ty = Math.max(0, Math.min(m.H - 1, ty));
@@ -995,6 +1130,10 @@ const Core = (() => {
           : e.scared ? (powerFlash(g.fright) ? 'scared-flash' : 'scared')
           : 'normal';
         eachWrap(x, cx => drawGhost(ctx, cx, (y + 0.5) * T, T, e.def, look, e.dir, reduce ? 0 : now, i));
+        if (e.you) {
+          const bob = reduce ? 0 : Math.sin(now * 5) * T * 0.05;
+          eachWrap(x, cx => drawYouMarker(ctx, cx, (y + 0.5) * T + bob, T, look === 'eyes' ? 0.55 : 1));
+        }
       });
     }
 
@@ -1047,7 +1186,8 @@ const Core = (() => {
         });
       }
     }
-    if (g.state !== 'over' && pr > 0.5) {
+    // In 'clear' the circle has just been caught for good, so it stays gone.
+    if (g.state !== 'over' && g.state !== 'clear' && pr > 0.5) {
       const face = Core.DIRS[p.face];
       eachWrap(px, cx => {
         const cy = (py + 0.5) * T;
@@ -1124,7 +1264,8 @@ const Core = (() => {
     // banner
     let text = null;
     if (g.state === 'ready' && running) text = readyLabel;
-    if (g.state === 'clear') text = 'MAZE CLEAR';
+    if (g.state === 'clear') text = 'CAUGHT';
+    if (g.state === 'escaped') text = 'GOT AWAY';
     if (text) {
       const fs = Math.round(T * 0.62);
       ctx.font = `600 ${fs}px ${FONT_MONO}`;
@@ -1155,7 +1296,7 @@ const Core = (() => {
     const shown = Math.min(g.lives, 5);
     for (let i = 0; i < shown; i++) lives.appendChild(document.createElement('i'));
     if (g.lives > shown) lives.append(`+${g.lives - shown}`);
-    lives.setAttribute('aria-label', `${g.lives} lives`);
+    lives.setAttribute('aria-label', `The circle has ${g.lives} ${g.lives === 1 ? 'life' : 'lives'} left`);
   }
 
   // ---------- settings ----------

@@ -1,5 +1,7 @@
 # Circle Chase
 
+**This version: play as the ghost.** You steer the pink ghost (the one with the white arrow over it) with the arrow keys or WASD, or by swiping on a phone, and the computer plays the circle. Catch it 3 times before it eats every dot; after it eats a power dot, run.
+
 A maze game made for a UX design class. Eat every dot and keep away from the ghosts. After a power dot the ghosts turn blue and can be caught for a few seconds; the bar in the top wall shows how long you have.
 
 **Play:** https://anderson00402.github.io/circle-chase/ (the main game, with a tab for every other version)
