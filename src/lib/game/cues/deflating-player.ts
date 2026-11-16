@@ -4,27 +4,29 @@ import { CALM, expiredNow, HOT, justExpired, powered, WARN } from './shared-scre
 /**
  * Deflating player: the hero carries the power.
  *
- * On a power dot the hero swells and glows, ringed by a dial of ten sparks at fixed places around
- * it. The sparks go out in order like a clock running backwards (the dark part grows clockwise
- * from 12 o'clock), so the fraction left reads at a glance whatever the power length: half the
- * ring dark is half the time gone. The spark about to go dims through its share of time and then
- * peels away. The hero shrinks back as the power drains, slowly at first and most of the way in
- * the last 2 s, when the remaining sparks also turn red and blink in five beats. At the end the
- * hero gives a small puff of smoke and is its normal self again.
+ * On a power dot the hero swells a little and glows, ringed by a dial of ten sparks at fixed
+ * places around it. The dial is the message: it empties like the other clock cues, a dark gap
+ * opening at 12 o'clock and growing clockwise, so the lit part left is the time left (half the
+ * ring dark is half the time gone, whatever the power length). The spark about to go dims through
+ * its share of time and then peels away. Nothing else changes until the last 2 s: then the sparks
+ * left turn red and the hero deflates back to its normal size, reaching it as the power ends with
+ * a small puff of smoke. No blinking, so reduced motion only drops the peel drift, twinkle and smoke.
  *
  * Only the drawing changes: the hero's hit box is the same as always.
  */
 
 const N = 10; // sparks on the dial
-const SWELL = 0.28; // extra size at full power (1.28x: still inside its corridor)
+const SWELL = 0.22; // extra size while powered (1.22x: still inside its corridor)
 const INFLATE = 0.3, PEEL = 0.5, PUFF = 0.5; // seconds
 const GLOW = '#fff6c0';
 
-/** How swollen the hero is, 1 at full power to 0 at the end: a little drain early, most of it in the last 2 s. */
+/** How swollen the hero is: fully until the last 2 s, then back down to normal at the end. */
 function swell(k: CueContext) {
-	const { frac, left } = k.power;
-	return 0.3 * frac + 0.7 * k.smoothstep(0, WARN, left);
+	return k.clamp(k.power.left / WARN);
 }
+
+/** Seconds left when spark `i` goes out: the dial empties clockwise from 12 o'clock, spark 0 first. */
+const outAt = (total: number, i: number) => total * (1 - (i + 1) / N);
 
 /** Centre angle of spark `i` (0 = 12 o'clock, clockwise), in canvas radians. */
 const angleOf = (i: number) => ((i + 0.5) / N) * Math.PI * 2 - Math.PI / 2;
@@ -66,9 +68,9 @@ export const deflatingPlayer: Cue = {
 	role: 'idea',
 	code: '8',
 	name: 'Deflating player',
-	tagline: 'You swell up with power and shrink back as it runs out.',
+	tagline: 'A ring of sparks around you goes out like a clock; you shrink back in the last 2 seconds.',
 	description:
-		'A power dot makes you swell and glow, with a ring of ten sparks around you. The sparks go out one after another like a clock running down, so half a dark ring means half the time is gone; in the last 2 seconds the last sparks turn red and blink while you shrink back. When the power ends you let out a small puff and are back to normal.',
+		'A power dot makes you swell a little and glow, with a ring of ten sparks around you. The sparks go out one after another clockwise from 12 o\'clock, like a clock running down, so half a dark ring means half the time is gone. In the last 2 seconds the sparks left turn red and you shrink back to normal size; when the power ends you let out a small puff.',
 	channel: 'player',
 	baseFlash: false,
 
@@ -78,28 +80,30 @@ export const deflatingPlayer: Cue = {
 			const g = swell(k), warn = power.left <= WARN;
 			const inflate = k.reduceMotion ? 1 : k.ease.outBack(k.clamp(power.elapsed / INFLATE));
 			const scale = 1 + SWELL * g * inflate;
-			// Warm halo behind the hero, fading with the swell.
-			k.glow(cx, cy, T * (0.9 + 0.5 * g), GLOW, 0.45 * g * k.clamp(inflate));
-			k.drawPlayer(cx, cy, scale, { color: k.mix(k.colors.player, GLOW, 0.55 * g) });
+			// Warm halo behind the hero, steady until it deflates.
+			k.glow(cx, cy, T * 1.3, GLOW, 0.4 * g * k.clamp(inflate));
+			k.drawPlayer(cx, cy, scale, { color: k.mix(k.colors.player, GLOW, 0.45 * g) });
 
-			// The dial. Spark i is lit while more than i tenths of the power are left; the lit arc
-			// runs clockwise from 12 o'clock to the fraction left.
-			const lit = power.frac * N, R0 = T * 0.84;
-			const dim = warn && !k.reduceMotion && !k.baseFlash() ? 0.4 : 1;
+			// The dial: the lit arc runs from the hand clockwise round to 12 o'clock, like a clock
+			// face whose gap opens at 12 and grows clockwise.
+			const used = 1 - power.frac, hand = used * Math.PI * 2, gone = used * N, R0 = T * 0.84;
 			const color = warn ? HOT : CALM;
-			k.ring(cx, cy, R0, Math.max(2, T * 0.16), k.colors.bg, { alpha: 0.5 }); // dark track, so it reads on any wall
+			k.ring(cx, cy, R0, Math.max(2.5, T * 0.18), k.colors.bg, { alpha: 0.55 }); // dark track, so it reads on any wall
 			k.ring(cx, cy, R0, Math.max(0.8, T * 0.05), k.rgba(CALM, 0.3));
-			k.ring(cx, cy, R0, Math.max(1.2, T * 0.08), color, { from: 0, to: Math.PI * 2 * power.frac, alpha: 0.85 * dim });
+			k.ring(cx, cy, R0, Math.max(1.6, T * 0.09), color, { from: hand, to: Math.PI * 2, alpha: 0.9 });
 			for (let i = 0; i < N; i++) {
-				if (i >= lit) continue;
+				if (i + 1 <= gone) continue;
 				const x = cx + Math.cos(angleOf(i)) * R0, y = cy + Math.sin(angleOf(i)) * R0;
 				// The next spark to go dims through its own share of the time.
-				const u = Math.min(1, lit - i);
-				const twinkle = k.reduceMotion ? 1 : 0.9 + 0.1 * Math.sin(k.now * 7 + i * 1.7);
-				star(k, x, y, T * 0.2 * (0.6 + 0.4 * u) * twinkle * (warn ? 1.1 : 1), color, (0.4 + 0.6 * u) * dim);
+				const u = Math.min(1, i + 1 - gone);
+				const twinkle = k.reduceMotion ? 1 : 0.92 + 0.08 * Math.sin(k.now * 7 + i * 1.7);
+				star(k, x, y, Math.max(1.6, T * 0.2) * (0.6 + 0.4 * u) * twinkle, color, 0.4 + 0.6 * u);
 			}
 			// Sparks that just went out drift away.
-			for (let i = 0; i < N; i++) peeled(k, cx, cy, i, power.total * (i / N) - power.left, (i / N) * power.total <= WARN ? HOT : CALM);
+			for (let i = 0; i < N; i++) {
+				const at = outAt(power.total, i);
+				peeled(k, cx, cy, i, at - power.left, at <= WARN ? HOT : CALM);
+			}
 			return;
 		}
 		if (justExpired(k, PUFF)) {
@@ -107,7 +111,7 @@ export const deflatingPlayer: Cue = {
 			const t = power.sinceExpired, u = t / PUFF;
 			const scale = k.reduceMotion ? 1 : 1 - 0.08 * Math.sin(Math.PI * u);
 			k.drawPlayer(cx, cy, scale);
-			peeled(k, cx, cy, 0, t, HOT);
+			peeled(k, cx, cy, N - 1, t, HOT);
 			const smoke = k.mix(CALM, '#ffffff', 0.4);
 			if (k.reduceMotion) {
 				k.ring(cx, cy, T * 0.85, Math.max(1, T * 0.1), smoke, { alpha: 0.7 * (1 - u) });
