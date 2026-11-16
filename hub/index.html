@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Countdown Variants</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Atkinson+Hyperlegible+Mono:wght@400;600&display=swap">
+<style>
+/* Switcher for the power-countdown variants. Each entry loads one branch's live index.html. */
+:root {
+  color-scheme: dark;
+  --desk: #0a1b3d; --panel: #0e2858; --rule: rgba(219, 231, 255, 0.18);
+  --ink: #eef3ff; --ink-dim: #a3b6de; --accent: #ff8a4c; --on-accent: #1d0d03;
+  --mono: "Atkinson Hyperlegible Mono", ui-monospace, Menlo, monospace;
+  --body: "Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--desk); color: var(--ink); font: 14px/1.45 var(--body); }
+.app { display: grid; grid-template-columns: 260px 1fr 420px; height: 100vh; }
+aside { border-left: 1px solid var(--rule); background: var(--panel); overflow-y: auto; padding: 0 0 16px; }
+aside header { display: flex; align-items: center; gap: 8px; padding: 12px 14px 10px; border-bottom: 1px solid var(--rule); }
+aside h1 { margin: 0; flex: 1; font: 600 13px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+aside h3 { margin: 14px 14px 6px; font: 600 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
+aside .tools { display: flex; gap: 6px; }
+.btn.sm { padding: 3px 8px; font-size: 12px; }
+.help { margin: 10px 14px 0; color: var(--ink-dim); font-size: 12.5px; }
+.live { margin: 10px 14px 0; padding: 8px 10px; border: 1px solid var(--rule); font: 600 13px var(--mono); color: var(--ink-dim); }
+.live.on { color: var(--ink); border-color: #8fd3ff; }
+.live.warn { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.tablewrap { margin: 0 14px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+th, td { padding: 4px 5px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { color: var(--ink-dim); font-weight: 600; font-size: 10.5px; vertical-align: bottom; white-space: normal; }
+th:first-child, td:first-child { text-align: left; white-space: normal; }
+th, td { padding-inline: 4px; }
+tr.cur { background: rgba(255,138,76,.14); }
+td.none { color: rgba(163, 182, 222, .45); }
+.log { list-style: none; margin: 0 14px; padding: 0; font-size: 12.5px; }
+.log li { padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.log .v { font: 600 11px var(--mono); color: var(--ink-dim); }
+.log .o { display: block; }
+.log .bad { color: #ff6f91; }
+.log .good { color: #3fe0b0; }
+.log .empty { color: var(--ink-dim); }
+nav { border-right: 1px solid var(--rule); background: var(--panel); overflow-y: auto; display: flex; flex-direction: column; }
+nav header { padding: 14px 16px 10px; border-bottom: 1px solid var(--rule); }
+nav h1 { margin: 0; font: 600 13px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+nav header p { margin: 4px 0 0; color: var(--ink-dim); font-size: 12.5px; }
+nav ol { list-style: none; margin: 0; padding: 6px 0; flex: 1; }
+nav a { display: grid; grid-template-columns: 26px 1fr; gap: 0 8px; padding: 8px 16px; color: inherit; text-decoration: none; border-left: 3px solid transparent; }
+nav a:hover { background: rgba(255,255,255,.04); }
+nav a[aria-current="page"] { background: rgba(255,138,76,.12); border-left-color: var(--accent); }
+nav .n { font: 600 12px var(--mono); color: var(--ink-dim); padding-top: 2px; }
+nav .t { font-weight: 700; }
+nav .d { grid-column: 2; color: var(--ink-dim); font-size: 12.5px; }
+nav .b { grid-column: 2; font: 11px var(--mono); color: var(--ink-dim); opacity: .7; overflow-wrap: anywhere; }
+nav .wip { font: 600 10.5px var(--mono); color: var(--accent); margin-left: 6px; letter-spacing: .06em; }
+nav footer { padding: 10px 16px 14px; border-top: 1px solid var(--rule); color: var(--ink-dim); font-size: 12px; }
+kbd { font: 600 11px var(--mono); border: 1px solid var(--rule); border-radius: 3px; padding: 0 4px; }
+main { display: flex; flex-direction: column; min-width: 0; }
+.bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--rule); }
+.bar h2 { margin: 0; font-size: 15px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn { font: 600 13px var(--mono); padding: 6px 12px; border-radius: 3px; border: 1px solid var(--ink-dim); background: transparent; color: var(--ink); cursor: pointer; text-decoration: none; }
+.btn:hover { background: rgba(255,255,255,.06); }
+iframe { flex: 1; width: 100%; border: 0; background: var(--desk); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 240px 1fr; grid-template-rows: 1fr auto; }
+  aside { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rule); max-height: 40vh; }
+}
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; height: auto; min-height: 100vh; }
+  main { min-height: 80vh; }
+  nav { border-right: 0; border-bottom: 1px solid var(--rule); max-height: 38vh; }
+  nav footer { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav aria-label="Variants">
+    <header>
+      <h1>Power countdown</h1>
+      <p>Ten ways to show the ghost timer running out. Each one is a branch.</p>
+    </header>
+    <ol id="list"></ol>
+    <footer><kbd>[</kbd> <kbd>]</kbd> previous / next, also while playing. <kbd>R</kbd> reloads the variant.</footer>
+  </nav>
+  <main>
+    <div class="bar">
+      <h2 id="title"></h2>
+      <button class="btn" id="prev" type="button" aria-label="Previous variant">&larr;</button>
+      <button class="btn" id="next" type="button" aria-label="Next variant">&rarr;</button>
+      <button class="btn" id="reload" type="button">Reload</button>
+      <a class="btn" id="open" target="_blank" rel="noopener">Open alone</a>
+    </div>
+    <iframe id="game" title="Game"></iframe>
+  </main>
+  <aside aria-label="Chase tracker">
+    <header>
+      <h1>Chase tracker</h1>
+      <div class="tools">
+        <button class="btn sm" id="csv" type="button">CSV</button>
+        <button class="btn sm" id="reset" type="button">Reset</button>
+      </div>
+    </header>
+    <p class="help">Watches the last <b>3 s</b> of every power-up. It records whether you were chasing a scared ghost, how close you got, and how much time was left when you turned away.</p>
+    <div class="live" id="live">No power-up</div>
+    <h3>By variant</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Variant</th><th title="Power-ups seen">Runs</th><th title="Share of power-ups where you were chasing when the last 3 s started">Chase at 3s</th><th title="Average time left when you turned away from the ghost you were chasing">Turned at</th><th title="Average closest path distance to a scared ghost in the last 3 s, in tiles">Closest</th><th title="Ghosts eaten in the last 3 s">Late eats</th><th title="Caught within 2 s after the power ran out">Caught</th></tr></thead>
+        <tbody id="summary"></tbody>
+      </table>
+    </div>
+    <h3>Runs, newest first</h3>
+    <ol class="log" id="log"><li class="empty">Play a variant and eat a power dot.</li></ol>
+  </aside>
+</div>
+<script>
+const VARIANTS = [
+  ['00-baseline', 'Baseline: timer bar', 'The original: a draining bar over the top wall (idea 1).', 'main'],
+  ['01-ink-refill', 'Ink refill', 'Scared ghosts fill back up with their own colour from the tail.', 't3/ink-refill-ghost-power-fill'],
+  ['02-clock-halos', 'Ghost clock halos', 'A ticking watch-face ring around each scared ghost empties clockwise.', 't3/clock-halos-scared-ghosts'],
+  ['03-burning-fuse', 'Burning fuse', 'A spark burns once round the outer wall and pops at the end.', 't3/burning-fuse-power-countdown'],
+  ['04-wall-tide', 'Wall tide', 'Walls turn icy; normal blue floods in from the edges to the pen.', 't3/wall-tide-power-timer'],
+  ['05-heartbeat', 'Heartbeat', 'An edge glow beats lub-dub, speeding up and warming (with sound).', 't3/heartbeat-power-vignette-pulse'],
+  ['06-waking-ghosts', 'Ghosts waking up', 'Ghosts go dazed, sleepy, shivering and glaring as time runs out.', 't3/waking-ghosts-countdown-animation'],
+  ['07-pen-hourglass', 'Pen hourglass', 'The ghost pen becomes an hourglass that drains with the power.', 't3/pen-hourglass-power-timer'],
+  ['08-deflating-player', 'Deflating player', 'The player swells with sparkles that peel off one per second.', 't3/deflating-player-power-countdown'],
+  ['09-final-count', '3-2-1 stamps', 'Calm until 3 s left, then big numerals stamp on each second.', 't3/final-count-stamps'],
+  ['10-dot-sweep', 'Dot field sweep', 'All dots light up; a radar hand sweeps them back to normal.', 't3/dot-sweep-power-clock'],
+];
+const $ = id => document.getElementById(id);
+const list = $('list'), frame = $('game');
+let current = 0;
+
+VARIANTS.forEach(([slug, name, desc, branch, wip], i) => {
+  const li = document.createElement('li'), a = document.createElement('a');
+  a.href = '#' + slug;
+  a.innerHTML = `<span class="n">${String(i).padStart(2, '0')}</span><span class="t"></span><span class="d"></span><span class="b"></span>`;
+  a.querySelector('.t').textContent = name;
+  if (wip) a.querySelector('.t').insertAdjacentHTML('beforeend', '<span class="wip">IN PROGRESS</span>');
+  a.querySelector('.d').textContent = desc;
+  a.querySelector('.b').textContent = branch;
+  li.appendChild(a);
+  list.appendChild(li);
+});
+
+function show(i, push = true) {
+  current = (i + VARIANTS.length) % VARIANTS.length;
+  const [slug, name] = VARIANTS[current];
+  const url = `v/${slug}.html`;
+  load(url, current);
+  $('open').href = url;
+  $('title').textContent = `${String(current).padStart(2, '0')} · ${name}`;
+  document.title = `${name} · Countdown Variants`;
+  render();
+  list.querySelectorAll('a').forEach((a, k) => { if (k === current) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  list.querySelectorAll('a')[current].scrollIntoView({ block: 'nearest' });
+  if (push) history.replaceState(null, '', '#' + slug);
+}
+// Load the branch's latest file with one extra script after the game rules, so the tracker can read
+// the live game (window.__game) and its constants (window.__Core). Gameplay is unchanged.
+const HOOK = '<script>window.__Core = Core; (() => { const make = Core.createGame; Core.createGame = (...a) => (window.__game = make(...a)); })();<\/script>';
+let loadSeq = 0;
+async function load(url, index) {
+  const seq = ++loadSeq;
+  try {
+    let html = await (await fetch(url + '?t=' + Date.now(), { cache: 'no-store' })).text();
+    if (seq !== loadSeq) return;
+    const at = html.indexOf('<script id="core">');
+    const end = at < 0 ? -1 : html.indexOf('<\/script>', at);
+    if (end >= 0) html = html.slice(0, end + 9) + HOOK + html.slice(end + 9);
+    frame.removeAttribute('src');
+    frame.srcdoc = html;
+  } catch {
+    frame.src = url + '?t=' + Date.now(); // tracker off, game still playable
+  }
+}
+
+// ---------- chase tracker ----------
+// Each power-up is one run. During the last WARN seconds it records whether the player was chasing
+// a scared ghost, the closest path distance reached, and the time left when the player turned away.
+// "Chasing" means the maze path distance to the nearest scared ghost (within RANGE tiles) has been
+// shrinking; the chase ends once it has not shrunk for LET_GO seconds, and the turn is dated to the
+// moment the player was closest, which is when they decided to stop closing in.
+const WARN = 3, RANGE = 8, TREND = 0.3, LET_GO = 0.3, AFTER = 2;
+let runs = [];
+let T = { g: null };
+
+function pathDistances(g, Core) {
+  const m = g.maze, W = m.W, H = m.H, dist = new Int16Array(W * H).fill(-1);
+  const [px, py] = g.pos(g.player);
+  const sx = ((Math.round(px) % W) + W) % W, sy = Math.round(py);
+  const q = [sy * W + sx];
+  dist[q[0]] = 0;
+  for (let i = 0; i < q.length; i++) {
+    const x = q[i] % W, y = (q[i] / W) | 0;
+    for (const d of Core.DIRS) {
+      const nx = (x + d.x + W) % W, ny = y + d.y;
+      if (ny < 0 || ny >= H) continue;
+      const j = ny * W + nx;
+      if (dist[j] >= 0 || m.tiles[j] !== Core.PATH) continue;
+      dist[j] = dist[q[i]] + 1;
+      q.push(j);
+    }
+  }
+  return { dist, W, px, py };
+}
+
+function nearestScared(g, Core) {
+  const { dist, W, px, py } = pathDistances(g, Core);
+  let best = null;
+  g.enemies.forEach((e, i) => {
+    if (!e.scared || e.state !== 'active') return;
+    const [ex, ey] = g.pos(e);
+    const tx = ((Math.round(ex) % W) + W) % W, ty = Math.round(ey);
+    let d = dist[ty * W + tx];
+    if (d < 0) d = Math.hypot(ex - px, ey - py);
+    if (!best || d < best.d) best = { d, i, name: e.def.name };
+  });
+  return best;
+}
+
+function newRun(g) {
+  return {
+    slug: VARIANTS[current][0], name: VARIANTS[current][1], level: g.level, total: g.frightTotal,
+    hist: [], chasing: false, target: -1, lastApproach: 0, chaseMin: Infinity, chaseMinLeft: 0,
+    warned: false, chasingAtWarn: false, closest: Infinity, turnedAt: null, turnedDist: null,
+    lateEats: [], heldOn: false, endDist: null, died: false, diedDuring: false, done: false,
+  };
+}
+
+function finish(run, how) {
+  if (!run || run.done) return;
+  run.done = true;
+  run.how = how;
+  delete run.hist;
+  runs.unshift(run);
+  render();
+}
+
+function sample() {
+  requestAnimationFrame(sample);
+  let w, g, Core;
+  try { w = frame.contentWindow; g = w && w.__game; Core = w && w.__Core; } catch { return; }
+  if (!g || !Core) { live(null); return; }
+  if (T.g !== g) T = { g, prevFright: 0, run: null, states: g.enemies.map(e => e.state), after: null };
+  const fright = g.fright, run = T.run;
+
+  // a fresh power-up (also when a second power dot refills the timer)
+  if (fright > T.prevFright + 0.05) {
+    if (run) finish(run, 'refreshed');
+    T.run = newRun(g);
+    T.after = null;
+  }
+  const r = T.run;
+
+  // ghosts eaten since the last sample
+  g.enemies.forEach((e, i) => {
+    if (T.states[i] !== 'returning' && e.state === 'returning' && r && fright > 0) {
+      if (fright <= Math.min(WARN, r.total)) r.lateEats.push(+fright.toFixed(2));
+      if (r.target === i) { r.chasing = false; r.target = -1; r.hist = []; r.chaseMin = Infinity; }
+    }
+  });
+  T.states = g.enemies.map(e => e.state);
+
+  if (r && fright > 0 && g.state === 'playing') {
+    const near = nearestScared(g, Core), now = g.time;
+    if (near && near.d <= RANGE) {
+      if (near.i !== r.target) { r.hist = []; r.target = near.i; r.chaseMin = Infinity; }
+      r.hist.push([now, near.d]);
+      while (r.hist.length > 2 && now - r.hist[1][0] > TREND) r.hist.shift();
+      const old = r.hist[0];
+      if (near.d <= 1 || (now - old[0] >= TREND * 0.6 && near.d < old[1] - 0.01)) {
+        r.lastApproach = now;
+        r.chasing = true;
+      }
+      if (r.chasing && near.d <= r.chaseMin) { r.chaseMin = near.d; r.chaseMinLeft = fright; }
+    } else if (r.chasing) {
+      r.lastApproach = Math.min(r.lastApproach, now - LET_GO - 0.01);
+    }
+    const inWarn = fright <= Math.min(WARN, r.total);
+    if (inWarn && !r.warned) { r.warned = true; r.chasingAtWarn = r.chasing; }
+    if (inWarn && near) r.closest = Math.min(r.closest, near.d);
+    // the chase ends: date the turn to when they were closest
+    if (r.chasing && now - r.lastApproach > LET_GO) {
+      r.chasing = false;
+      if (r.chaseMinLeft <= Math.min(WARN, r.total) && r.turnedAt == null) {
+        r.turnedAt = +r.chaseMinLeft.toFixed(2);
+        r.turnedDist = r.chaseMin;
+      }
+      r.chaseMin = Infinity;
+    }
+    r.near = near;
+  }
+
+  // power ran out (or the level ended it)
+  if (r && T.prevFright > 0 && fright <= 0) {
+    if (g.state === 'dying') { r.diedDuring = true; finish(r, 'died'); T.run = null; }
+    else {
+      if (r.chasing) { r.heldOn = true; r.endDist = r.near ? r.near.d : null; }
+      T.after = { run: r, until: g.time + AFTER };
+      T.run = null;
+    }
+  }
+  if (r && fright > 0 && g.state === 'dying') { r.diedDuring = true; finish(r, 'died'); T.run = null; }
+  if (T.after) {
+    if (g.state === 'dying') { T.after.run.died = true; finish(T.after.run, 'caught'); T.after = null; }
+    else if (g.time >= T.after.until || g.state === 'over') { finish(T.after.run, 'ended'); T.after = null; }
+  }
+  T.prevFright = fright;
+  live(T.run, fright);
+}
+
+function live(r, fright) {
+  const el = $('live');
+  if (!r) { el.className = 'live'; el.textContent = 'No power-up'; return; }
+  const warn = fright <= Math.min(WARN, r.total);
+  el.className = 'live ' + (warn ? 'warn' : 'on');
+  const n = r.near;
+  el.textContent = `${fright.toFixed(1)}s left · ` + (n ? `${r.chasing ? 'CHASING' : 'nearest'} ${n.name} · ${tiles(n.d)}` : 'no scared ghost left');
+}
+
+const tiles = v => (v == null || !isFinite(v) ? '?' : `${Math.round(v)} tile${Math.round(v) === 1 ? '' : 's'}`);
+const fmt = (v, d = 1) => (v == null || !isFinite(v) ? '–' : v.toFixed(d));
+const avg = a => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
+
+function outcome(r) {
+  if (r.diedDuring) return [['Died during the power', 'bad']];
+  if (r.died) return [[`Caught after the power ran out${r.heldOn ? ` (still chasing, ${tiles(r.endDist)} away)` : ''}`, 'bad']];
+  const parts = [];
+  if (r.lateEats.length) parts.push([`Ate a ghost with ${r.lateEats.map(x => x.toFixed(1) + 's').join(', ')} left`, 'good']);
+  if (r.turnedAt != null) parts.push([`Turned away at ${r.turnedAt.toFixed(1)}s left, ${tiles(r.turnedDist)} from the ghost`, 'good']);
+  if (r.heldOn) parts.push([`Still chasing when it ran out, ${tiles(r.endDist)} away`, 'bad']);
+  if (r.how === 'refreshed') parts.push(['Ate another power dot before it ran out', '']);
+  else if (!parts.length) parts.push(['Not chasing in the last 3 s', '']);
+  return parts;
+}
+
+function render() {
+  const body = $('summary');
+  body.replaceChildren();
+  VARIANTS.forEach(([slug, name], i) => {
+    const rs = runs.filter(r => r.slug === slug);
+    const tr = document.createElement('tr');
+    if (i === current) tr.className = 'cur';
+    const turned = rs.filter(r => r.turnedAt != null).map(r => r.turnedAt);
+    const closest = rs.filter(r => isFinite(r.closest)).map(r => r.closest);
+    const cells = [
+      `${String(i).padStart(2, '0')} ${name}`,
+      rs.length || '',
+      rs.length ? Math.round(100 * rs.filter(r => r.chasingAtWarn).length / rs.length) + '%' : '',
+      turned.length ? fmt(avg(turned)) + 's' : '',
+      closest.length ? fmt(avg(closest)) : '',
+      rs.length ? rs.reduce((s, r) => s + r.lateEats.length, 0) : '',
+      rs.length ? rs.filter(r => r.died).length : '',
+    ];
+    cells.forEach(c => { const td = document.createElement('td'); td.textContent = c === '' ? '–' : c; if (c === '') td.className = 'none'; tr.appendChild(td); });
+    body.appendChild(tr);
+  });
+  const log = $('log');
+  log.replaceChildren();
+  if (!runs.length) { log.innerHTML = '<li class="empty">Play a variant and eat a power dot.</li>'; return; }
+  for (const r of runs.slice(0, 40)) {
+    const li = document.createElement('li');
+    const v = document.createElement('span');
+    v.className = 'v';
+    v.textContent = `${r.name} · level ${r.level} · ${r.total.toFixed(1)}s power${r.chasingAtWarn ? ' · chasing at 3 s' : ''}`;
+    li.appendChild(v);
+    for (const [text, cls] of outcome(r)) {
+      const o = document.createElement('span');
+      o.className = 'o ' + cls;
+      o.textContent = text;
+      li.appendChild(o);
+    }
+    log.appendChild(li);
+  }
+}
+
+$('reset').onclick = () => { runs = []; if (T.run) T.run = null; T.after = null; render(); };
+$('csv').onclick = () => {
+  const head = ['variant', 'level', 'power_s', 'chasing_at_3s', 'closest_tiles_last_3s', 'turned_at_s_left', 'turned_tiles', 'late_eats_s_left', 'still_chasing_at_end', 'end_tiles', 'caught_after', 'died_during'];
+  const rows = runs.map(r => [r.slug, r.level, r.total.toFixed(2), r.chasingAtWarn, isFinite(r.closest) ? r.closest : '', r.turnedAt ?? '', r.turnedDist ?? '', r.lateEats.join(' '), r.heldOn, r.endDist ?? '', r.died, r.diedDuring]);
+  const csv = [head, ...rows].map(row => row.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'chase-tracker.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+requestAnimationFrame(sample);
+render();
+
+const fromHash = () => Math.max(0, VARIANTS.findIndex(v => v[0] === location.hash.slice(1)));
+
+function onKey(ev) {
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if (ev.key === ']') { ev.preventDefault(); show(current + 1); }
+  else if (ev.key === '[') { ev.preventDefault(); show(current - 1); }
+  else if ((ev.key === 'r' || ev.key === 'R') && ev.currentTarget === window) show(current);
+}
+addEventListener('keydown', onKey);
+// The game keeps keyboard focus while playing, so listen inside the frame too (same origin).
+frame.addEventListener('load', () => {
+  try { frame.contentWindow.addEventListener('keydown', onKey); frame.contentWindow.focus(); } catch { /* not same origin */ }
+});
+list.addEventListener('click', ev => {
+  const a = ev.target.closest('a');
+  if (!a) return;
+  ev.preventDefault();
+  show([...list.querySelectorAll('a')].indexOf(a));
+});
+$('prev').onclick = () => show(current - 1);
+$('next').onclick = () => show(current + 1);
+$('reload').onclick = () => show(current);
+addEventListener('hashchange', () => show(fromHash(), false));
+show(fromHash());
+</script>
+</body>
+</html>
