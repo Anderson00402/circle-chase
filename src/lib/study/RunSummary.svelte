@@ -114,7 +114,7 @@
 				<div class="table-wrap">
 					<table>
 						<caption class="visually-hidden">Power-ups in this run</caption>
-						<thead><tr><th scope="col">#</th><th scope="col" class="n">Power</th><th scope="col">What happened</th><th scope="col" class="n" title="Power left when the player turned away from the ghost (or ate it)">Turned away</th><th scope="col" class="n">Ghosts eaten</th><th scope="col"><span class="visually-hidden">Replay</span></th></tr></thead>
+						<thead><tr><th scope="col">#</th><th scope="col" class="n">Power</th><th scope="col">What happened</th><th scope="col" class="n" title="Power left when the player turned away from the ghost (or ate it)">Turned away</th><th scope="col" class="n eats">Ghosts eaten</th><th scope="col"><span class="visually-hidden">Replay</span></th></tr></thead>
 						<tbody>
 							{#each d.rows as t (t._id)}
 								<tr class:dim={!t.counted}>
@@ -125,7 +125,7 @@
 										{#if t.reason}<small class="why">Not counted: {t.reason.charAt(0).toLowerCase() + t.reason.slice(1)}</small>{/if}
 									</td>
 									<td class="n num">{turnWords(t.outcome, t.turnLeft, t.lastChaseEnd) ?? '-'}</td>
-									<td class="n num">{t.eats}</td>
+									<td class="n num eats">{t.eats}</td>
 									<td>{#if t.clipId}<a href={replayHref(t._id, { run: blockKey })}>Replay</a>{:else}<a class="dim" href={replayHref(t._id, { run: blockKey })} title="No clip was kept for this one; its numbers and distance chart are there">Details</a>{/if}</td>
 								</tr>
 							{/each}
@@ -209,6 +209,12 @@
 	.go { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 	.k { margin-left: 6px; opacity: 0.75; }
 	.k :global(kbd) { background: transparent; color: inherit; border-color: currentColor; }
+	@media (max-width: 560px) {
+		.eats { display: none; }
+		th, td { padding: 6px 4px; }
+		td.n { white-space: normal; }
+		.what-cell { min-width: 0; }
+	}
 	@media (max-width: 860px) {
 		.grid { grid-template-columns: minmax(0, 1fr); }
 		.stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }

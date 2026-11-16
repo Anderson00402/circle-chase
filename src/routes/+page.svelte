@@ -324,7 +324,7 @@
 <style>
 	.console {
 		/* Thumbnail size: three rows of cards must fit the screen height, five the left column's width. */
-		--thumb: clamp(84px, min(calc((100dvh - 368px) / 3), calc((100vw - 520px) / 5 - 14px)), 190px);
+		--thumb: clamp(84px, min(calc((100dvh - 392px) / 3), calc((100vw - 520px) / 5 - 14px)), 190px);
 		--gap: 10px;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) 380px;
@@ -348,6 +348,8 @@
 	.keys :global(kbd) { margin: 0 1px; }
 	.compare { display: flex; align-items: center; flex-wrap: wrap; gap: 4px var(--space-2); margin: calc(-1 * var(--space-2)) 0 var(--space-2); }
 	.compare .lab { font-size: var(--text-xs); }
+	/* Comparing all thirteen side by side is a laptop task; on a phone the participant comes first. */
+	@media (max-width: 600px) { .compare { display: none; } }
 	.cases-grid {
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr);
