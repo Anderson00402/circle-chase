@@ -110,11 +110,6 @@ export default defineSchema({
 		practice: v.optional(v.boolean()),
 		/** Simulated trials: the simulator run (`sessions.sim.run`), so a query can read one run alone (index `by_run`). */
 		simRun: v.optional(v.string()),
-		/**
-		 * Legacy: the packed series lived here until it moved to `trialSeries`. Only rows not yet moved by
-		 * `migrations.slimTrials` carry it; nothing writes or reads it.
-		 */
-		series: v.optional(packedSeries),
 		...trialContext,
 		...measures
 	})

@@ -1,12 +1,11 @@
 # Convex: study data
 
-> **Trial rows no longer hold the 10 Hz series** (since 2026-11-16). It lives in `trialSeries`
-> (one row per trial: `trialId`, `sessionId`, `cue`, `source`, `mode`, `createdAt`, `simRun?`,
-> `series`; indexes `by_trial`, `by_source_cue` [source, cue, createdAt], `by_run` [simRun, cue,
-> createdAt]). Read one with the query `trials.series({ trialId })` (unpacked arrays) or, inside
-> Convex, `packedSeriesOf(ctx, trial)` from `convex/trials.ts`. `trials.series` on a trial row is a
-> legacy optional field that is always empty after `migrations.slimTrials`; do not read it.
-> Simulated trials carry `simRun` (the session's `sim.run`), and the shared filter takes `run`.
+> **Changed 2026-11-16.** Trial rows no longer hold the 10 Hz series: it lives in `trialSeries`
+> (one row per trial). Read it with `trials.series({ trialId })` (unpacked arrays) or, inside
+> Convex, `packedSeriesOf(ctx, trial)` from `convex/trials.ts`. Simulated trials carry `simRun`
+> (the session's `sim.run`) and every filter takes `run`. Exports are streamed page by page (no
+> size limit) and there are ratings and blocks CSVs. Every rate reports `leftOut.oldRules`. All
+> writes go through one outbox that never drops a write (`src/lib/study/outbox.svelte.ts`).
 
 Everything the game measures lives here. What each measure means is defined in
 `docs/STUDY.md`; how it is computed is in `src/lib/telemetry/tracker.ts` (header comment) and
@@ -28,55 +27,90 @@ routes at `http://127.0.0.1:3211`. `npm run convex` pushes this folder on save.
 - **source**: every row is `human` or `bot`. Read queries take `source: 'human' | 'bot' | 'all'`
   and default to `human`, so bot data never mixes in unless asked for. A browser driven by
   automation (`navigator.webdriver`) or a URL with `?bot` records as `bot`.
+- **appVersion** is a build identifier: package version + git commit, `0.0.1+e8606d3`, with
+  `.dev` when served by the dev server (whose code may be ahead of that commit). Injected by
+  `vite.config.ts` (`define: __APP_BUILD__`).
+- **inputType**: `keyboard`, `touch`, `mouse`, `mixed`, `none`; in a browser driven by automation
+  `automated` (nothing pressed: steered by a script) or `automated-keyboard` and so on.
 - **Keys**: the browser makes a `key` for every session, block, trial and rating. Writes with a
   key that already exists return the existing row, so retries never duplicate.
 - **Times**: `createdAt`, `startedAt`... are server ms since 1970. Inside a trial (`startedAt`,
   `endedAt`, `eats[].t`, `turnAt`, series `t`) times are game seconds.
 - **Filter** (`Filter`), accepted by every read query marked "filter":
-  `{ source?, mode?: 'study'|'arcade', cue?, from?, to?, participantId?, sessionId? }`
-  (`from`/`to` are server ms, inclusive).
+  `{ source?, mode?: 'study'|'arcade', cue?, from?, to?, participantId?, sessionId?, run?, includePractice? }`
+  (`from`/`to` are server ms, inclusive; `run` is a simulator run, index `trials.by_run`).
+  `convex/lib/filters.ts`: `trialRange(ctx, f)` picks the narrowest index, `matches(t, f)` checks
+  the rest, `scanTrials(ctx, f)` does both.
+- **Rows left out for old rules**: a trial recorded before the current rules version lacks a
+  measure the rules need, so it cannot be recomputed and is in no rate. Every result with rates
+  says how many eligible rows (`inRates`) that left out: `leftOut: { oldRules }` on
+  `decisionRates()` / `CueSummary`, `summary.byCue` and `live.counters` ("Not counted: N recorded
+  before the current rules").
 
 ## Tables
 
 | Table | One row per | Notes |
 | --- | --- | --- |
-| `participants` | browser (anonymous id in localStorage) or bot | `number` 1, 2, 3... (for the counterbalanced cue order), `nickname?`, `device`, first/last seen |
-| `sessions` | visit | `mode`, `source`, `cueOrder`, `appVersion`, `difficulty`, `sound`, `reducedMotion`, `inputType`, `viewport`, started/ended, counters |
-| `blocks` | cue played within a session | `cue`, `orderIndex`, started/ended, `trialCount`, `engagedCount`, `deaths`, `score` |
-| `trials` | power-up | context + every measure of `TrialMeasures` (`src/lib/telemetry/types.ts`), including `lastChaseEnd` and `rulesVersion`; the 10 Hz series packed as bytes (~1 KB); `clipId?` |
+| `participants` | browser (anonymous id in localStorage) or bot | `number` 1, 2, 3... in order of first visit (everyone); `runNumber?` 1, 2, 3... per source for run-console participants only (picks the counterbalanced case order; play pages opened without a run never get one), `nickname?`, `device`, first/last seen |
+| `sessions` | visit | `mode`, `source`, `cueOrder`, `appVersion`, `difficulty`, `sound`, `reducedMotion`, `inputType`, `viewport`, started, `endedAt` (when its last open block closed; cleared when a block starts), counters, `run?`, `sim?` |
+| `blocks` | cue played within a session | `cue`, `orderIndex`, started/ended, `trialCount`, `engagedCount`, `deaths`, `score`, `pauses?`, `pausedSeconds?` |
+| `trials` | power-up | context + every measure of `TrialMeasures` (`src/lib/telemetry/types.ts`), including `lastChaseEnd` and `rulesVersion`; `simRun?`; `clipId?`. About 1 KB, no series |
+| `trialSeries` | trial | the 10 Hz series packed (~1 KB) + `trialId`, `sessionId`, `cue`, `source`, `mode`, `createdAt`, `simRun?`; indexes `by_trial`, `by_source_cue` [source, cue, createdAt], `by_run` [simRun, cue, createdAt] |
+| `trialDigests` | session | compact row per trial for the dashboard (`convex/lib/digest.ts`, owned by the dashboard); kept by `trials.save` and `admin.reclassify` |
 | `clips` | stored replay (engaged or caught trials) | packed scenes (`data`, 5-15 KB), `markers`, `numbers`, `cue`, `outcome`; separate so trial scans stay light |
 | `ratings` | questionnaire answer | `kind: 'block'` (clarity, distraction 1-7) or `'session'` (clearest, leastClear, comment) |
 | `presence` | open game page | heartbeat every 5 s; rows older than 20 s are swept by a cron |
-| `counters` | source (`human`, `bot`) | running totals for `live.counters`: trials, engaged, inRates, decisions, clips, sessions, participants, lastTrialAt; kept by `participants.ensure`, `sessions.start`, `trials.save` (practice trials not counted) |
+| `counters` | source (`human`, `bot`) | running totals for `live.counters`: trials, engaged, inRates, decisions, oldRules, clips, sessions, participants, lastTrialAt; kept by `participants.ensure`, `sessions.start`, `trials.save` (practice trials not counted) |
 
-## Write side (used by `src/lib/telemetry/client.svelte.ts`)
+## Write side (sent through the outbox, `src/lib/study/outbox.svelte.ts`)
 
 | Function | Arguments | Returns |
 | --- | --- | --- |
-| `participants.ensure` | `{ pid, source, device, nickname? }` | `{ participantId, number }` |
+| `participants.ensure` | `{ pid, source, device, nickname?, console? }`; `console: true` (the run console) gives the participant a `runNumber` if it has none | `{ participantId, number, runNumber }` (`runNumber` null unless a console participant) |
 | `sessions.start` | `{ key, pid, mode, source, cueOrder, appVersion, difficulty, sound, reducedMotion, inputType, viewport }` | `{ sessionId }` |
 | `sessions.update` | `{ key, inputType?, sound?, reducedMotion?, end? }` | session id or null |
 | `blocks.start` | `{ key, sessionKey, cue, orderIndex }` | `{ blockId }` |
-| `blocks.end` | `{ key, deaths, score }` (last call wins) | block id or null |
-| `trials.save` | `{ key, sessionKey, blockKey, trialIndex, sound, reducedMotion, inputType, appVersion, difficulty, ...measures, series: bytes, clip? }`; the outcome is recomputed from the measures (`convex/lib/rules.ts`), a write without `lastChaseEnd` is stored as `rulesVersion: 1` | `{ trialId, clipId }` |
-| `ratings.saveBlock` | `{ key, blockKey, clarity: 1-7, distraction: 1-7 }` | rating id |
-| `ratings.saveSession` | `{ key, sessionKey, clearest?, leastClear?, comment? }` | rating id |
+| `blocks.end` | `{ key, deaths, score, pauses?, pausedSeconds? }` (last call wins); sets the session's `endedAt` when no other block of it is open | block id, or null until the block exists |
+| `trials.save` | `{ key, sessionKey, blockKey, trialIndex, sound, reducedMotion, inputType, appVersion, difficulty, ...measures, series: bytes, clip? }`; the outcome is recomputed from the measures (`convex/lib/rules.ts`; a row that lacks a measure the rules need keeps an older `rulesVersion`); the series goes to `trialSeries`, the clip to `clips`, and the session's digest is updated | `{ trialId, clipId }` |
+| `ratings.saveBlock` | `{ key, blockKey, clarity: 1-7, distraction: 1-7, note? }` | rating id, or null until the block exists |
+| `ratings.saveSession` | `{ key, sessionKey, clearest?, leastClear?, comment? }` | rating id, or null until the session exists |
 | `presence.heartbeat` | `{ sessionKey, pid, cue, mode, source, state: 'playing'\|'idle', score, level, powerLeft, nickname? }` | row id |
 | `presence.leave` | `{ sessionKey }` | - |
 | `blocks.start` | also takes `mode?` (rules of this run, when they differ from the session's) | |
 | `runs.setup` | `{ sessionKey, run: { participantLabel, participantNumber, orderRow } }` | session id, or null until the session exists |
-| `runs.markBlock` | `{ blockKey, pauses?, pausedSeconds? }` | block id, or null until the block exists |
+| `runs.markBlock` | `{ blockKey, pauses?, pausedSeconds? }` (pauses now also come with `blocks.end`) | block id, or null until the block exists |
 
-Cue, mode, source, participant and block index of a trial are taken from its block and session,
-not from the caller.
+Cue, mode, source, participant, block index and `simRun` of a trial are taken from its block and
+session, not from the caller.
+
+### The outbox
+
+`startOutbox(client)` (root layout) starts the app's one queue; `getOutbox(client).send(fn, args,
+{ id?, lane?, onDone? })` queues a write; `outboxStatus` is reactive:
+`{ state: 'saved'|'saving'|'offline'|'failing', pending, waiting, failing, failingCount, lastError, savedAt }`.
+
+- Nothing is dropped: a failing write is retried with back-off (0.5 s doubling to 30 s) for as long
+  as the page lives and stays in localStorage until Convex has it. After 3 errors in a row it
+  counts as failing (`failingCount`, `lastError`), but it is still kept and retried.
+- Writes of one lane (the telemetry client uses the session key) go in order; a stuck lane does
+  not hold the others.
+- A write answering null (`runs.setup`, `runs.markBlock`, ratings, `blocks.end`,
+  `sessions.update`: their row is not there yet) waits, every 3 s then every 15 s; it counts as
+  `waiting`, not pending or failing.
+- Each tab stores its queue under `cc.outbox.<id>` with a heartbeat; queues of tabs quiet for
+  12 s (closed, crashed) and the older formats (`cc.queue.*`, `cc.run.outbox`) are adopted by any
+  page, so the console alone delivers what a closed play page left.
+- Checks: `src/lib/study/outbox.test.ts` (fake client), `node scripts/outbox-e2e.mjs` (Chrome:
+  offline, close the page, console alone delivers).
 
 ## Read side
 
 | Query | Arguments | Returns |
 | --- | --- | --- |
-| `summary.byCue` | filter | `{ source, cues: CueSummary[], all: CueSummary, scanned }` (see below) |
-| `trials.list` | filter + `outcome?`, `engagedOnly?`, `paginationOpts` | Convex page of trials, newest first, **without** `series` |
-| `trials.get` | `{ id }` | trial + `series: { t, left, dist, chasing, px, py }` (arrays) + `clipId`, `participant { number, nickname }`, `block { cue, orderIndex, trialCount }`; null if missing |
+| `summary.byCue` | filter | `{ source, cues: CueSummary[], all: CueSummary, scanned, leftOut: { oldRules } }` (see below) |
+| `trials.list` | filter + `outcome?`, `engagedOnly?`, `paginationOpts` | Convex page of trials, newest first |
+| `trials.series` | `{ trialId }` | the series unpacked `{ t, left, dist, chasing, px, py }` or null |
+| `trials.get` | `{ id }` | trial + `series` (as above, null if missing) + `clipId`, `participant { number, nickname }`, `block { cue, orderIndex, trialCount }`; null if missing |
 | `clips.byTrial` | `{ trialId }` | clip row with `data` (decode with `decodeClip`) or null |
 | `clips.get` | `{ id }` | clip row with `data` or null |
 | `clips.moments` | `{ cue?, outcome?, source?, paginationOpts }` | page of clips newest first, **without** `data` (`trialId`, `cue`, `outcome`, `markers`, `numbers`, `mazeId`, `level`, `t0`, `t1`, `scenes`, `size`, `createdAt`, `source`, `mode`) |
@@ -86,10 +120,23 @@ not from the caller.
 | `presence.nowPlaying` | `{}` | presence rows updated in the last 20 s (no `pid`) |
 | `runs.session` | `{ sessionKey }` | the run sheet: `participant`, `run` info, `runs[]` (one per block: `cue`, `orderIndex`, `mode`, `trials`, `counted` decisions, `wellTimed`, `caught`, `catches`, `clips`, `outcomes`, `clarity`, `distraction`); null until the session exists |
 | `runs.block` | `{ blockKey }` | one run for its summary: the same tally plus `rows[]` (each trial: `outcome`, `counted`, `total`, `turnLeft`, `eats`, `clipId`) and its rating; null until the block exists |
-| `exports.trials` | filter + `format: 'csv'\|'json'` | `{ filename, contentType, rows, body }`; CSV is one flat row per trial (52 columns, no series; includes `rulesVersion`, `decision`, `catchLate`, `lastChaseEnd`), JSON is full rows with the series unpacked and `decision` |
+| `exports.page` | filter + `kind: 'trials'\|'ratings'\|'blocks'`, `format: 'csv'\|'json'`, `paginationOpts` | `{ header, rows, isDone, continueCursor }`: CSV lines (header separate, the same on every page) or JSON objects; a page may hold fewer rows than asked |
 
-HTTP downloads with the same filter as query parameters:
-`GET http://127.0.0.1:3211/export/trials.csv?source=human&mode=study` (and `trials.json`).
+### Downloads (HTTP, streamed page by page, any size)
+
+`GET http://127.0.0.1:3211/export/<file>?<filter>` with the filter as query parameters (`source`,
+`mode`, `cue`, `from`, `to`, `participantId`, `sessionId`, `run`, `includePractice`); `pageSize`
+(1-1000) forces smaller pages. Rows created after the download started are left out.
+
+| File | One row per | Columns |
+| --- | --- | --- |
+| `trials.csv` | trial | ids, `createdAt`, who (`participantLabel`, `participantNumber`, `runNumber`, `orderNumber`, `orderRow`, `simRun`), `source`, `mode`, `cue`, `blockIndex` (run order in the session, from 0), `suggestedPosition` (position of the cue in the suggested order), `pauses`, `pausedSeconds` (of its block), settings, every measure flat (`after.*` spelled out), `outcome`, `rulesVersion`, `inRates`, `decision`, `catchLate`, `hasClip`, `practice` |
+| `trials.json` | trial | full row + who + pauses + `decision` + `series` unpacked |
+| `ratings.csv` | questionnaire answer | ids, who, `kind`, `cue`, `blockIndex`, `clarity`, `distraction`, `note`, `clearest`, `leastClear`, `comment` |
+| `blocks.csv` | run of a case (block) | ids, who, `cue`, `blockIndex`, `suggestedPosition`, start/end, `trials`, `engaged`, `deaths`, `score`, `pauses`, `pausedSeconds`, its rating, `appVersion`, `inputType` |
+
+A failure part way through ends the file with a line `EXPORT FAILED: ...`. Measured on 6,664
+simulated trials: `trials.csv` 2.6 s, `trials.json` (21 MB) 5 s.
 
 `live.counters.lastMinute` updates whenever a trial arrives; pass `now` and refresh it every few
 seconds if it must also fall back to 0 while nobody plays.
@@ -200,12 +247,20 @@ Places where the definitions needed a concrete reading (full list in `tracker.ts
 
 ## Practical limits
 
-Summary, dashboard and export queries read every trial of their filter in one query (they must:
-the rates and the bootstrap need every decision trial). `live.counters` does not: it reads the
-`counters` table and the last minute of trials. A trial row
-is about 2 KB, so a query stays within Convex's read limits (16 MB, 32k documents per function)
-up to roughly 5,000 trials per filter, which is far beyond a study of this size (a 13-cue study
-session gives about 60-100 trials). Beyond that, add per-cue counters maintained by
-`trials.save` or move summaries to a scheduled aggregate. Clips are never scanned by summaries.
-`dashboard.sessions` still reads the trials of its 100 newest sessions on every change, and
-`replays.list` the newest 4,000 trials; both are bounded but grow with the data.
+The local backend costs about 0.6 ms per document read, whatever its size: scanning 6,664 trial
+rows takes about 4 s with or without the series in them (measured: `summary.byCue` uncached
+about 5 s for 6,664 bot trials, 80 ms for the few human ones; `.shots/data/bench.sh`). So speed
+comes from reading fewer documents: the dashboard reads `trialDigests` (one per session) instead
+of trial rows. `summary.byCue`, `exports.page` and the run sheet still read trial rows (exports
+in pages, so they work at any size). Convex warns above 4,096 document reads per function and stops at 32,000 (or 16 MiB read);
+a trial row is about 1 KB. `live.counters` reads the `counters` table and the last
+minute of trials. Clips and series are never scanned by summaries.
+
+## Migrations (`convex/migrations.ts`)
+
+Resumable, in batches, never delete a row; started with `npx convex run`:
+
+| Mutation | Arguments | Effect |
+| --- | --- | --- |
+| `migrations.slimTrials` | `{ confirm: 'slim trials' }` | moves each trial's series into `trialSeries` and fills `simRun` (done 2026-11-16: 6,669 rows) |
+| `migrations.numberRunParticipants` | `{ confirm: 'number run participants' }` | gives `runNumber` to participants who already played through the console (per source, by first visit); stored numbers stay as they were (done: 35 bot, 0 human) |
