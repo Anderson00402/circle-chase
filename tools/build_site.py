@@ -33,11 +33,11 @@ OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '_site')
 # What each version is, in a sentence, for the home page. A branch that isn't listed shows its
 # latest commit message instead, and a pull request shows its title.
 NOTES = {
-    'main': 'The real game. Eat every dot; after a power dot you can catch the ghosts for a few seconds.',
+    'main': 'The basic game. Eat every dot; after a power dot you can catch the ghosts for a few seconds.',
     'Scream': ('Scared ghosts scream when you eat a power dot and keep wailing while you are close, '
                'and an evil laugh warns you the power-up is about to run out.'),
-    'fortnite': ("Made to play two sound clips that are only on the owner's computer. "
-                 'Here it uses the built-in sounds, so it plays like the main game.'),
+    'fortnite': ('Two sound clips: one gets louder as you get close to a power dot, '
+                 'and another plays when you eat one.'),
     'play-as-ghost': ('You steer the pink ghost and the computer plays the circle. '
                       'Catch it 3 times before it eats every dot, and run when it eats a power dot.'),
     'two-player': ('Two players on one keyboard: WASD against the arrow keys. '
@@ -47,9 +47,10 @@ NOTES = {
             'A power dot lights up everything for a few seconds.'),
 }
 
-# Game modes: branches that change how the game plays. Their tabs sit together at the right end
-# of the tab row, in this order; every other version stays on the left.
-RIGHT_SIDE = ['play-as-ghost', 'two-player', 'dash', 'fog']
+# Fun modes: branches that change the game just for fun. Their tabs sit together at the right end
+# of the tab row, in this order. Every other branch is an improvement to the main game: those go
+# on the left, after the main game. Main itself stays the basic game, without any fun-mode extras.
+FUN_MODES = ['play-as-ghost', 'two-player', 'dash', 'fog', 'Scream', 'fortnite']
 
 FONTS = ('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700'
          '&family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Major+Mono+Display&display=swap')
@@ -202,12 +203,13 @@ HOME = '''<!doctype html>
   .tab .kind {
     font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--you);
   }
-  /* The game modes start here and sit at the right end of the row. On a narrow screen the row
-     scrolls, and they simply follow the other tabs. */
+  /* Group labels in the tab row: improvements follow the main game on the left, and the fun modes
+     sit at the right end. On a narrow screen the row scrolls, and the fun modes simply follow. */
   .tabs .group {
-    margin-left: auto; align-self: center; padding: 0 4px 0 14px; white-space: nowrap;
+    align-self: center; padding: 0 4px 0 14px; white-space: nowrap;
     font: 600 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim);
   }
+  .tabs .group.fun { margin-left: auto; }
 
   /* One line about the version that is playing. */
   .about {
@@ -344,19 +346,30 @@ HOME = '''<!doctype html>
 '''
 
 
+def groups(versions):
+    """(main, improvements, fun modes, pull requests): fun modes in FUN_MODES order, the rest as they came."""
+    is_fun = lambda v: v['kind'] == 'branch' and v['name'] in FUN_MODES
+    main = [v for v in versions if v['kind'] == 'main']
+    improvements = [v for v in versions if v['kind'] == 'branch' and not is_fun(v)]
+    fun = sorted(filter(is_fun, versions), key=lambda v: FUN_MODES.index(v['name']))
+    pulls = [v for v in versions if v['kind'] == 'pr']
+    return main, improvements, fun, pulls
+
+
 def write_home(versions):
     def tab(v):
         return (f'<li><a class="tab" href="{html.escape(v["href"])}" data-key="{html.escape(v["key"])}">'
                 + (f'<span class="kind">{html.escape(v["kind_label"])}</span>' if v['kind_label'] else '')
                 + f'{html.escape(v["tab"])}</a></li>')
 
-    modes = lambda v: v['kind'] == 'branch' and v['name'] in RIGHT_SIDE
-    left = [v for v in versions if not modes(v)]
-    right = sorted(filter(modes, versions), key=lambda v: RIGHT_SIDE.index(v['name']))
-    versions = left + right
-    tabs = ''.join(map(tab, left))
-    if right:
-        tabs += '<li class="group" aria-hidden="true">Game modes</li>' + ''.join(map(tab, right))
+    main, improvements, fun, pulls = groups(versions)
+    versions = main + improvements + pulls + fun
+    tabs = ''.join(map(tab, main))
+    if improvements:
+        tabs += '<li class="group" aria-hidden="true">Improvements</li>' + ''.join(map(tab, improvements))
+    tabs += ''.join(map(tab, pulls))
+    if fun:
+        tabs += '<li class="group fun" aria-hidden="true">Fun modes</li>' + ''.join(map(tab, fun))
     data =[{k: v[k] for k in ('key', 'name', 'kind', 'path', 'note', 'updated', 'sandbox')} for v in versions]
     page = (HOME.replace('__FONTS__', html.escape(FONTS))
                 .replace('__README__', html.escape(f'https://github.com/{REPO}#make-your-own-version'))
@@ -384,7 +397,7 @@ def items(rows, empty):
 
 
 def write_versions_page(versions):
-    by_kind = {k: [v for v in versions if v['kind'] == k] for k in ('main', 'branch', 'pr')}
+    main, improvements, fun, pulls = groups(versions)
     readme = html.escape(f'https://github.com/{REPO}#make-your-own-version')
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -406,14 +419,16 @@ def write_versions_page(versions):
 </style></head>
 <body><main>
 <h1>Circle Chase versions</h1>
-<p>Every version of the game you can play. Main is the real game; the others are ideas being tried out.
-You can also switch between them on the <a href="../">home page</a>.</p>
+<p>Every version of the game you can play. Main is the basic game. Improvements try to make it better;
+fun modes change it just for fun. You can also switch between them on the <a href="../">home page</a>.</p>
 <h2>Main</h2>
-{items(by_kind['main'], '')}
-<h2>Versions</h2>
-{items(by_kind['branch'], 'No other versions right now.')}
+{items(main, '')}
+<h2>Improvements</h2>
+{items(improvements, 'No improvements being tried right now.')}
+<h2>Fun modes</h2>
+{items(fun, 'No fun modes right now.')}
 <h2>Pull requests</h2>
-{items(by_kind['pr'], 'No open pull requests right now.')}
+{items(pulls, 'No open pull requests right now.')}
 <p style="margin-top:28px">Want to make your own? <a href="{readme}">Here is how</a>.</p>
 </main></body></html>
 '''
