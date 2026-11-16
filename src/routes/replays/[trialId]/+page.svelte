@@ -1,0 +1,617 @@
+<script lang="ts">
+	/**
+	 * Replay player: one trial's recorded moment, redrawn with the real renderer and the cue the
+	 * player saw. Playback interpolates between the stored 20 Hz scenes (src/lib/replay/interp.ts),
+	 * so motion and cue animation are smooth at any speed, and scrubbing in any direction is exact.
+	 * The same moment can be redrawn with any other cue side by side.
+	 *
+	 * URL: /replays/<trialId>?<list filters>#left=1.20&vs=heartbeat&aids=hl,line,tag
+	 *   the query keeps the list's filters (for previous / next), the hash the playhead (in seconds
+	 *   left), the comparison cue and the viewing aids.
+	 */
+	import { useQuery } from 'convex-svelte';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { api } from '#convex/_generated/api.js';
+	import type { Id } from '#convex/_generated/dataModel.js';
+	import { cueById } from '#lib/game/cues/index.ts';
+	import { decodeClip, markersFor, type EncodedClip, type Marker } from '#lib/telemetry/recorder.ts';
+	import type { TrialMeasures } from '#lib/telemetry/types.ts';
+	import { Badge, Button, CueChip, EmptyState, InfoTip, Kbd, Page, Segmented, Select, cueListings } from '#lib/ui/index.ts';
+	import ReplayBoard from '#lib/replay/ReplayBoard.svelte';
+	import Timeline from '#lib/replay/Timeline.svelte';
+	import { indexAt, sceneAt, stepTime } from '#lib/replay/interp.ts';
+	import { targetCache } from '#lib/replay/target.ts';
+	import { applyList, readState, toSearch } from '#lib/replay/list.ts';
+	import { OUTCOME_LABEL, OUTCOME_MEANING, OUTCOME_TONE, describe, ghostName, leftWords, signed, ago } from '#lib/replay/story.ts';
+
+	const id = $derived(page.params.trialId ?? '');
+	const trialQ = useQuery(api.trials.get, () => ({ id: id as Id<'trials'> }));
+	const clipQ = useQuery(api.clips.byTrial, () => ({ trialId: id as Id<'trials'> }));
+	const trial = $derived(trialQ.data ?? null);
+	const loading = $derived(trialQ.isLoading || (clipQ.isLoading && !clipQ.error));
+	const missing = $derived(!!trialQ.error || (!trialQ.isLoading && !trialQ.data));
+
+	const decoded = $derived.by(() => {
+		const c = clipQ.data;
+		if (!c) return null;
+		try { return decodeClip(c as unknown as EncodedClip); } catch { return null; }
+	});
+	const scenes = $derived(decoded?.scenes ?? []);
+
+	// ---------- time range and markers ----------
+	const startT = $derived(trial?.startedAt ?? 0);
+	const endT = $derived(trial?.endedAt ?? 0);
+	const expired = $derived(trial?.endReason === 'expired');
+	const series = $derived.by(() => {
+		if (!trial?.series) return null;
+		const s = trial.series;
+		return { t: s.t.map((x) => trial.startedAt + x), dist: s.dist, chasing: s.chasing };
+	});
+	const t0 = $derived(scenes.length ? scenes[0].frame.t : (series?.t[0] ?? startT));
+	const t1 = $derived(scenes.length ? scenes[scenes.length - 1].frame.t : (series?.t[series.t.length - 1] ?? endT + 3));
+	const markers: Marker[] = $derived(decoded?.markers ?? (trial ? markersFor(trial as unknown as TrialMeasures) : []));
+
+	// ---------- playback state ----------
+	let time = $state(0);
+	let playing = $state(false);
+	let speed = $state<0.25 | 0.5 | 1>(1);
+	let loop = $state(false);
+	let compare = $state(false);
+	let vsCue = $state('none');
+	let aids = $state({ highlight: false, line: false, tag: false });
+	let readyFor = $state('');
+
+	const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+	// Start (or restart, when moving to another trial) once the data is in, from the hash if any.
+	$effect(() => {
+		if (!trial || clipQ.isLoading || readyFor === id) return;
+		readyFor = id;
+		const h = new URLSearchParams(location.hash.slice(1));
+		const at = h.get('left');
+		const fromHash = at !== null && Number.isFinite(+at);
+		time = fromHash ? clamp(endT - +at) : t0;
+		vsCue = h.get('vs') ?? (trial.cue === 'none' ? 'timer-bar' : 'none');
+		compare = h.has('vs');
+		const a = (h.get('aids') ?? '').split(',');
+		aids = { highlight: a.includes('hl'), line: a.includes('line'), tag: a.includes('tag') };
+		playing = !fromHash && !reduceMotion && scenes.length > 0;
+	});
+
+	const clamp = (t: number) => Math.min(t1, Math.max(t0, t));
+
+	// Real-time playback: game time advances with the wall clock times the speed.
+	$effect(() => {
+		if (!playing) return;
+		let last = performance.now();
+		let raf = requestAnimationFrame(function tick(now) {
+			const dt = Math.min(0.1, (now - last) / 1000);
+			last = now;
+			let t = time + dt * speed;
+			if (t >= t1) {
+				if (loop) t = t0 + (t - t1);
+				else { t = t1; playing = false; }
+			}
+			time = t;
+			if (playing) raf = requestAnimationFrame(tick);
+		});
+		return () => cancelAnimationFrame(raf);
+	});
+
+	// Keep the shareable state in the hash (not while playing: only when it settles).
+	$effect(() => {
+		if (!trial || readyFor !== id || playing) return;
+		const h = new URLSearchParams();
+		h.set('left', (endT - time).toFixed(2));
+		if (compare) h.set('vs', vsCue);
+		const a = [aids.highlight && 'hl', aids.line && 'line', aids.tag && 'tag'].filter(Boolean);
+		if (a.length) h.set('aids', a.join(','));
+		const url = page.url.pathname + page.url.search + '#' + h.toString();
+		const timer = setTimeout(() => { goto(url, { state: page.state, shallow: true, replace: true }).catch(() => {}); }, 250);
+		return () => clearTimeout(timer);
+	});
+
+	// ---------- what the playhead shows ----------
+	const scene = $derived(scenes.length ? sceneAt(scenes, time) : null);
+	const targets = $derived(targetCache(scenes, expired ? endT : null));
+	const nearestIndex = (t: number) => {
+		const i = indexAt(scenes, t);
+		return i + 1 < scenes.length && scenes[i + 1].frame.t - t < t - scenes[i].frame.t ? i + 1 : i;
+	};
+	const target = $derived(scenes.length ? targets(nearestIndex(time)) : { ghost: -1, dist: null, danger: false });
+	const left = $derived(endT - time);
+
+	const seriesAt = $derived.by(() => {
+		if (!series) return null;
+		let best = -1, bd = Infinity;
+		for (let i = 0; i < series.t.length; i++) {
+			const d = Math.abs(series.t[i] - time);
+			if (d < bd) { bd = d; best = i; }
+		}
+		return best >= 0 && bd < 0.11 ? { dist: series.dist[best], chasing: series.chasing[best] === 1 } : null;
+	});
+	const deathT = $derived(markers.find((m) => m.kind === 'death')?.t ?? null);
+	const status = $derived(
+		deathT !== null && time >= deathT ? { text: 'Caught', tone: 'bad' }
+		: left > 0 ? (left <= 3 ? { text: 'Power on, last 3 s', tone: 'warn' } : { text: 'Power on', tone: 'accent' })
+		: expired ? { text: 'Ghosts dangerous again', tone: 'bad' } : { text: 'Power cut short', tone: 'neutral' }
+	);
+
+	// The ghost the player was up against at the turn and at the end, for the story.
+	const storyGhosts = $derived.by(() => {
+		if (!trial || !scenes.length) return {};
+		const pick = (t: number | null) => {
+			if (t === null) return null;
+			const tg = targets(nearestIndex(Math.min(t, endT - 0.05)));
+			return tg.ghost >= 0 ? scenes[nearestIndex(t)].frame.ghosts[tg.ghost]?.id ?? null : null;
+		};
+		return { turnGhost: pick(trial.turnAt === null ? null : trial.startedAt + trial.turnAt), endGhost: pick(endT) };
+	});
+	const story = $derived(trial ? describe(trial, storyGhosts) : '');
+
+	// ---------- cues ----------
+	const cue = $derived(cueById(trial?.cue));
+	const vs = $derived(cueById(vsCue));
+	const cueOptions = $derived(cueListings().filter((c) => c.ready && c.id !== trial?.cue).map((c) => ({ value: c.id, label: `${c.code} · ${c.name}` })));
+	function cycleCue(dir: 1 | -1) {
+		const ids = cueOptions.map((o) => o.value);
+		const i = ids.indexOf(vsCue as (typeof ids)[number]);
+		vsCue = ids[(i + dir + ids.length) % ids.length];
+		compare = true;
+	}
+
+	// ---------- previous / next in the current list ----------
+	const listState = $derived(readState(page.url.searchParams, trial?.source ?? 'human'));
+	const listQ = useQuery(api.replays.list, () => (trial ? { source: listState.source } : 'skip'));
+	const nav = $derived.by(() => {
+		const rows = listQ.data ? applyList(listQ.data.rows, listState) : [];
+		const i = rows.findIndex((r) => r.trialId === id);
+		const q = toSearch(listState);
+		const href = (r: (typeof rows)[number] | undefined) => (r ? `/replays/${r.trialId}${q}` : null);
+		return { prev: i > 0 ? href(rows[i - 1]) : null, next: i >= 0 ? href(rows[i + 1]) : null, pos: i, count: rows.length, list: `/replays${q}` };
+	});
+
+	// ---------- transport ----------
+	function seek(t: number) { time = clamp(t); }
+	let resumeAfterScrub = false;
+	function onscrub(t: number, phase: 'start' | 'move' | 'end') {
+		if (phase === 'start') { resumeAfterScrub = playing; playing = false; }
+		seek(t);
+		if (phase === 'end' && resumeAfterScrub) playing = true;
+	}
+	function toggle() {
+		if (!scenes.length) return;
+		if (!playing && time >= t1 - 1e-3) time = t0;
+		playing = !playing;
+	}
+	function step(dir: 1 | -1) {
+		playing = false;
+		seek(scenes.length ? stepTime(scenes, time, dir) : time + dir * 0.1);
+	}
+	function jump(dir: 1 | -1) {
+		playing = false;
+		const ts = markers.map((m) => clamp(m.t));
+		const t = dir > 0 ? ts.find((x) => x > time + 0.02) : [...ts].reverse().find((x) => x < time - 0.02);
+		seek(t ?? (dir > 0 ? t1 : t0));
+	}
+	function restart() { time = t0; playing = scenes.length > 0 && !reduceMotion ? true : playing; }
+
+	function onkey(e: KeyboardEvent) {
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
+		const el = e.target as HTMLElement;
+		if (el.closest('input, select, textarea, [contenteditable]')) return;
+		const onButton = el.closest('button, a');
+		const k = e.key;
+		if ((k === ' ' || k === 'Enter') && onButton) return;
+		let done = true;
+		if (k === ' ' || k === 'k') toggle();
+		else if (k === 'ArrowRight') e.shiftKey ? (playing = false, seek(time + 1)) : step(1);
+		else if (k === 'ArrowLeft') e.shiftKey ? (playing = false, seek(time - 1)) : step(-1);
+		else if (k === '.' ) jump(1);
+		else if (k === ',') jump(-1);
+		else if (k === 'Home' || k === '0') { playing = false; seek(t0); }
+		else if (k === 'End') { playing = false; seek(t1); }
+		else if (k === 'l') loop = !loop;
+		else if (k === '1') speed = 0.25;
+		else if (k === '2') speed = 0.5;
+		else if (k === '3') speed = 1;
+		else if (k === 'c') compare = !compare;
+		else if (k === ']') cycleCue(1);
+		else if (k === '[') cycleCue(-1);
+		else if (k === 'h') { const on = !(aids.highlight && aids.line); aids = { ...aids, highlight: on, line: on }; }
+		else if (k === 't') aids = { ...aids, tag: !aids.tag };
+		else done = false;
+		if (done) e.preventDefault();
+	}
+
+	const MARKER_LABEL: Record<Marker['kind'], string> = { powerStart: 'Power on', eat: 'Ate', turnAway: 'Turned away', powerEnd: 'Power out', death: 'Caught' };
+	const markerText = (m: Marker) => (m.kind === 'eat' ? `Ate ${ghostName(m.ghost) ?? 'ghost'}` : m.kind === 'powerEnd' && !expired ? 'Power cut' : MARKER_LABEL[m.kind]);
+
+	const fmt = (x: number | null | undefined, d = 1) => (x === null || x === undefined ? null : x.toFixed(d));
+	const W = $derived(scene?.maze.W ?? 28);
+	const H = $derived(scene?.maze.H ?? 31);
+	const outcome = $derived((trial?.outcome ?? 'other') as keyof typeof OUTCOME_LABEL);
+	const noClipReason = $derived(
+		!trial ? '' : !trial.engaged && trial.outcome !== 'caught'
+			? `Only power-ups where the player was chasing in the last 3 s, or was caught, are recorded. This one was "${OUTCOME_LABEL[outcome].toLowerCase()}", so only its numbers and distance series were kept.`
+			: 'This power-up qualified for a recording, but none was stored (the recording buffer did not reach back far enough, or the save failed). Its numbers and distance series are below.'
+	);
+</script>
+
+<svelte:head><title>Replay{trial ? ` · ${OUTCOME_LABEL[outcome]} · ${cue.name}` : ''} · Circle Chase</title></svelte:head>
+<svelte:window onkeydown={onkey} />
+
+<Page width="full" class="replay-page">
+	<div class="top">
+		<nav class="crumbs" aria-label="Replays">
+			<a href={nav.list}>&larr; All replays</a>
+			<span aria-hidden="true">&middot;</span>
+			<a href="/dashboard">Dashboard</a>
+		</nav>
+		{#if trial}
+			<div class="headline">
+				<h1>
+					<span class="o {OUTCOME_TONE[outcome]}">{OUTCOME_LABEL[outcome]}</span>
+					<span class="with">with</span>
+					<CueChip cue={cue} size="md" />
+				</h1>
+				{#if trial.source === 'bot'}<Badge tone="sim" title="Recorded from a simulated player, not a person">Simulated</Badge>{/if}
+			</div>
+			<div class="prevnext">
+				{#if nav.pos >= 0}<span class="pos num">{nav.pos + 1} of {nav.count}</span>{/if}
+				{#if nav.prev}<Button size="sm" href={nav.prev}>&larr; Previous</Button>{:else}<Button size="sm" disabled>&larr; Previous</Button>{/if}
+				{#if nav.next}<Button size="sm" href={nav.next}>Next &rarr;</Button>{:else}<Button size="sm" disabled>Next &rarr;</Button>{/if}
+			</div>
+		{/if}
+	</div>
+
+	{#if missing}
+		<EmptyState title="Replay not found" icon="replay">
+			There is no trial with this link. It may have been deleted when the data was cleared.
+			{#snippet actions()}<Button variant="primary" href="/replays">Browse replays</Button>{/snippet}
+		</EmptyState>
+	{:else if loading || !trial}
+		<p class="loading">Loading the replay&hellip;</p>
+	{:else}
+		<div class="player" class:compare style:--aspect={W / H} style:--n={compare ? 2 : 1}>
+			<section class="stage" aria-label="Replay board">
+				{#if scene}
+					<div class="captions">
+						<div class="cap">
+							<span class="eyebrow">As played</span>
+							<CueChip cue={cue} size="sm" />
+						</div>
+						{#if compare}
+							<div class="cap">
+								<label class="eyebrow" for="vs-cue">Redrawn with</label>
+								<Select id="vs-cue" size="sm" options={cueOptions} bind:value={vsCue} />
+							</div>
+						{/if}
+					</div>
+					<div class="boards">
+						<ReplayBoard {scene} {cue} {aids} {target} {left} {reduceMotion} label="Replay as the player saw it, with {cue.name}" />
+						{#if compare}
+							<ReplayBoard {scene} cue={vs} {aids} {target} {left} {reduceMotion} label="The same moment redrawn with {vs.name}" />
+						{/if}
+					</div>
+				{:else}
+					<div class="noclip">
+						<EmptyState title="No recording for this trial" icon="replay">
+							{noClipReason}
+						</EmptyState>
+					</div>
+				{/if}
+			</section>
+
+			<div class="side">
+				<section class="story" aria-label="What happened">
+					<p class="meaning"><span class="dot {OUTCOME_TONE[outcome]}"></span>{OUTCOME_MEANING[outcome]}</p>
+					<p class="sentence">{story}</p>
+				</section>
+
+				<section class="readouts" aria-label="At the playhead" aria-live="off">
+					<div class="ro big">
+						<span class="lab">{left >= 0 ? 'Power left' : 'After the end'}</span>
+						<span class="val num" class:after={left < 0}>{signed(left)}<small> s</small></span>
+					</div>
+					<div class="ro">
+						<span class="lab">Distance <InfoTip term="Distance">Path distance through the maze to the nearest scared ghost (after the end: to the ghosts that were scared and now hunt the player).</InfoTip></span>
+						<span class="val num">{seriesAt?.dist != null ? seriesAt.dist.toFixed(1) : target.dist != null ? target.dist.toFixed(1) : '-'}<small> tiles</small></span>
+					</div>
+					<div class="ro">
+						<span class="lab">Chasing <InfoTip term="Chasing">Distance to the nearest scared ghost within 8 tiles shrinking over the last 0.3 s, or at most 1 tile.</InfoTip></span>
+						<span class="val small" class:yes={seriesAt?.chasing}>{seriesAt ? (seriesAt.chasing ? 'Closing in' : 'Not chasing') : '-'}</span>
+					</div>
+					<div class="ro">
+						<span class="lab">State</span>
+						<span class="val small tone-{status.tone}">{status.text}</span>
+					</div>
+				</section>
+
+				<section class="transport" aria-label="Playback">
+					<div class="buttons">
+						<button type="button" class="tb" onclick={() => { playing = false; seek(t0); }} title="Back to the start (Home)" aria-label="Back to the start">
+							<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 4v12M16 4l-8 6 8 6z" /></svg>
+						</button>
+						<button type="button" class="tb" onclick={() => jump(-1)} title="Previous marker (,)" aria-label="Previous marker">
+							<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M9 4l-6 6 6 6M17 4l-6 6 6 6" /></svg>
+						</button>
+						<button type="button" class="tb" onclick={() => step(-1)} title="One frame back (left arrow)" aria-label="One frame back" disabled={!scenes.length}>
+							<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13 4l-6 6 6 6" /></svg>
+						</button>
+						<button type="button" class="tb play" onclick={toggle} aria-label={playing ? 'Pause' : 'Play'} title="{playing ? 'Pause' : 'Play'} (space)" disabled={!scenes.length}>
+							{#if playing}
+								<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4h3v12H6zM11 4h3v12h-3z" class="fill" /></svg>
+							{:else}
+								<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l11 6-11 6z" class="fill" /></svg>
+							{/if}
+						</button>
+						<button type="button" class="tb" onclick={() => step(1)} title="One frame forward (right arrow)" aria-label="One frame forward" disabled={!scenes.length}>
+							<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4l6 6-6 6" /></svg>
+						</button>
+						<button type="button" class="tb" onclick={() => jump(1)} title="Next marker (.)" aria-label="Next marker">
+							<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4l6 6-6 6M11 4l6 6-6 6" /></svg>
+						</button>
+						<button type="button" class="tb" class:on={loop} onclick={() => (loop = !loop)} aria-pressed={loop} title="Loop (L)" aria-label="Loop">
+							<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 9a5 5 0 0 1 5-5h5l-2-2M16 11a5 5 0 0 1-5 5H6l2 2" /></svg>
+						</button>
+					</div>
+					<Segmented size="sm" label="Speed" options={[{ value: 0.25, label: '0.25x' }, { value: 0.5, label: '0.5x' }, { value: 1, label: '1x' }]} bind:value={speed} />
+				</section>
+
+				<section class="tl" aria-label="Timeline">
+					<Timeline {t0} {t1} {startT} {endT} {expired} {markers} {series} {time} onseek={onscrub} />
+					<div class="legend">
+						<span class="what">Line: tiles to the nearest scared ghost</span>
+						<span><i class="sw chase"></i>Closing in</span>
+						<span><i class="sw calm"></i>Not chasing</span>
+						<span><i class="sw danger"></i>Ghosts dangerous</span>
+						<span><i class="sw ideal"></i>Ideal turn-away (2 to 0.2 s left)</span>
+					</div>
+					<div class="marks" role="group" aria-label="Jump to a moment">
+						{#each markers as m (m.kind + m.t)}
+							<button type="button" class="mk {m.kind}" class:at={Math.abs(clamp(m.t) - time) < 0.03} onclick={() => { playing = false; seek(m.t); }}>
+								{markerText(m)} <span class="num">{m.t < t0 - 0.06 ? 'before the clip' : leftWords(endT - m.t)}</span>
+							</button>
+						{/each}
+					</div>
+				</section>
+
+				<section class="tools" aria-label="View">
+					<div class="tool-row">
+						<label class="check strong"><input type="checkbox" bind:checked={compare} disabled={!scenes.length} /> Compare cues <Kbd>C</Kbd></label>
+						{#if compare}
+							<span class="hint">Same recording, only the cue drawing changes. <Kbd>[</Kbd> <Kbd>]</Kbd> to switch.</span>
+						{:else}
+							<span class="hint">Redraw this exact moment with another cue, side by side.</span>
+						{/if}
+					</div>
+					<div class="tool-row">
+						<span class="eyebrow">Aids</span>
+						<label class="check"><input type="checkbox" bind:checked={aids.highlight} /> Highlight player and ghost</label>
+						<label class="check"><input type="checkbox" bind:checked={aids.line} /> Line between them</label>
+						<label class="check"><input type="checkbox" bind:checked={aids.tag} /> Seconds left tag</label>
+					</div>
+					<p class="hint">Off by default, so the board is exactly what the player saw.</p>
+				</section>
+
+				<section class="numbers" aria-label="Key numbers">
+					<h2 class="eyebrow">Key numbers</h2>
+					<dl>
+						<div><dt>Power length</dt><dd class="num">{fmt(trial.total)} s</dd></div>
+						<div><dt>Turned away <InfoTip term="Turn-away time">Time left when the player was closest, before they stopped closing in for good. Negative: after the end.</InfoTip></dt><dd class="num">{trial.turnLeft === null ? 'never' : signed(trial.turnLeft) + ' s'}</dd></div>
+						<div><dt>Distance at the turn</dt><dd class="num">{fmt(trial.turnDist) ?? '-'} {trial.turnDist !== null ? 'tiles' : ''}</dd></div>
+						<div><dt>Distance at the end</dt><dd class="num">{fmt(trial.endDist) ?? '-'} {trial.endDist !== null ? 'tiles' : ''}</dd></div>
+						<div><dt>Caught after the end</dt><dd class="num" class:bad={trial.after.caught}>{trial.after.timeToCaught !== null ? fmt(trial.after.timeToCaught) + ' s' : 'no'}</dd></div>
+						<div><dt>Ghosts eaten</dt><dd class="num">{trial.eats.length}{trial.lateCatch ? ' (late catch)' : ''}</dd></div>
+						<div><dt>Closest danger after</dt><dd class="num">{fmt(trial.after.minDangerDist) ?? '-'} {trial.after.minDangerDist !== null ? 'tiles' : ''}{trial.after.nearMiss ? ' (near miss)' : ''}</dd></div>
+						<div><dt>Reaction <InfoTip term="Reaction">For players still closing in at the end: time from the end until they first moved away.</InfoTip></dt><dd class="num">{trial.reaction !== null ? fmt(trial.reaction, 2) + ' s' : '-'}</dd></div>
+						{#if trial.wasted !== null}<div><dt>Power left unused</dt><dd class="num">{fmt(trial.wasted)} s</dd></div>{/if}
+						<div><dt>Counts in the rates</dt><dd>{trial.inRates ? 'yes' : 'no'}</dd></div>
+					</dl>
+				</section>
+
+				<section class="context" aria-label="Context">
+					<h2 class="eyebrow">Context</h2>
+					<dl>
+						<div><dt>Participant</dt><dd class="num">{trial.participant ? `P${trial.participant.number}` : '-'}{trial.participant?.nickname ? ` (${trial.participant.nickname})` : ''}</dd></div>
+						<div><dt>Data</dt><dd>{#if trial.source === 'bot'}<Badge tone="sim">Simulated player</Badge>{:else}Human{/if}</dd></div>
+						<div><dt>Condition</dt><dd><CueChip cue={cue} size="sm" /></dd></div>
+						<div><dt>Block</dt><dd class="num">{trial.blockIndex + 1} ({trial.mode === 'study' ? 'study' : 'free play'})</dd></div>
+						<div><dt>Trial in block</dt><dd class="num">{trial.trialIndex + 1}{trial.block ? ` of ${trial.block.trialCount}` : ''}</dd></div>
+						<div><dt>Sound</dt><dd>{trial.sound ? 'on' : 'off'}</dd></div>
+						<div><dt>Input</dt><dd>{trial.inputType}</dd></div>
+						<div><dt>Recorded</dt><dd title={new Date(trial.createdAt).toLocaleString()}>{ago(trial.createdAt)}</dd></div>
+					</dl>
+				</section>
+
+				<section class="keys" aria-label="Keyboard shortcuts">
+					<h2 class="eyebrow">Keys</h2>
+					<ul>
+						<li><Kbd>Space</Kbd> play or pause</li>
+						<li><Kbd>&larr;</Kbd> <Kbd>&rarr;</Kbd> one frame</li>
+						<li><Kbd>Shift</Kbd> + arrows: 1 s</li>
+						<li><Kbd>,</Kbd> <Kbd>.</Kbd> previous, next marker</li>
+						<li><Kbd>1</Kbd> <Kbd>2</Kbd> <Kbd>3</Kbd> speed</li>
+						<li><Kbd>L</Kbd> loop, <Kbd>Home</Kbd> start</li>
+						<li><Kbd>C</Kbd> compare, <Kbd>[</Kbd> <Kbd>]</Kbd> cue</li>
+						<li><Kbd>H</Kbd> highlight, <Kbd>T</Kbd> time tag</li>
+					</ul>
+				</section>
+			</div>
+		</div>
+	{/if}
+</Page>
+
+<style>
+	.top {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2) var(--space-5);
+		padding: var(--space-3) 0 var(--space-3);
+	}
+	.crumbs { display: flex; gap: var(--space-2); font-size: var(--text-sm); color: var(--ink-faint); }
+	.crumbs a { color: var(--ink-dim); text-decoration: none; }
+	.crumbs a:hover { color: var(--ink); text-decoration: underline; }
+	.headline { display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0; }
+	h1 {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		margin: 0;
+		font-size: var(--text-lg);
+		font-family: var(--font-display);
+		font-weight: 600;
+	}
+	.o.bad { color: var(--bad); }
+	.o.good { color: var(--good); }
+	.o.warn { color: var(--warn); }
+	.with { color: var(--ink-faint); font-family: var(--font-body); font-size: var(--text-md); font-weight: 400; }
+	.prevnext { display: flex; align-items: center; gap: var(--space-2); }
+	.pos { color: var(--ink-faint); font-size: var(--text-sm); margin-right: var(--space-1); }
+	.loading { color: var(--ink-dim); padding: var(--space-6) 0; }
+
+	.player {
+		display: grid;
+		grid-template-columns: auto minmax(360px, 1fr);
+		gap: var(--space-5);
+		align-items: start;
+		padding-bottom: var(--space-6);
+	}
+	.stage {
+		position: sticky;
+		top: calc(var(--bar-h) + var(--space-2));
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		height: calc(100dvh - var(--bar-h) - 84px);
+		min-height: 420px;
+		width: min(calc((100dvh - var(--bar-h) - 84px - 40px) * var(--aspect) * var(--n)), 64vw);
+		min-width: 0;
+	}
+	.captions { display: flex; gap: var(--space-3); min-height: 32px; }
+	.cap { flex: 1; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+	.cap .eyebrow { white-space: nowrap; }
+	.boards {
+		flex: 1;
+		min-height: 0;
+		display: grid;
+		grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+		gap: var(--space-3);
+	}
+	.noclip { display: grid; place-items: center; height: 100%; }
+
+	.side { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+	.side > section {
+		background: var(--surface);
+		border: 1px solid var(--rule);
+		border-radius: var(--radius-lg);
+		padding: var(--space-4);
+	}
+	.story .meaning { display: flex; gap: var(--space-2); align-items: baseline; margin: 0; color: var(--ink-dim); font-size: var(--text-sm); }
+	.story .sentence { margin: var(--space-2) 0 0; font-size: var(--text-lg); line-height: 1.4; }
+	.dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--ink-faint); transform: translateY(1px); }
+	.dot.bad { background: var(--bad); }
+	.dot.good { background: var(--good); }
+	.dot.warn { background: var(--warn); }
+
+	.readouts { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.2fr; gap: var(--space-3); }
+	.ro { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+	.lab { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+	.val { font-size: var(--text-xl); font-weight: 600; color: var(--ink); white-space: nowrap; }
+	.val small { font-size: var(--text-sm); color: var(--ink-dim); font-weight: 400; }
+	.ro.big .val { font-size: var(--text-2xl); color: var(--accent); }
+	.ro.big .val.after { color: var(--bad); }
+	.val.small { font-size: var(--text-md); padding-top: 6px; color: var(--ink-dim); }
+	.val.yes { color: var(--accent); }
+	.tone-bad { color: var(--bad) !important; }
+	.tone-warn { color: var(--warn) !important; }
+	.tone-accent { color: var(--accent) !important; }
+
+	.transport { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4) !important; }
+	.buttons { display: flex; gap: 4px; }
+	.tb {
+		display: grid;
+		place-items: center;
+		width: 38px;
+		height: 38px;
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--rule);
+		background: var(--surface-2);
+		color: var(--ink);
+		cursor: pointer;
+	}
+	.tb:hover:not(:disabled) { background: var(--surface-3); }
+	.tb:disabled { opacity: 0.4; cursor: default; }
+	.tb:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+	.tb.play { width: 52px; background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+	.tb.play:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+	.tb.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+	.tb svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.tb svg .fill { fill: currentColor; stroke: none; }
+
+	.tl { padding: var(--space-3) var(--space-3) var(--space-3) var(--space-2) !important; }
+	.legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); padding: var(--space-1) 0 0 40px; font-size: var(--text-xs); color: var(--ink-dim); }
+	.legend span { display: inline-flex; align-items: center; gap: 6px; }
+	.legend .what { color: var(--ink-faint); }
+	.sw { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
+	.sw.chase { background: var(--accent); height: 4px; }
+	.sw.calm { background: var(--scared); opacity: 0.75; }
+	.sw.danger { background: var(--bad); }
+	.sw.ideal { background: var(--good); height: 8px; opacity: 0.6; }
+	.marks { display: flex; flex-wrap: wrap; gap: 6px; padding: var(--space-3) 0 0 40px; }
+	.mk {
+		display: inline-flex;
+		gap: 6px;
+		align-items: baseline;
+		padding: 4px 10px;
+		border-radius: var(--radius-pill);
+		border: 1px solid var(--rule);
+		background: var(--surface-2);
+		color: var(--ink);
+		font: inherit;
+		font-size: var(--text-xs);
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.mk .num { color: var(--ink-faint); font-weight: 400; }
+	.mk:hover { background: var(--surface-3); }
+	.mk.at { border-color: var(--ink); }
+	.mk.powerEnd { border-color: var(--rule-strong); }
+	.mk.death { color: var(--bad); }
+	.mk.turnAway { color: var(--focus); }
+	.mk.powerStart { color: var(--accent); }
+
+	.tools { display: flex; flex-direction: column; gap: var(--space-2); }
+	.tool-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+	.check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--ink-dim); cursor: pointer; }
+	.check.strong { color: var(--ink); font-weight: 700; font-size: var(--text-md); }
+	.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+	.hint { margin: 0; font-size: var(--text-xs); color: var(--ink-faint); }
+
+	.numbers dl, .context dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--space-3) var(--space-4); margin: var(--space-2) 0 0; }
+	dt { display: flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--ink-faint); }
+	dd { margin: 2px 0 0; color: var(--ink); }
+	dd.bad { color: var(--bad); }
+	h2.eyebrow { margin: 0; }
+	.keys ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px var(--space-4); font-size: var(--text-sm); color: var(--ink-dim); }
+
+	@media (max-width: 960px) {
+		.player { grid-template-columns: minmax(0, 1fr); }
+		.stage {
+			position: static;
+			width: 100%;
+			height: auto;
+			min-height: 0;
+		}
+		.boards { flex: none; aspect-ratio: calc(var(--aspect) * var(--n)); }
+		.readouts { grid-template-columns: 1fr 1fr; }
+		.keys { display: none; }
+	}
+	@media (max-width: 960px) and (pointer: fine) {
+		.keys { display: block; }
+	}
+</style>
