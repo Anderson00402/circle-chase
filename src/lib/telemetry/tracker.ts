@@ -241,6 +241,10 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		const endOf = (c: Chase) => (expired && c.endedBy !== 'eat' ? r.endDistBy[c.ghost] ?? null : null);
 		const rd = (v: number | null) => (v === null ? null : r2(v));
 		r.after.nearMiss = !r.after.died && r.after.minDangerDist !== null && r.after.minDangerDist <= NEAR_MISS;
+		// The series' chasing flag, now that every chase is known from its first step to its turn-away
+		// (while playing, a chase only shows once the player has closed 3 tiles).
+		const spans = r.chases.map((c) => [c.startAt - r.startedAt - 1e-6, (c.endedBy === 'open' ? closeT : c.at) - r.startedAt + 1e-6]);
+		r.series.chasing = r.series.t.map((t) => (spans.some(([a, b]) => t >= a && t <= b) ? 1 : 0));
 		const chaseLog: ChaseRecord[] = r.chases.slice(-LOG_MAX).map((c) => ({
 			ghost: c.id, from: r2(c.startAt - r.startedAt), at: r2(c.at - r.startedAt), left: r2(c.left), dist: r2(c.dist), gain: r2(c.gain),
 			end: c.endedBy, endDist: rd(endOf(c))
@@ -326,7 +330,11 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		r.chasing = r.approach.some((a) => !!a && a.confirmed);
 	}
 
-	function startAftermath(r: Run, scene: Scene) {
+	/** The power ran out by itself: the aftermath begins. */
+	function expire(r: Run, scene: Scene) {
+		r.endedAt = scene.frame.power.endedAt;
+		r.endReason = 'expired';
+		r.leftAtEnd = 0;
 		r.state = 'after';
 		// Exposure: how far each ghost that just turned dangerous is, and the nearest of them.
 		const f = scene.frame;
@@ -381,6 +389,9 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 					r.approach = [];
 					if (f.ghosts.every((g) => !g.scared)) r.allEatenLeft = r2(e.left);
 				} else if (e.type === 'die') {
+					// The power ran out on this very frame and the death came after it: a death of the
+					// aftermath (the player ran into the ghost as it turned), not one during the power.
+					if (r.state === 'power' && p.serial === r.serial && p.endReason === 'expired' && e.t >= p.endedAt - 1e-9) expire(r, scene);
 					if (r.state === 'power') r.diedDuring = true;
 					else {
 						r.after.died = true;
@@ -396,11 +407,13 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 
 			// The power-up ended.
 			if (r.state === 'power' && p.serial === r.serial && p.endReason && p.endedAt >= r.startedAt) {
-				r.endedAt = p.endedAt;
-				r.endReason = p.endReason;
-				r.leftAtEnd = p.endReason === 'expired' ? 0 : prevSerial === r.serial ? prevLeft : 0;
-				if (p.endReason === 'expired') startAftermath(r, scene);
-				else { end(r, f, out); }
+				if (p.endReason === 'expired') expire(r, scene);
+				else {
+					r.endedAt = p.endedAt;
+					r.endReason = p.endReason;
+					r.leftAtEnd = prevSerial === r.serial ? prevLeft : 0;
+					end(r, f, out);
+				}
 			} else if (r.state === 'power' && p.serial === r.serial) r.lastLeft = p.left;
 		}
 

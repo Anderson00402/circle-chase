@@ -56,7 +56,7 @@ export interface TrialSeries {
 	left: number[];
 	/** Path distance to the nearest target ghost in tiles, or null when there is none. */
 	dist: (number | null)[];
-	/** 1 while the player is chasing (see STUDY.md), else 0. */
+	/** 1 from the first step of a chase to its turn-away (see STUDY.md), else 0. Filled in when the trial closes. */
 	chasing: number[];
 	/** Player tile. */
 	px: number[];

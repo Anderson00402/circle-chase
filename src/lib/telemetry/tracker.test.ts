@@ -160,6 +160,26 @@ describe('tracker: outcome classes', () => {
 		expect(t.inRates).toBe(true);
 	});
 
+	it('caught on the very frame the power runs out: a death of the aftermath, not one during the power', () => {
+		const px = line([0, 2], [9, 2 + V * 9]);
+		const { trials } = scenario({
+			total: 5, px, gx: (t) => Math.max(20, px(t) + 0.55),
+			// The engine reports both on one frame: the power expired, then the ghost that just turned got the player.
+			at: (s) => {
+				if (s.power.left > 0 && s.power.left <= DT + 1e-9 && s.phase === 'playing') { s.t += s.power.left; s.endPower('expired'); s.die(0); }
+			}
+		});
+		const t = trials[0];
+		expect(t.endReason).toBe('expired');
+		expect(t.diedDuring).toBe(false);
+		expect(t.after.died).toBe(true);
+		expect(t.after.caught).toBe(true);
+		expect(t.after.timeToCaught).toBe(0);
+		expect(t.endDist!).toBeLessThan(1);
+		expect(t.outcome).toBe('caught');
+		expect(t.inRates).toBe(true);
+	});
+
 	it('catch, then nothing: a late catch reveals no decision', () => {
 		const { trials } = scenario({ total: 5, px: line([0, 2], [9, 2 + V * 9]), gx: () => 20.5, at: eatWhenTouching });
 		const t = trials[0];
