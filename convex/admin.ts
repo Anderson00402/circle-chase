@@ -64,7 +64,7 @@ export const continuePurge = internalMutation({
 const RECLASSIFY_BATCH = 200;
 
 /**
- * Recompute `outcome` (and `rulesVersion`, `wasted`) of every trial and its clip from the stored
+ * Recompute `outcome` (and `rulesVersion`, `wasted`, `inRates`, `gaveUpEarly`) of every trial and its clip from the stored
  * raw measures with the current rules (convex/lib/rules.ts). A row that lacks a measure the rules
  * need keeps its outcome and is marked `rulesVersion: 1`, which leaves it out of every rate. Runs
  * in batches and schedules itself; recounts the live counters at the end.
@@ -87,7 +87,8 @@ export const reclassifyStep = internalMutation({
 			seen++;
 			const r = rescore(t);
 			if (r.rulesVersion !== RULES_VERSION) old++;
-			if (r.outcome === t.outcome && r.rulesVersion === t.rulesVersion && r.wasted === t.wasted) continue;
+			// Everything rescore derives (outcome, version, wasted, and from rules 3 inRates and gaveUpEarly).
+			if ((Object.keys(r) as (keyof typeof r)[]).every((k) => r[k] === (t as Record<string, unknown>)[k])) continue;
 			changed++;
 			await ctx.db.patch(t._id, r);
 			touched.set(t.sessionId, [...(touched.get(t.sessionId) ?? []), { ...t, ...r } as Doc<'trials'>]);
