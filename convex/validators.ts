@@ -95,6 +95,19 @@ export const measures = {
 	chases: num,
 	/** How the last chase ended (turn, eat, open) or null without a chase. Absent before rules version 2. */
 	lastChaseEnd: v.optional(chaseEnd),
+	/**
+	 * Rules version 3 (absent before): the last chase's ghost (its distance when the power ran out,
+	 * the tiles the player's own steps closed on it), the "gave up before the warning window" flag,
+	 * and every chase of the power-up so a later rule can pick again. See `TrialMeasures`.
+	 */
+	chaseEndDist: v.optional(maybeNum),
+	chaseGain: v.optional(maybeNum),
+	chaseGhost: v.optional(v.union(v.string(), v.null())),
+	gaveUpEarly: v.optional(v.boolean()),
+	chaseLog: v.optional(v.array(v.object({
+		ghost: v.string(), from: num, at: num, left: num, dist: num, gain: num,
+		end: v.union(v.literal('turn'), v.literal('eat'), v.literal('open')), endDist: maybeNum
+	}))),
 	endDist: maybeNum,
 	endClosing: maybeBool,
 	after: aftermath,

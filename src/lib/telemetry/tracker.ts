@@ -7,37 +7,36 @@
  * - `left`: the power's own clock (`Frame.power.left`) while the power is on, and minus the
  *   seconds since it ran out afterwards. Every "time left" in a trial uses it.
  * - `clock`: seconds of live, moving play. It stops outside the `playing` phase and during the
- *   short freeze after a ghost is eaten, so "shrinking over the last 0.3 s" always compares two
- *   moments 0.3 s of movement apart. (The engine stops game time during that freeze; should it ever
- *   keep running, the tracker still notices the freeze because the power's clock stands still.)
+ *   short freeze after a ghost is eaten, so "came no closer for 0.5 s" means 0.5 s of movement.
  *
- * Interpretations of STUDY.md (also listed in convex/README.md)
+ * What a chase is (STUDY.md "Chasing"; the numbers are `CHASE` in convex/lib/rules.ts)
  * - Distances are continuous path distances through the maze with tunnel wrap (`distance.ts`).
  * - Targets: during the power, ghosts that are scared and out of the pen. After it ran out, the
  *   ghosts that were scared at that moment (`revertedAt === endedAt`) and are still out.
- * - Chasing during the power is the literal definition: the nearest target within 8 tiles is
- *   closer than the same ghost was 0.3 s earlier (by more than 0.05 tiles), or at most 1 tile away.
- * - After the end the ghosts hunt the player, so total distance shrinks even when the player
- *   flees. There, "still closing in" uses only the player's own movement: the sum over the last
- *   0.3 s of how much each of the player's steps changed the distance to that ghost must be below
- *   -0.05 tiles. Only a chase that was running at the end can continue after it; a new one never
- *   starts once the power is over.
- * - Turn-away: the last chase of the trial (the final decision). Its turn moment is when the player
- *   was closest to the target (latest moment within 0.05 tiles of the minimum). If that chase ran
- *   past the end, the turn moment is the last step after the end that still brought the player
- *   closer, or the end itself if no step did. A chase that ends by eating a ghost turns at the eat
- *   (distance 0). A chase still running when the trial closes never turned: turnLeft is null.
- *   `lastChaseEnd` stores how that chase ended (turn, eat, open).
- * - The outcome comes from the shared rules in convex/lib/rules.ts (`classify`), fed with the
- *   measures stored here, so Convex can recompute it from a stored trial.
- * - "Still closing in at the end" (overstayed, exposure): the last chase is not an eat and either
- *   never turned, turned after the end, or turned with less than 0.2 s left. With the timely window
- *   starting at 0.2 s this leaves no gap between "timely retreat" and "overstayed".
- * - Early retreat "while a ghost was still reachable": at the turn moment some scared ghost was out
- *   and its current spot was within (time left x player speed on level 1) tiles.
- * - An aftermath cut short is kept and classified with what was seen (`after.seen`, `after.cut`);
- *   one cut by the player leaving (`cut: 'quit'`) does not count toward the rates.
- * - An eat in the warning window counts as chasing there (engaged).
+ * - Only the player's own steps count. Every moving frame, for every target, `own` is how much the
+ *   player's step changed the path distance to where that ghost is now (new distance minus the
+ *   distance from the player's previous spot to the same point). A ghost walking toward a player
+ *   who stands still or flees closes the gap without the player approaching it.
+ * - An approach of one ghost starts with a step toward it while it is within range. It keeps a
+ *   running sum of `own` and remembers its lowest point: the player's closest point by their own
+ *   doing. It is over when the player's steps took them `backoff` tiles back from that point, when
+ *   they came no closer for `idle` seconds, when the ghost got out of range, or when a ghost is eaten.
+ * - An approach becomes a chase once the player's own steps closed `minGain` tiles. Shorter
+ *   approaches leave no trace, so a blip is never a chase.
+ * - The turn-away moment of a chase is that closest point, not the later frame on which the end
+ *   was noticed. An approach is followed past the end of the power with the same rule, so a player
+ *   closest with 0.3 s left who then only moves away turned with 0.3 s left.
+ * - Eating a ghost ends the chase there (distance 0) and wipes every approach under way: whatever
+ *   the player does next has to earn a new chase from nothing. An eat with no chase before it still
+ *   counts as a chase that ended in an eat.
+ * - No approach starts once the power is over. An approach that began before the end may still
+ *   become a chase through steps taken after it (the player kept going at a ghost that had turned).
+ * - The final decision is the chase whose turn-away moment came last (a chase still running when
+ *   the trial closed counts as latest; of two that turned on the same frame, the nearer ghost).
+ * - Engaged: some chase reached into the warning window (its turn-away or eat came with 3 s or
+ *   less left, or it was still running).
+ * - The outcome, eligibility and the "gave up early" flag come from the shared rules in
+ *   convex/lib/rules.ts (`derive`), fed with the measures stored here, so Convex can recompute them.
  *
  * Edge cases
  * - Second power dot during a power-up: the running trial ends with `endReason: 'refreshed'`
@@ -50,52 +49,61 @@
  * - All scared ghosts eaten: `allEatenLeft` is set; no target remains, so no chase afterwards; the
  *   final chase ended at the last eat.
  * - No ghost out of the pen at the start: `scaredAtStart: 0`, nothing to chase, `not-engaged`.
- * - Freeze after eating a ghost: `clock` stops (see above); frames that repeat the same moment are
- *   ignored, so the series has no gap and no repeats there.
+ * - Freeze after eating a ghost: `clock` stops; frames that repeat the same moment are ignored, so
+ *   the series has no gap and no repeats there.
  * - Pause: the game sends no frames while paused and game time stops, so nothing changes.
  * - Game over / new game / page closed: `finish()` closes a running power-up as `quit`
- *   (`interrupted`) and an aftermath as cut short. A new game is detected when game time goes back.
+ *   (`interrupted`) at the last frame seen, with the power left at that frame, and an aftermath as
+ *   cut short. A new game is detected when game time goes back.
+ *
+ * The live readout never gives the time left away: while a power-up runs it carries no clock, no
+ * power length and nothing judged against the warning window; an outcome appears only once the
+ * trial is closed.
  */
-import { CAUGHT_DIST, LATE, RULES_VERSION, TIMELY, WARN, classify } from '#convex/lib/rules.ts';
-import { PLAYER_SPEED } from '../game/engine/game';
+import { CAUGHT_DIST, CHASE, LATE, OVERSTAY_DIST, REACH_SPEED, RULES_VERSION, TIMELY, WARN, classify, derive, type ChaseParams } from '#convex/lib/rules.ts';
 import type { Frame, GhostId, Scene } from '../game/types';
 import { distanceField, type DistanceField } from './distance';
-import type { Aftermath, EatRecord, LiveReadout, Outcome, TrialEndReason, TrialMeasures, TrialSeries } from './types';
+import type { Aftermath, ChaseRecord, EatRecord, LiveReadout, Outcome, TrialEndReason, TrialMeasures, TrialSeries } from './types';
 
-export { CAUGHT_DIST, LATE, TIMELY, WARN, classify };
-export const CHASE_RANGE = 8; // tiles
-export const TREND = 0.3; // seconds of movement compared for "shrinking"
-export const SHRINK = 0.05; // tiles the distance must drop over TREND
-export const NEAR = 1; // tiles: always chasing this close
+export { CAUGHT_DIST, CHASE, LATE, OVERSTAY_DIST, REACH_SPEED, TIMELY, WARN, classify };
 export const NEAR_MISS = 1.5;
 export const AFTER = 3;
 export const SERIES_STEP = 0.1;
-/** Before 0.3 s of history exists, compare with the oldest sample once it is this old. */
-const MIN_TREND = 0.15;
-/** Near the minimum: the turn moment is the latest moment within this of the closest distance. */
-const MIN_TOL = 0.05;
+/** A step counts as "toward the ghost" when it closes at least this much (tiles): ignores rounding. */
+const STEP_EPS = 1e-4;
+/** Chases kept in a trial's log (the latest ones). */
+const LOG_MAX = 16;
 
-interface Sample {
-	clock: number;
-	/** Distance per ghost (index in frame.ghosts) when it is a target, NaN otherwise. */
-	d: number[];
-	/** How much the player's own step since the last sample changed the distance to each target. */
-	own: number[];
+/** One ghost the player is stepping toward. */
+interface Approach {
+	id: GhostId;
+	/** Game time and power left at the first step toward the ghost. */
+	startAt: number;
+	startLeft: number;
+	/** Sum of the player's own steps since then (negative: closer). */
+	p: number;
+	/** Lowest `p` so far, and the moment it was reached: the player's closest point by their own doing. */
+	best: number;
+	bestAt: number;
+	bestLeft: number;
+	bestDist: number;
+	bestClock: number;
+	/** The player's own steps closed `minGain` tiles: a chase. */
+	confirmed: boolean;
 }
 
 interface Chase {
+	/** Index of the ghost in `frame.ghosts`. */
+	ghost: number;
+	id: GhostId;
 	endedBy: 'turn' | 'eat' | 'open';
-	minD: number;
-	minLeft: number;
-	/** Game time of the closest moment. */
-	minAt: number;
-	reachable: boolean | null;
-	/** Running when the power ran out. */
-	crossedEnd: boolean;
-	/** After the end: last step that still brought the player closer. */
-	afterLeft: number | null;
-	afterDist: number | null;
-	afterAt: number | null;
+	startAt: number;
+	/** The turn-away moment (the eat, for a chase that ended in one). */
+	at: number;
+	left: number;
+	dist: number;
+	/** Tiles the player's own steps closed. */
+	gain: number;
 }
 
 interface Run {
@@ -109,20 +117,22 @@ interface Run {
 	endedAt: number;
 	endReason: TrialEndReason | null;
 	leftAtEnd: number;
+	/** Power left on the last frame seen while it was on. */
+	lastLeft: number;
 	eats: EatRecord[];
 	allEatenLeft: number | null;
+	/** Approaches under way, by ghost index. */
+	approach: (Approach | null)[];
 	chases: Chase[];
-	chase: Chase | null;
-	engaged: boolean;
 	endDist: number | null;
+	/** Path distance to each ghost that turned dangerous, when the power ran out (by ghost index). */
+	endDistBy: (number | null)[];
 	after: Aftermath;
-	firstAway: number | null;
 	diedDuring: boolean;
 	frames: number;
 	lastT: number;
 	series: TrialSeries;
 	nextSample: number;
-	needReach: boolean;
 	// last measured values, reused for series samples and the live readout
 	nearest: { ghost: GhostId; dist: number } | null;
 	chasing: boolean;
@@ -130,6 +140,8 @@ interface Run {
 
 export interface TrackerOptions {
 	onTrial?: (trial: TrialMeasures) => void;
+	/** Other chase numbers than `CHASE` (calibration and tests only; stored trials use the defaults). */
+	chase?: Partial<ChaseParams>;
 }
 
 export interface Tracker {
@@ -147,22 +159,24 @@ const r3 = (v: number) => Math.round(v * 1000) / 1000;
 const fin = (v: number) => (Number.isFinite(v) ? v : null);
 
 export function createTracker(opts: TrackerOptions = {}): Tracker {
+	const P: ChaseParams = { ...CHASE, ...opts.chase };
 	let run: Run | null = null;
 	let lastT = -1, lastSerial = 0, clock = 0;
 	let prevLeft = -1, prevSerial = -1;
 	let prevField: DistanceField | null = null, prevMaze = '';
-	let history: Sample[] = [];
+	/** The trial closed last, for the readout between power-ups. */
+	let closed: { outcome: Outcome; engaged: boolean } | null = null;
 	let live: LiveReadout = idleLive();
 
 	function idleLive(): LiveReadout {
-		return { state: 'idle', left: 0, total: 0, nearest: null, chasing: false, engaged: false, guess: null };
+		return { state: 'idle', left: 0, total: 0, nearest: null, chasing: false, engaged: closed?.engaged ?? false, guess: closed?.outcome ?? null };
 	}
 
 	function reset() {
 		run = null;
 		lastT = -1; lastSerial = 0; clock = 0; prevLeft = -1; prevSerial = -1;
 		prevField = null; prevMaze = '';
-		history = [];
+		closed = null;
 		live = idleLive();
 	}
 
@@ -170,12 +184,12 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		const scared = f.ghosts.filter((g) => g.scared && g.mode === 'active').length;
 		return {
 			serial: f.power.serial, startedAt: f.power.startedAt, total: f.power.total, level: f.level, mazeId: f.mazeId,
-			scaredAtStart: scared, state: 'power', endedAt: -1, endReason: null, leftAtEnd: 0, eats: [],
-			allEatenLeft: null, chases: [], chase: null, engaged: false, endDist: null,
+			scaredAtStart: scared, state: 'power', endedAt: -1, endReason: null, leftAtEnd: 0, lastLeft: f.power.left, eats: [],
+			allEatenLeft: null, approach: [], chases: [], endDist: null, endDistBy: [],
 			after: { seen: 0, died: false, caught: false, timeToCaught: null, killer: null, minDangerDist: null, nearMiss: false, cut: null },
-			firstAway: null, diedDuring: false, frames: 0, lastT: f.t,
+			diedDuring: false, frames: 0, lastT: f.t,
 			series: { t: [], left: [], dist: [], chasing: [], px: [], py: [] },
-			nextSample: f.power.startedAt, needReach: false, nearest: null, chasing: false
+			nextSample: f.power.startedAt, nearest: null, chasing: false
 		};
 	}
 
@@ -184,70 +198,77 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		return r.state === 'power' ? f.power.left : -(f.t - r.endedAt);
 	}
 
-	function closeChase(r: Run, how: Chase['endedBy']) {
-		if (!r.chase) return;
-		r.chase.endedBy = how;
-		r.chases.push(r.chase);
-		r.chase = null;
+	/** Ends an approach. Only a chase (or an eat) leaves a record. */
+	function closeApproach(r: Run, i: number, how: Chase['endedBy']) {
+		const a = r.approach[i];
+		r.approach[i] = null;
+		if (!a || !a.confirmed) return;
+		r.chases.push({ ghost: i, id: a.id, endedBy: how, startAt: a.startAt, at: a.bestAt, left: a.bestLeft, dist: a.bestDist, gain: -a.best });
+	}
+
+	/** The chase whose turn-away came last: the final decision. */
+	function finalChase(chases: Chase[]): Chase | null {
+		let last: Chase | null = null;
+		for (const c of chases) {
+			if (!last) { last = c; continue; }
+			const a = c.endedBy === 'open' ? Infinity : c.at, b = last.endedBy === 'open' ? Infinity : last.at;
+			const same = a === b || Math.abs(a - b) <= 1e-9;
+			if (same ? c.dist < last.dist : a > b) last = c;
+		}
+		return last;
 	}
 
 	function finalize(r: Run, f: Frame | null, cut: Aftermath['cut'] = null): TrialMeasures {
-		if (r.chase) closeChase(r, 'open');
+		const closeT = f?.t ?? r.lastT;
+		// Closed while the power was still on and nothing ended it: the player left.
+		if (r.state === 'power' && !r.endReason) { r.endReason = 'quit'; r.endedAt = r.lastT; r.leftAtEnd = Math.max(0, r.lastLeft); }
+		for (let i = 0; i < r.approach.length; i++) closeApproach(r, i, 'open');
 		if (r.state === 'after' && !r.after.died) {
-			r.after.seen = Math.min(AFTER, (f?.t ?? r.lastT) - r.endedAt);
+			r.after.seen = Math.min(AFTER, closeT - r.endedAt);
 			r.after.cut = r.after.seen < AFTER - 1e-6 ? cut ?? 'quit' : null;
 		}
-		const last = r.chases.length ? r.chases[r.chases.length - 1] : null;
-		let turnLeft: number | null = null, turnDist: number | null = null, turnReachable: boolean | null = null, turnAt: number | null = null;
-		if (last && last.endedBy !== 'open') {
-			if (last.endedBy === 'turn' && last.crossedEnd) {
-				// Still closing in when the power ran out: the turn is the last step after the end that
-				// still closed in, or the end itself when no step did.
-				turnLeft = last.afterLeft ?? 0;
-				turnDist = last.afterLeft !== null ? last.afterDist : r.endDist;
-				turnAt = last.afterLeft !== null ? last.afterAt : r.endedAt;
-				turnReachable = false; // the power was over
-			} else {
-				turnLeft = last.minLeft;
-				turnDist = last.minD;
-				turnAt = last.minAt;
-				turnReachable = last.reachable;
-			}
-		}
 		const expired = r.endReason === 'expired';
+		const leftNow = r.state === 'power' ? r.leftAtEnd : -(closeT - r.endedAt);
+		const win = Math.min(WARN, r.total);
+		const engaged = r.chases.some((c) => (c.endedBy === 'open' ? Math.min(c.left, leftNow) : c.left) <= win);
+		const last = finalChase(r.chases);
 		const lastChaseEnd = last ? last.endedBy : null;
-		let endClosing: boolean | null = null;
-		if (expired) {
-			endClosing = lastChaseEnd === 'open' || (lastChaseEnd === 'turn' && turnLeft !== null && turnLeft < TIMELY[0]);
-		}
+		// A chase still running when the trial closed never turned.
+		const turned = last && last.endedBy !== 'open' ? last : null;
+		const turnLeft = turned ? r2(turned.left) : null, turnDist = turned ? r2(turned.dist) : null;
+		const turnReachable = turned && turned.endedBy === 'turn' ? turnLeft! > 0 && turnDist! <= turnLeft! * REACH_SPEED : null;
+		const endClosing = expired ? lastChaseEnd === 'open' || (lastChaseEnd === 'turn' && turnLeft! < TIMELY[0]) : null;
+		const endOf = (c: Chase) => (expired && c.endedBy !== 'eat' ? r.endDistBy[c.ghost] ?? null : null);
+		const rd = (v: number | null) => (v === null ? null : r2(v));
 		r.after.nearMiss = !r.after.died && r.after.minDangerDist !== null && r.after.minDangerDist <= NEAR_MISS;
-		const reaction = endClosing && r.firstAway !== null ? r2(r.firstAway) : null;
-		const lateCatch = r.eats.some((e) => e.left <= LATE);
-		const m: Omit<TrialMeasures, 'outcome' | 'inRates' | 'wasted'> = {
+		const chaseLog: ChaseRecord[] = r.chases.slice(-LOG_MAX).map((c) => ({
+			ghost: c.id, from: r2(c.startAt - r.startedAt), at: r2(c.at - r.startedAt), left: r2(c.left), dist: r2(c.dist), gain: r2(c.gain),
+			end: c.endedBy, endDist: rd(endOf(c))
+		}));
+		const m: Omit<TrialMeasures, 'outcome' | 'inRates' | 'wasted' | 'gaveUpEarly'> = {
 			rulesVersion: RULES_VERSION,
 			serial: r.serial, startedAt: r3(r.startedAt), endedAt: r3(r.endedAt), total: r3(r.total), level: r.level,
 			mazeId: r.mazeId, endReason: r.endReason ?? 'quit', leftAtEnd: r2(r.leftAtEnd), scaredAtStart: r.scaredAtStart,
-			engaged: r.engaged, eats: r.eats, lateCatch, allEatenLeft: r.allEatenLeft,
-			turnLeft: turnLeft === null ? null : r2(turnLeft), turnDist: turnDist === null ? null : r2(turnDist),
-			turnAt: turnAt === null ? null : r2(turnAt - r.startedAt),
+			engaged, eats: r.eats, lateCatch: r.eats.some((e) => e.left <= LATE), allEatenLeft: r.allEatenLeft,
+			turnLeft, turnDist, turnAt: turned ? r2(turned.at - r.startedAt) : null,
 			turnReachable, chases: r.chases.length, lastChaseEnd,
+			chaseEndDist: last ? rd(endOf(last)) : null, chaseGain: last ? r2(last.gain) : null, chaseGhost: last ? last.id : null,
+			chaseLog,
 			endDist: expired && r.endDist !== null ? r2(r.endDist) : null, endClosing,
 			after: { ...r.after, seen: r2(r.after.seen), minDangerDist: r.after.minDangerDist === null ? null : r2(r.after.minDangerDist) },
-			reaction, diedDuring: r.diedDuring, frames: r.frames,
+			// How long after the end the player kept stepping toward the ghost; 0 when their last such step came just before it.
+			reaction: endClosing && turnLeft !== null ? Math.max(0, -turnLeft) : null,
+			diedDuring: r.diedDuring, frames: r.frames,
 			fps: r.lastT > r.startedAt ? Math.round((r.frames / (r.lastT - r.startedAt)) * 10) / 10 : 0,
 			series: r.series
 		};
-		const outcome = classify(m);
-		return {
-			...m, outcome,
-			inRates: m.engaged && expired && m.after.cut !== 'quit',
-			wasted: outcome === 'early-retreat' ? m.turnLeft : null
-		};
+		return { ...m, ...derive(m) };
 	}
 
 	function end(r: Run, f: Frame | null, out: TrialMeasures[], cut: Aftermath['cut'] = null) {
 		const trial = finalize(r, f, cut);
 		run = null;
+		closed = { outcome: trial.outcome, engaged: trial.engaged };
 		out.push(trial);
 		opts.onTrial?.(trial);
 	}
@@ -268,84 +289,55 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		}
 	}
 
-	/** Distances, chasing and chase bookkeeping for one moving frame. */
+	/** Distances and approach bookkeeping for one moving frame. */
 	function measure(r: Run, scene: Scene) {
 		const f = scene.frame, maze = scene.maze;
 		const field = distanceField(maze, f.player.x, f.player.y);
 		const prev = prevMaze === maze.id ? prevField : null;
 		const left = leftAt(r, f);
 		const inPower = r.state === 'power';
-		const d: number[] = [], own: number[] = [];
-		let k = -1, reach = false, danger = Infinity;
+		let nearest = -1, nearestDist = Infinity, danger = Infinity;
 		f.ghosts.forEach((g, i) => {
-			d[i] = NaN; own[i] = 0;
-			if (g.mode !== 'active') return;
-			const target = inPower ? g.scared : g.revertedAt === r.endedAt;
-			const dist = field.to(g.x, g.y);
-			if (!inPower && !g.scared) danger = Math.min(danger, dist);
-			if (!target || !Number.isFinite(dist)) return;
-			d[i] = dist;
-			if (prev) { const p = prev.to(g.x, g.y); if (Number.isFinite(p)) own[i] = dist - p; }
-			if (k < 0 || dist < d[k]) k = i;
-			if (inPower && dist <= left * PLAYER_SPEED) reach = true;
+			const dist = g.mode === 'active' ? field.to(g.x, g.y) : Infinity;
+			if (g.mode === 'active' && !inPower && !g.scared) danger = Math.min(danger, dist);
+			const target = g.mode === 'active' && (inPower ? g.scared : g.revertedAt === r.endedAt) && Number.isFinite(dist);
+			if (!target) { closeApproach(r, i, 'turn'); return; }
+			if (dist < nearestDist) { nearestDist = dist; nearest = i; }
+			// How much the player's own step changed the distance to where the ghost is now.
+			let own = 0;
+			if (prev) { const was = prev.to(g.x, g.y); if (Number.isFinite(was)) own = dist - was; }
+			let a = r.approach[i] ?? null;
+			if (!a) {
+				if (!inPower || own > -STEP_EPS || dist > P.range) return;
+				a = r.approach[i] = {
+					id: g.id, startAt: f.t, startLeft: left, p: own, best: own, bestAt: f.t, bestLeft: left, bestDist: dist, bestClock: clock, confirmed: false
+				};
+			} else {
+				a.p += own;
+				if (a.p < a.best - 1e-9) { a.best = a.p; a.bestAt = f.t; a.bestLeft = left; a.bestDist = dist; a.bestClock = clock; }
+			}
+			if (!a.confirmed && -a.best >= P.minGain) a.confirmed = true;
+			if (a.p - a.best >= P.backoff || clock - a.bestClock >= P.idle || (inPower && dist > P.range)) closeApproach(r, i, 'turn');
 		});
 		prevField = field;
 		prevMaze = maze.id;
-		const now: Sample = { clock, d, own };
-		history.push(now);
-		while (history.length > 2 && history[1].clock <= clock - 1) history.shift();
-
-		if (!inPower && Number.isFinite(danger)) {
-			r.after.minDangerDist = Math.min(r.after.minDangerDist ?? Infinity, danger);
-		}
-		const dist = k >= 0 ? d[k] : Infinity;
-		r.nearest = k >= 0 ? { ghost: f.ghosts[k].id, dist } : null;
-
-		let chasing = false;
-		if (k >= 0 && dist <= CHASE_RANGE) {
-			if (inPower) {
-				if (dist <= NEAR) chasing = true;
-				else {
-					let past: Sample | null = null;
-					for (let i = history.length - 1; i >= 0; i--) if (history[i].clock <= clock - TREND + 1e-9) { past = history[i]; break; }
-					if (!past && history.length && clock - history[0].clock >= MIN_TREND) past = history[0];
-					if (past && Number.isFinite(past.d[k]) && dist < past.d[k] - SHRINK) chasing = true;
-				}
-			} else if (r.chase && r.chase.crossedEnd) {
-				let sum = 0;
-				for (let i = history.length - 1; i >= 0 && history[i].clock > clock - TREND + 1e-9; i--) sum += history[i].own[k] || 0;
-				chasing = sum < -SHRINK;
-			}
-		}
-		r.chasing = chasing;
-		if (r.needReach && inPower) { if (r.chases.length) r.chases[r.chases.length - 1].reachable = reach; r.needReach = false; }
-
-		// Reaction: first step after the end that took the player farther from the nearest target.
-		if (!inPower && r.firstAway === null && k >= 0 && own[k] > 0.01) r.firstAway = f.t - r.endedAt;
-
-		if (chasing) {
-			if (inPower && left > 0 && left <= Math.min(WARN, r.total)) r.engaged = true;
-			if (!r.chase) {
-				r.chase = { endedBy: 'open', minD: dist, minLeft: left, minAt: f.t, reachable: reach, crossedEnd: false, afterLeft: null, afterDist: null, afterAt: null };
-			} else if (inPower) {
-				if (dist < r.chase.minD - 1e-6) { r.chase.minD = dist; r.chase.minLeft = left; r.chase.minAt = f.t; r.chase.reachable = reach; }
-				else if (dist <= r.chase.minD + MIN_TOL) { r.chase.minLeft = left; r.chase.minAt = f.t; r.chase.reachable = reach; }
-			} else if (own[k] < -0.001) {
-				r.chase.afterLeft = left;
-				r.chase.afterDist = dist;
-				r.chase.afterAt = f.t;
-			}
-		} else if (r.chase) closeChase(r, 'turn');
+		if (!inPower && Number.isFinite(danger)) r.after.minDangerDist = Math.min(r.after.minDangerDist ?? Infinity, danger);
+		r.nearest = nearest >= 0 ? { ghost: f.ghosts[nearest].id, dist: nearestDist } : null;
+		r.chasing = r.approach.some((a) => !!a && a.confirmed);
 	}
 
 	function startAftermath(r: Run, scene: Scene) {
 		r.state = 'after';
-		if (r.chase) r.chase.crossedEnd = true;
-		// Exposure: nearest ghost that just turned dangerous.
+		// Exposure: how far each ghost that just turned dangerous is, and the nearest of them.
 		const f = scene.frame;
 		const field = distanceField(scene.maze, f.player.x, f.player.y);
 		let best = Infinity;
-		for (const g of f.ghosts) if (g.mode === 'active' && g.revertedAt === r.endedAt) best = Math.min(best, field.to(g.x, g.y));
+		f.ghosts.forEach((g, i) => {
+			if (g.mode !== 'active' || g.revertedAt !== r.endedAt) return;
+			const d = field.to(g.x, g.y);
+			r.endDistBy[i] = fin(d);
+			best = Math.min(best, d);
+		});
 		r.endDist = fin(best);
 	}
 
@@ -371,8 +363,7 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 			}
 			lastSerial = p.serial;
 			run = newRun(f);
-			// Chasing compares moments of this power-up only.
-			history = [];
+			// Steps are compared within this power-up only.
 			prevField = null;
 		}
 		const r = run;
@@ -382,14 +373,12 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 			for (const e of f.events) {
 				if (e.type === 'eat' && r.state === 'power' && e.t >= r.startedAt - 1e-9) {
 					r.eats.push({ t: r2(e.t - r.startedAt), left: r2(e.left), ghost: e.ghost, points: e.points });
-					if (e.left <= Math.min(WARN, r.total)) r.engaged = true;
-					// Eating ends the chase there, at distance 0.
-					if (!r.chase) r.chase = { endedBy: 'open', minD: 0, minLeft: e.left, minAt: e.t, reachable: null, crossedEnd: false, afterLeft: null, afterDist: null, afterAt: null };
-					r.chase.minD = 0;
-					r.chase.minLeft = e.left;
-					r.chase.minAt = e.t;
-					closeChase(r, 'eat');
-					r.needReach = true;
+					// Eating ends the chase there, at distance 0, and wipes every approach under way:
+					// an eat can end a chase but never start one.
+					const i = f.ghosts.findIndex((g) => g.id === e.ghost);
+					const a = i >= 0 ? r.approach[i] ?? null : null;
+					r.chases.push({ ghost: i, id: e.ghost, endedBy: 'eat', startAt: a ? a.startAt : e.t, at: e.t, left: e.left, dist: 0, gain: a ? -a.best : 0 });
+					r.approach = [];
 					if (f.ghosts.every((g) => !g.scared)) r.allEatenLeft = r2(e.left);
 				} else if (e.type === 'die') {
 					if (r.state === 'power') r.diedDuring = true;
@@ -412,7 +401,7 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 				r.leftAtEnd = p.endReason === 'expired' ? 0 : prevSerial === r.serial ? prevLeft : 0;
 				if (p.endReason === 'expired') startAftermath(r, scene);
 				else { end(r, f, out); }
-			}
+			} else if (r.state === 'power' && p.serial === r.serial) r.lastLeft = p.left;
 		}
 
 		const cur = run;
@@ -436,34 +425,17 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		return out;
 	}
 
+	/**
+	 * What the panel may show. While the power is on: only what does not depend on the time left
+	 * (the nearest scared ghost and whether the player is going after one). In the aftermath the
+	 * power is over, so the seconds since it ran out are no secret. An outcome only between trials.
+	 */
 	function readout(r: Run | null, f: Frame): LiveReadout {
 		if (!r) return idleLive();
-		const left = leftAt(r, f);
-		return {
-			state: r.state, left: r2(left), total: r.total, nearest: r.nearest ? { ghost: r.nearest.ghost, dist: r2(r.nearest.dist) } : null,
-			chasing: r.chasing, engaged: r.engaged, guess: guess(r, left)
-		};
+		const nearest = r.nearest ? { ghost: r.nearest.ghost, dist: r2(r.nearest.dist) } : null;
+		if (r.state === 'power') return { state: 'power', left: 0, total: 0, nearest, chasing: r.chasing, engaged: false, guess: null };
+		return { state: 'after', left: r2(-(f.t - r.endedAt)), total: r.total, nearest, chasing: r.chasing, engaged: false, guess: null };
 	}
-
-	/** Outcome so far, for the live panel: classify a copy as if the trial ended now. */
-	function guess(r: Run, left: number): Outcome | null {
-		if (r.state === 'power') {
-			if (left > WARN) return null;
-			if (r.chasing && left < TIMELY[0]) return 'overstayed';
-			if (r.chasing) return null;
-			const last = r.chases[r.chases.length - 1];
-			if (last && r.engaged) {
-				if (last.endedBy === 'eat') return 'catch';
-				const t = last.minLeft;
-				if (t >= TIMELY[0] && t <= TIMELY[1]) return 'timely-retreat';
-				if (t > TIMELY[1] && last.reachable) return 'early-retreat';
-			}
-			return r.engaged ? null : 'not-engaged';
-		}
-		const copy: Run = { ...r, chases: [...r.chases], chase: r.chase ? { ...r.chase } : null, after: { ...r.after } };
-		return finalize(copy, f0(r, left)).outcome;
-	}
-	const f0 = (r: Run, left: number) => ({ t: r.endedAt - left } as Frame);
 
 	return {
 		onScene,

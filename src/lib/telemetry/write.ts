@@ -28,9 +28,9 @@ export interface TrialWriteContext {
 	appVersion?: string;
 }
 
-/** A clip is stored for every engaged trial and every caught trial (STUDY.md "Replay clips"). */
+/** A clip is stored for every engaged trial, every trial that counts toward the rates and every caught trial (STUDY.md "Replay clips"). */
 export function wantsClip(trial: TrialMeasures): boolean {
-	return trial.engaged || trial.after.caught;
+	return trial.engaged || trial.inRates || trial.after.caught;
 }
 
 /** Arguments for `api.trials.save`, with the clip cut from `recorder` when the trial wants one. */

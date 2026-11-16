@@ -1,8 +1,12 @@
 /**
  * Replay clips. The recorder keeps the last few seconds of play at 20 Hz; when a trial finishes,
- * `clipFor` cuts the STUDY.md window (from 6 s before the power ended, or its start if later, to
- * 3 s after) and `encodeClip` packs it. `decodeClip` gives back `Scene[]` the renderer can draw
- * with any cue, plus markers and the trial's key numbers.
+ * `clipFor` cuts the STUDY.md window (from 8 s before the power ended, or its start if later, to
+ * 3 s after: the whole power-up under study rules) and `encodeClip` packs it. `decodeClip` gives
+ * back `Scene[]` the renderer can draw with any cue, plus markers and the trial's key numbers.
+ *
+ * The recorder also holds the very latest frame, on the 20 Hz grid or not. `clipFor` adds it before
+ * cutting, so a clip always ends on the frame that closed the trial: the frame of a death (its
+ * `die` event, the `dying` phase) is in the clip of a caught trial.
  *
  * Binary layout (version 1), all integers as delta encoded zigzag varints (see convex/lib/pack.ts):
  *   version, scene count, ghost count, dots length, starting dots (raw bytes),
@@ -10,7 +14,7 @@
  *   tile, enums as small integers, -1 for "none"),
  *   dot changes (scene index, tile index, new value),
  *   events and popups as JSON text (they are few; the frequent "dot" events are left out).
- * A 9 s clip is about 10-15 KB.
+ * A 9 s clip is about 10-15 KB (an 11 s one, the longest under study rules, about 18 KB).
  */
 import { mazeById, mazeForLevel } from '../game/engine/mazes';
 import { GHOST_IDS, type Frame, type GameEvent, type GhostId, type GhostMode, type Phase, type PowerEndReason, type Scene } from '../game/types';
@@ -18,7 +22,8 @@ import { Reader, Writer } from '#convex/lib/pack.ts';
 import type { Outcome, TrialMeasures } from './types';
 
 export const CLIP_HZ = 20;
-export const CLIP_BEFORE = 6;
+/** Seconds before the end of the power: 8 covers every power-up of the study (4-8 s) from its first frame. */
+export const CLIP_BEFORE = 8;
 export const CLIP_AFTER = 3;
 const VERSION = 1;
 const POS = 64; // position steps per tile
@@ -87,31 +92,57 @@ export interface Recorder {
 }
 
 export function createRecorder(opts: { keep?: number } = {}): Recorder {
-	// Enough for the longest window plus slack: 6 s before the end, 3 s after.
+	// Enough for the longest window plus slack: 8 s before the end, 3 s after.
 	const keep = opts.keep ?? CLIP_BEFORE + CLIP_AFTER + 1.5;
 	let buf: Kept[] = [];
 	let next = -Infinity;
+	/** Events of frames that were not kept, waiting for the next kept frame. */
 	let pending: GameEvent[] = [];
+	/** The newest frame when it was not kept (off the 20 Hz grid). */
+	let latest: Kept | null = null;
+
+	function wipe() { buf = []; next = -Infinity; pending = []; latest = null; }
+
+	function keepFrame(k: Kept) {
+		const f = k.frame;
+		buf.push(pending.length === f.events.length ? k : { ...k, frame: { ...f, events: pending } });
+		pending = [];
+		latest = null;
+		next = Math.max(next + 1 / CLIP_HZ, f.t + 1 / CLIP_HZ / 2);
+		while (buf.length > 2 && buf[0].frame.t < f.t - keep) buf.shift();
+	}
+
+	/** Puts the newest frame in the buffer if it is not there yet, with the events that waited for it. */
+	function flush() {
+		const tail = buf.length ? buf[buf.length - 1] : null;
+		if (latest && (!tail || latest.frame.t > tail.frame.t + 1e-9)) { keepFrame(latest); return; }
+		// Game time stood still (the freeze after an eat): the events belong to the frame already kept.
+		if (tail && pending.length) {
+			buf[buf.length - 1] = { ...tail, frame: { ...tail.frame, events: [...tail.frame.events, ...pending] } };
+			pending = [];
+		}
+		latest = null;
+	}
 
 	return {
 		push(scene) {
 			const f = scene.frame;
-			if (buf.length && f.t < buf[buf.length - 1].frame.t - 1e-9) { buf = []; next = -Infinity; pending = []; }
+			if (buf.length && f.t < buf[buf.length - 1].frame.t - 1e-9) wipe();
 			if (f.events.length) pending.push(...f.events);
-			if (f.t + 1e-9 < next) return;
-			next = Math.max(next + 1 / CLIP_HZ, f.t + 1 / CLIP_HZ / 2);
-			buf.push({ frame: pending.length === f.events.length ? f : { ...f, events: pending }, dots: scene.dots.slice(), mazeId: scene.maze.id });
-			pending = [];
-			while (buf.length > 2 && buf[0].frame.t < f.t - keep) buf.shift();
+			const k: Kept = { frame: f, dots: scene.dots.slice(), mazeId: scene.maze.id };
+			if (f.t + 1e-9 < next) { latest = k; return; }
+			keepFrame(k);
 		},
 		clipFor(trial, cue) {
+			flush();
 			const from = Math.max(trial.startedAt, trial.endedAt - CLIP_BEFORE) - 1e-6;
-			const to = trial.endedAt + CLIP_AFTER + 1e-6;
+			// One clip step past the 3 s, so the frame that closed the trial is in.
+			const to = trial.endedAt + CLIP_AFTER + 1 / CLIP_HZ;
 			const kept = buf.filter((k) => k.frame.t >= from && k.frame.t <= to && k.frame.level === trial.level);
 			if (kept.length < 2) return null;
 			return encodeClip(kept, cue, trial);
 		},
-		reset() { buf = []; next = -Infinity; pending = []; },
+		reset: wipe,
 		get size() { return buf.length; }
 	};
 }

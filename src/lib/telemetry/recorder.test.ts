@@ -1,20 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { STUDY_CONFIG } from '../game/engine/game';
 import type { Frame, Scene } from '../game/types';
-import { createRecorder, decodeClip, type EncodedClip } from './recorder';
+import { CLIP_BEFORE, createRecorder, decodeClip, type EncodedClip } from './recorder';
 import { createTracker } from './tracker';
-import { playScripted } from './testing';
+import { playScripted, type Policy } from './testing';
+import { trialWrite, wantsClip } from './write';
 import type { TrialMeasures } from './types';
 import { packSeries, unpackSeries } from '#convex/lib/series.ts';
 
 /** Plays a scripted study game, keeping every scene so decoded clips can be checked against it. */
-function record(seconds = 120) {
+function record(seconds = 120, policy: Policy = { retreatAt: 0.8 }, seed = 11) {
 	const tracker = createTracker();
 	const recorder = createRecorder();
 	const originals = new Map<number, { frame: Frame; dots: Uint8Array }>();
 	const clips: { trial: TrialMeasures; clip: EncodedClip }[] = [];
 	const trials: TrialMeasures[] = [];
-	playScripted({ ...STUDY_CONFIG, seed: 11 }, seconds, { retreatAt: 0.8 }, (scene: Scene) => {
+	playScripted({ ...STUDY_CONFIG, seed }, seconds, policy, (scene: Scene) => {
 		// Game time stands still during the freeze after an eat, so several frames share one time;
 		// the recorder keeps the first of them, and so does this map.
 		const k = Math.round(scene.frame.t * 1000);
@@ -36,10 +37,13 @@ describe('clips', () => {
 		const expired = clips.filter((c) => c.trial.endReason === 'expired');
 		expect(expired.length).toBeGreaterThan(2);
 		for (const { trial, clip } of expired) {
-			const from = Math.max(trial.startedAt, trial.endedAt - 6);
+			// Under study rules (powers of 4-8 s) the window is the whole power-up and its aftermath.
+			expect(CLIP_BEFORE).toBe(8);
+			const from = trial.startedAt;
 			expect(clip.t0).toBeGreaterThanOrEqual(from - 1e-6);
 			expect(clip.t0).toBeLessThan(from + 0.06);
-			expect(clip.t1).toBeGreaterThan(trial.endedAt + trial.after.seen - 0.06);
+			// The last scene is the frame that closed the trial.
+			expect(clip.t1).toBeGreaterThan(trial.endedAt + trial.after.seen - 0.02);
 			expect(clip.hz).toBe(20);
 			expect(clip.scenes).toBeGreaterThan((clip.t1 - clip.t0) * 20 - 2);
 			expect(clip.data.byteLength).toBeLessThan(100_000);
@@ -95,6 +99,82 @@ describe('clips', () => {
 		const inClip = withEat!.trial.eats.filter((e) => withEat!.trial.startedAt + e.t >= withEat!.clip.t0);
 		const eatEvents = scenes.flatMap((s) => s.frame.events.filter((e) => e.type === 'eat'));
 		expect(eatEvents.length).toBe(inClip.length);
+	});
+
+	it('a clip of a caught trial ends on the death: the die event and the dying phase are in it', () => {
+		// A player who never backs off gets caught now and then.
+		const deaths = [1, 2, 3, 4].flatMap((seed) => record(150, 'chase', seed).clips).filter((c) => c.trial.after.died);
+		expect(deaths.length).toBeGreaterThan(2);
+		for (const { trial, clip } of deaths) {
+			const { scenes, markers } = decodeClip(clip);
+			const last = scenes.at(-1)!.frame;
+			const died = trial.endedAt + trial.after.seen;
+			expect(Math.abs(last.t - died)).toBeLessThan(0.02); // within a frame (stored times are rounded)
+			expect(last.phase).toBe('dying');
+			expect(last.events.some((e) => e.type === 'die')).toBe(true);
+			expect(scenes.flatMap((s) => s.frame.events).filter((e) => e.type === 'die')).toHaveLength(1);
+			expect(markers.at(-1)!.kind).toBe('death');
+			expect(Math.abs(markers.at(-1)!.t - last.t)).toBeLessThan(0.02);
+			// No frame is in the clip twice.
+			for (let i = 1; i < scenes.length; i++) expect(scenes[i].frame.t).toBeGreaterThan(scenes[i - 1].frame.t);
+		}
+	});
+
+	it('a clip always ends on the latest frame, on the 20 Hz grid or not', () => {
+		for (const { trial, clip } of clips) {
+			const closed = trial.endReason === 'expired' ? trial.endedAt + trial.after.seen : trial.endedAt;
+			expect(clip.t1).toBeGreaterThan(closed - 0.02);
+			expect(clip.t1).toBeLessThan(closed + 0.05 + 1e-6);
+		}
+	});
+
+	it('no event is lost or doubled when the latest frame is added between grid frames', () => {
+		const tracker = createTracker();
+		const recorder = createRecorder();
+		const eats = new Map<number, number>();
+		const seen: EncodedClip[] = [];
+		playScripted({ ...STUDY_CONFIG, seed: 5 }, 120, 'chase', (scene: Scene) => {
+			recorder.push(scene);
+			for (const e of scene.frame.events) if (e.type === 'eat') eats.set(Math.round(e.t * 1000), 1);
+			for (const trial of tracker.onScene(scene)) { const c = recorder.clipFor(trial, 'none'); if (c) seen.push(c); }
+		});
+		expect(seen.length).toBeGreaterThan(3);
+		const inClips = new Map<number, number>();
+		for (const c of seen) for (const s of decodeClip(c).scenes) for (const e of s.frame.events) if (e.type === 'eat') inClips.set(Math.round(e.t * 1000), (inClips.get(Math.round(e.t * 1000)) ?? 0) + 1);
+		expect(eats.size).toBeGreaterThan(3);
+		// Every eat of a clipped power-up is in exactly one clip, exactly once.
+		for (const [, n] of inClips) expect(n).toBe(1);
+	});
+
+	it('a trial closed by leaving the page has a sane end and a clip', () => {
+		const tracker = createTracker();
+		const recorder = createRecorder();
+		let left: { trial: TrialMeasures; clip: EncodedClip | null } | null = null;
+		const game = playScripted({ ...STUDY_CONFIG, seed: 3 }, 200, 'chase', (scene: Scene) => {
+			if (left) return;
+			recorder.push(scene);
+			tracker.onScene(scene);
+			// Leave in the middle of a chase, with the power still on and inside its last 3 s.
+			if (scene.frame.power.left > 0 && scene.frame.power.left < 2.5 && tracker.live.chasing) {
+				const [trial] = tracker.finish();
+				left = { trial, clip: wantsClip(trial) ? recorder.clipFor(trial, 'none') : null };
+			}
+		});
+		expect(game).toBeTruthy();
+		expect(left).not.toBeNull();
+		const { trial, clip } = left!;
+		expect(trial.endReason).toBe('quit');
+		expect(trial.outcome).toBe('interrupted');
+		expect(trial.endedAt).toBeGreaterThan(trial.startedAt);
+		expect(trial.leftAtEnd).toBeGreaterThan(0);
+		expect(trial.endedAt - trial.startedAt).toBeLessThanOrEqual(trial.total);
+		expect(trial.engaged).toBe(true);
+		expect(clip).not.toBeNull();
+		expect(clip!.t0).toBeCloseTo(trial.startedAt, 1);
+		expect(clip!.t1).toBeCloseTo(trial.endedAt, 2);
+		expect(clip!.markers.find((m) => m.kind === 'powerEnd')!.t).toBeCloseTo(trial.endedAt, 2);
+		// The same through the shared write path.
+		expect(trialWrite(trial, recorder, { key: 'k', sessionKey: 's', blockKey: 'b', trialIndex: 0, cue: 'none', sound: true, reducedMotion: false, inputType: 'none', difficulty: 'normal' }).clip).toBeTruthy();
 	});
 
 	it('series pack round trip', () => {

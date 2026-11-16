@@ -30,6 +30,24 @@ export interface EatRecord {
 	points: number;
 }
 
+/** One chase of a power-up (STUDY.md "Chasing"). Times are seconds since the power started. */
+export interface ChaseRecord {
+	ghost: string;
+	/** First step toward the ghost. */
+	from: number;
+	/** The turn-away moment: the player's closest point by their own steps (the eat, for `eat`). */
+	at: number;
+	/** Power left at that moment; negative after the end. */
+	left: number;
+	/** Path distance to the ghost at that moment. */
+	dist: number;
+	/** Tiles the player's own steps closed. */
+	gain: number;
+	end: ChaseEnd;
+	/** Path distance to this ghost when the power ran out; null if it was eaten or the power did not run out. */
+	endDist: number | null;
+}
+
 /** 10 Hz samples from the power start to 3 s after its end. Parallel arrays. */
 export interface TrialSeries {
 	/** Seconds since the power-up started. */
@@ -85,13 +103,20 @@ export interface TrialMeasures {
 	outcome: Outcome;
 	/** Rules version the outcome was computed with (convex/lib/rules.ts). */
 	rulesVersion: number;
-	/** Chasing at some point in the warning window (the last 3 s of the power). */
+	/** A chase reached into the warning window (the last 3 s of the power), or a ghost was eaten in it. */
 	engaged: boolean;
 	/**
-	 * Eligible for the rates: engaged, the power ran out by itself, and the player did not leave
-	 * during the aftermath. Only the decision outcomes among these count (`isDecision`).
+	 * Eligible for the rates: the power ran out by itself, the player did not leave during the
+	 * aftermath, and there is a final chase to judge (engaged, or `gaveUpEarly`). Only the decision
+	 * outcomes among these count (`isDecision`).
 	 */
 	inRates: boolean;
+	/**
+	 * Rules version 3: the last chase was given up before the warning window (more than 3 s left)
+	 * while its ghost was still reachable, and nothing was chased or eaten after it. Such a trial
+	 * counts as "turned away too early"; the flag lets that share be shown apart.
+	 */
+	gaveUpEarly?: boolean;
 
 	eats: EatRecord[];
 	/** A ghost eaten with 1.5 s or less left. */
@@ -100,17 +125,28 @@ export interface TrialMeasures {
 	allEatenLeft: number | null;
 
 	/**
-	 * Power left when the player stopped closing in for good; negative after the end; null if they
-	 * never did. For a last chase that ended in an eat, the power left at the eat.
+	 * Power left at the turn-away of the last chase: the moment the player was closest to the ghost
+	 * by their own steps, before they backed off or stopped. Negative after the end; null if that
+	 * chase was still running when the trial closed. For a last chase that ended in an eat, the
+	 * power left at the eat.
 	 */
 	turnLeft: number | null;
+	/** Path distance to the chased ghost at that moment (0 for an eat). */
 	turnDist: number | null;
 	/** Seconds since the power started (game time) of the turn-away moment. */
 	turnAt: number | null;
-	/** At the turn, a scared ghost was out and could still be reached before the power ran out. */
+	/** At the turn-away the chased ghost could still be reached before the power ran out (turnDist <= turnLeft x 5.6); null without a turn-away. */
 	turnReachable: boolean | null;
-	/** Number of separate chases during the power-up. */
+	/** Number of separate chases during the power-up (eats included). */
 	chases: number;
+	/** Rules version 3: path distance to the last chase's ghost when the power ran out; null if it was eaten or the power did not run out. */
+	chaseEndDist?: number | null;
+	/** Rules version 3: tiles the player's own steps closed during the last chase. */
+	chaseGain?: number | null;
+	/** Rules version 3: the ghost of the last chase. */
+	chaseGhost?: string | null;
+	/** Rules version 3: every chase of the power-up in the order it ended (the latest 16), so a later rule can pick again. */
+	chaseLog?: ChaseRecord[];
 	/**
 	 * How the last chase ended: `turn` (turned away), `eat` (ate the ghost; no chase began after it),
 	 * `open` (still chasing when the trial closed); null when there was no chase.
@@ -123,7 +159,7 @@ export interface TrialMeasures {
 	endClosing: boolean | null;
 
 	after: Aftermath;
-	/** For players still closing in at the end: seconds from the end until they first moved away. */
+	/** For players still closing in at the end: seconds after the end they kept stepping toward the ghost (0 when their last such step came just before it); null if they never turned. */
 	reaction: number | null;
 	/** Power left unused after an early retreat (= turnLeft for early retreats). */
 	wasted: number | null;
@@ -136,15 +172,22 @@ export interface TrialMeasures {
 	series: TrialSeries;
 }
 
-/** What the on-screen panel shows while playing. */
+/**
+ * What the on-screen panel may show while playing. The participant can see the screen, so while a
+ * power-up runs nothing here depends on the time left: `left` and `total` are 0, `engaged` is
+ * false and `guess` is null. Only the cue may tell.
+ */
 export interface LiveReadout {
 	state: 'idle' | 'power' | 'after';
-	/** Power left, negative in the aftermath. */
+	/** 0 while the power is on (never the time left); in the aftermath, minus the seconds since it ran out. */
 	left: number;
+	/** Power length: 0 while the power is on, known from the aftermath on. */
 	total: number;
 	nearest: { ghost: GhostId; dist: number } | null;
+	/** The player is going after a scared ghost right now (a chase is under way). */
 	chasing: boolean;
+	/** While idle: whether the trial that closed last was engaged. False while a trial runs. */
 	engaged: boolean;
-	/** Best guess of the outcome so far; null before anything can be said. */
+	/** While idle: the outcome of the trial that closed last (null before the first). Always null while a trial runs. */
 	guess: Outcome | null;
 }
