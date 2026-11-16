@@ -1,10 +1,12 @@
 /**
- * The replay browser's filters and sorts, shared by the list (`/replays`) and the player (for its
+ * The replay browser's filters and sort, shared by the list (`/replays`) and the player (for its
  * previous / next links). The state lives in the URL query (`?source=bot&outcome=caught&sort=closest`)
- * so a filtered list can be shared and the player can walk through the same list.
+ * so a filtered list can be shared and the player can walk through the same list. Filtering and
+ * sorting happen on the server (convex/replays.ts).
  */
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '#convex/_generated/api.js';
+import { endTimeOf } from './story';
 
 export type Moment = FunctionReturnType<typeof api.replays.list>['rows'][number];
 export type Source = 'human' | 'bot' | 'all';
@@ -41,6 +43,15 @@ export function readState(sp: Pick<URLSearchParams, 'get'>, fallbackSource: Sour
 	};
 }
 
+/** The query arguments for convex `replays.list` / `replays.neighbours`. */
+export const queryArgs = (s: ListState) => ({
+	source: s.source,
+	...(s.cue ? { cue: s.cue } : {}),
+	...(s.outcome ? { outcome: s.outcome } : {}),
+	...(s.participant ? { participant: s.participant } : {}),
+	sort: s.sort
+});
+
 /** Query string for a state, leaving out defaults ('' when everything is default). */
 export function toSearch(s: ListState): string {
 	const sp = new URLSearchParams();
@@ -53,40 +64,14 @@ export function toSearch(s: ListState): string {
 	return q ? '?' + q : '';
 }
 
-const nullsLast = (a: number | null, b: number | null, dir: 1 | -1) =>
-	a === null && b === null ? 0 : a === null ? 1 : b === null ? -1 : (a - b) * dir;
-
-export function sortMoments(rows: Moment[], sort: Sort): Moment[] {
-	const out = [...rows];
-	const newest = (a: Moment, b: Moment) => b.createdAt - a.createdAt;
-	switch (sort) {
-		case 'closest': return out.sort((a, b) => nullsLast(a.endDist, b.endDist, 1) || newest(a, b));
-		case 'caught': return out.sort((a, b) => Number(b.caught) - Number(a.caught) || nullsLast(a.timeToCaught, b.timeToCaught, 1) || newest(a, b));
-		case 'turn-early': return out.sort((a, b) => nullsLast(a.turnLeft, b.turnLeft, -1) || newest(a, b));
-		case 'turn-late': return out.sort((a, b) => nullsLast(a.turnLeft, b.turnLeft, 1) || newest(a, b));
-		default: return out.sort(newest);
-	}
-}
-
-/** Rows matching the cue, outcome and participant filters (the source is filtered by the query). */
-export function filterMoments(rows: Moment[], s: Pick<ListState, 'cue' | 'outcome' | 'participant'>): Moment[] {
-	return rows.filter((r) =>
-		(!s.cue || r.cue === s.cue) &&
-		(!s.outcome || r.outcome === s.outcome) &&
-		(!s.participant || String(r.participant) === s.participant)
-	);
-}
-
-export const applyList = (rows: Moment[], s: ListState) => sortMoments(filterMoments(rows, s), s.sort);
-
 /**
  * The game time worth showing as a still: the turn-away for retreats, the last eat for a late
  * catch, just after the switch otherwise (the ghosts have just turned).
  */
-export function keyTime(m: Pick<Moment, 'outcome' | 'startedAt' | 'endedAt' | 'turnAt' | 'lastEatAt'>): number {
+export function keyTime(m: Pick<Moment, 'outcome' | 'startedAt' | 'endedAt' | 'total' | 'turnAt' | 'lastEatAt'>): number {
 	if ((m.outcome === 'timely-retreat' || m.outcome === 'early-retreat') && m.turnAt !== null) return m.startedAt + m.turnAt;
 	if ((m.outcome === 'catch' || m.outcome === 'late-catch') && m.lastEatAt !== null) return m.lastEatAt + 0.05;
-	return m.endedAt + 0.15;
+	return endTimeOf(m) + (m.outcome === 'interrupted' ? -0.05 : 0.15);
 }
 
 /**

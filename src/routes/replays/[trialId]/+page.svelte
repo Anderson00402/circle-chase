@@ -6,52 +6,88 @@
 	 * The same moment can be redrawn with any other cue side by side.
 	 *
 	 * URL: /replays/<trialId>?<list filters>#left=1.20&vs=heartbeat&aids=hl,line,tag
-	 *   the query keeps the list's filters (for previous / next), the hash the playhead (in seconds
-	 *   left), the comparison cue and the viewing aids.
+	 *   the query keeps the list's filters (for previous / next), or `run=<run>` when it was opened
+	 *   from a run summary (then Previous / Next stay in that run and a link goes back to it); the
+	 *   hash keeps the playhead (in seconds left), the comparison cue and the viewing aids.
+	 *
+	 * Moving to another trial keeps the current one on screen until the next has loaded.
 	 */
 	import { useQuery } from 'convex-svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api } from '#convex/_generated/api.js';
 	import type { Id } from '#convex/_generated/dataModel.js';
+	import type { GhostId } from '#lib/game/types.ts';
 	import { cueById } from '#lib/game/cues/index.ts';
-	import { decodeClip, markersFor, type EncodedClip, type Marker } from '#lib/telemetry/recorder.ts';
-	import type { TrialMeasures } from '#lib/telemetry/types.ts';
-	import { Badge, Button, CueChip, EmptyState, InfoTip, Kbd, Page, Segmented, Select, cueListings } from '#lib/ui/index.ts';
+	import { decodeClip, type EncodedClip, type Marker } from '#lib/telemetry/recorder.ts';
+	import { Badge, Button, CueChip, EmptyState, InfoTip, Kbd, Page, Segmented, Select, cueListings, slow } from '#lib/ui/index.ts';
 	import ReplayBoard from '#lib/replay/ReplayBoard.svelte';
 	import Timeline from '#lib/replay/Timeline.svelte';
 	import { indexAt, sceneAt, stepTime } from '#lib/replay/interp.ts';
 	import { targetCache } from '#lib/replay/target.ts';
-	import { applyList, readState, toSearch } from '#lib/replay/list.ts';
-	import { OUTCOME_MEANING, OUTCOME_TONE, describe, ghostName, leftWords, outcomeLabel, signed, ago } from '#lib/replay/story.ts';
-	import { isDecision, isLateCatch } from '#convex/lib/rules.ts';
+	import { queryArgs, readState, replayHref, toSearch } from '#lib/replay/list.ts';
+	import { OUTCOME_MEANING, OUTCOME_TONE, describe, endTimeOf, ghostName, leftWords, outcomeLabel, signed, ago } from '#lib/replay/story.ts';
+	import { deathLabel, modeLabel } from '#lib/outcomes.ts';
+	import { summaryHref } from '#lib/study/run.svelte.ts';
+	import { RULES_VERSION, isDecision, isLateCatch } from '#convex/lib/rules.ts';
 
 	const id = $derived(page.params.trialId ?? '');
-	const trialQ = useQuery(api.trials.get, () => ({ id: id as Id<'trials'> }));
-	const clipQ = useQuery(api.clips.byTrial, () => ({ trialId: id as Id<'trials'> }));
+	const trialQ = useQuery(api.trials.get, () => ({ id: id as Id<'trials'> }), { keepPreviousData: true });
+	const clipQ = useQuery(api.clips.byTrial, () => ({ trialId: id as Id<'trials'> }), { keepPreviousData: true });
+	const seriesQ = useQuery(api.trials.series, () => ({ trialId: id as Id<'trials'> }), { keepPreviousData: true });
+	/** The trial on screen: the one asked for, or the previous one until it has loaded. */
 	const trial = $derived(trialQ.data ?? null);
-	const loading = $derived(trialQ.isLoading || (clipQ.isLoading && !clipQ.error));
-	const missing = $derived(!!trialQ.error || (!trialQ.isLoading && !trialQ.data));
+	/** Everything for the trial in the address has arrived. */
+	const current = $derived(
+		!!trial && trial._id === id && !clipQ.isLoading && !seriesQ.isLoading
+		&& (clipQ.data == null || clipQ.data.trialId === id)
+	);
+	const switching = $derived(!!trial && !current && !trialQ.error);
+	const missing = $derived(!!trialQ.error || (!trialQ.isLoading && trialQ.data === null));
+	const late = slow(() => !trial && !missing);
 
+	// The clip belongs to the trial on screen (while switching, the old one's clip stays).
 	const decoded = $derived.by(() => {
 		const c = clipQ.data;
-		if (!c) return null;
+		if (!c || !trial || c.trialId !== trial._id) return null;
 		try { return decodeClip(c as unknown as EncodedClip); } catch { return null; }
 	});
 	const scenes = $derived(decoded?.scenes ?? []);
 
 	// ---------- time range and markers ----------
 	const startT = $derived(trial?.startedAt ?? 0);
-	const endT = $derived(trial?.endedAt ?? 0);
+	const lastSeen = $derived(scenes.length ? scenes[scenes.length - 1].frame.t : undefined);
+	/** When the power ended; robust to old rows whose stored end time was wrong. */
+	const endT = $derived(trial ? endTimeOf(trial, lastSeen) : 0);
 	const expired = $derived(trial?.endReason === 'expired');
 	const series = $derived.by(() => {
-		if (!trial?.series) return null;
-		const s = trial.series;
+		const s = (current ? seriesQ.data : null) ?? trial?.series ?? null;
+		if (!s || !trial) return null;
 		return { t: s.t.map((x) => trial.startedAt + x), dist: s.dist, chasing: s.chasing };
 	});
 	const t0 = $derived(scenes.length ? scenes[0].frame.t : (series?.t[0] ?? startT));
-	const t1 = $derived(scenes.length ? scenes[scenes.length - 1].frame.t : (series?.t[series.t.length - 1] ?? endT + 3));
-	const markers: Marker[] = $derived(decoded?.markers ?? (trial ? markersFor(trial as unknown as TrialMeasures) : []));
+	const t1 = $derived(scenes.length ? scenes[scenes.length - 1].frame.t : Math.max(series?.t[series.t.length - 1] ?? 0, endT + (expired ? 3 : 0.5)));
+
+	/**
+	 * The timeline's markers, rebuilt from the trial (not the copy stored in the clip): the end uses
+	 * the robust end time, there is no turn-away when the last chase ended by eating the ghost, and a
+	 * death during the power is shown too.
+	 */
+	const markers: Marker[] = $derived.by(() => {
+		if (!trial) return [];
+		const m: Marker[] = [{ kind: 'powerStart', t: trial.startedAt, left: trial.total }];
+		for (const e of trial.eats) m.push({ kind: 'eat', t: trial.startedAt + e.t, ghost: e.ghost as GhostId, left: e.left });
+		const lastEat = trial.eats.length ? trial.eats[trial.eats.length - 1] : null;
+		const endedByEat = trial.lastChaseEnd === 'eat' || trial.outcome === 'catch'
+			|| (trial.lastChaseEnd == null && lastEat !== null && trial.turnAt !== null && Math.abs(trial.turnAt - lastEat.t) < 0.06);
+		if (trial.turnAt !== null && !endedByEat && trial.startedAt + trial.turnAt <= endT + 3.05) {
+			m.push({ kind: 'turnAway', t: trial.startedAt + trial.turnAt, left: trial.turnLeft ?? undefined });
+		}
+		m.push({ kind: 'powerEnd', t: endT, left: trial.leftAtEnd });
+		if (trial.endReason === 'died') m.push({ kind: 'death', t: endT });
+		else if (trial.after.died) m.push({ kind: 'death', t: endT + (trial.after.timeToCaught ?? trial.after.seen), ghost: (trial.after.killer ?? undefined) as GhostId | undefined });
+		return m.sort((a, b) => a.t - b.t);
+	});
 
 	// ---------- playback state ----------
 	let time = $state(0);
@@ -65,9 +101,14 @@
 
 	const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-	// Start (or restart, when moving to another trial) once the data is in, from the hash if any.
+	// Moving to another trial stops playback at once; the playhead is set when its data is in.
+	let lastId = '';
 	$effect(() => {
-		if (!trial || clipQ.isLoading || readyFor === id) return;
+		if (id !== lastId) { lastId = id; playing = false; }
+	});
+	// Start (or restart, when moving to another trial) once its data is in, from the hash if any.
+	$effect(() => {
+		if (!current || !trial || readyFor === id) return;
 		readyFor = id;
 		const fromHash = applyHash(trial.cue);
 		playing = !fromHash && !reduceMotion && scenes.length > 0;
@@ -79,8 +120,8 @@
 		written = location.hash;
 		const h = new URLSearchParams(location.hash.slice(1));
 		const at = h.get('left');
-		const fromHash = at !== null && Number.isFinite(+at);
-		time = fromHash ? clamp(endT - +at) : t0;
+		const fromHash = at !== null && Number.isFinite(+at) && t0 <= endT - +at + 0.05 && endT - +at <= t1 + 0.05;
+		time = fromHash ? clamp(endT - +at!) : t0;
 		vsCue = h.get('vs') ?? (trialCue === 'none' ? 'timer-bar' : 'none');
 		compare = h.has('vs');
 		const a = (h.get('aids') ?? '').split(',');
@@ -89,7 +130,7 @@
 	}
 	// A pasted or edited hash on the same page takes effect without a reload.
 	function onhash() {
-		if (!trial || location.hash === written) return;
+		if (!trial || !current || location.hash === written) return;
 		if (applyHash(trial.cue)) playing = false;
 	}
 
@@ -113,17 +154,23 @@
 		return () => cancelAnimationFrame(raf);
 	});
 
-	// Keep the shareable state in the hash (not while playing: only when it settles).
+	// Keep the shareable state in the hash (not while playing: only when it settles), and only for
+	// the trial whose playhead it is.
 	$effect(() => {
-		if (!trial || readyFor !== id || playing) return;
+		if (!trial || !current || readyFor !== id || trial._id !== id || playing) return;
 		const h = new URLSearchParams();
 		h.set('left', (endT - time).toFixed(2));
 		if (compare) h.set('vs', vsCue);
 		const a = [aids.highlight && 'hl', aids.line && 'line', aids.tag && 'tag'].filter(Boolean);
 		if (a.length) h.set('aids', a.join(','));
 		const hash = '#' + h.toString();
+		const forId = id;
 		const url = page.url.pathname + page.url.search + hash;
-		const timer = setTimeout(() => { written = hash; goto(url, { state: page.state, shallow: true, replace: true }).catch(() => {}); }, 250);
+		const timer = setTimeout(() => {
+			if (forId !== id || location.pathname !== `/replays/${forId}`) return;
+			written = hash;
+			goto(url, { state: page.state, shallow: true, replace: true }).catch(() => {});
+		}, 250);
 		return () => clearTimeout(timer);
 	});
 
@@ -146,9 +193,15 @@
 		}
 		return best >= 0 && bd < 0.11 ? { dist: series.dist[best], chasing: series.chasing[best] === 1 } : null;
 	});
+	/** At the "power out" marker the distance is the one the outcome was judged by. */
+	const distNow = $derived(
+		trial && expired && trial.endDist !== null && Math.abs(time - endT) < 0.06 ? trial.endDist
+		: seriesAt?.dist ?? (target.dist ?? null)
+	);
 	const deathT = $derived(markers.find((m) => m.kind === 'death')?.t ?? null);
+	const deathWord = $derived(deathLabel(trial?.outcome ?? ''));
 	const status = $derived(
-		deathT !== null && time >= deathT ? { text: 'Caught', tone: 'bad' }
+		deathT !== null && time >= deathT ? { text: deathWord, tone: 'bad' }
 		: left > 0 ? (left <= 3 ? { text: 'Last 3 s', tone: 'warn' } : { text: 'Power on', tone: 'accent' })
 		: expired ? { text: 'Ghosts dangerous', tone: 'bad' } : { text: 'Power cut short', tone: 'neutral' }
 	);
@@ -176,15 +229,25 @@
 		compare = true;
 	}
 
-	// ---------- previous / next in the current list ----------
+	// ---------- previous / next: in the run it was opened from, or in the current list ----------
+	const runKey = $derived(page.url.searchParams.get('run'));
+	const runQ = useQuery(api.runs.block, () => (runKey ? { blockKey: runKey } : 'skip'), { keepPreviousData: true });
 	const listState = $derived(readState(page.url.searchParams, trial?.source ?? 'human'));
-	const listQ = useQuery(api.replays.list, () => (trial ? { source: listState.source } : 'skip'));
+	const nbQ = useQuery(api.replays.neighbours, () => (runKey || !trial ? 'skip' : { trialId: id as Id<'trials'>, ...queryArgs(listState) }), { keepPreviousData: true });
 	const nav = $derived.by(() => {
-		const rows = listQ.data ? applyList(listQ.data.rows, listState) : [];
-		const i = rows.findIndex((r) => r.trialId === id);
+		if (runKey) {
+			const rows = runQ.data?.rows ?? [];
+			const i = rows.findIndex((r) => r._id === id);
+			const href = (r: (typeof rows)[number] | undefined) => (r ? replayHref(r._id, { run: runKey }) : null);
+			const back = runQ.data ? summaryHref(runQ.data.cue, runKey, runQ.data.mode) : null;
+			return { prev: i > 0 ? href(rows[i - 1]) : null, next: i >= 0 ? href(rows[i + 1]) : null, pos: i, count: rows.length, list: back, run: true };
+		}
 		const q = toSearch(listState);
-		const href = (r: (typeof rows)[number] | undefined) => (r ? `/replays/${r.trialId}${q}` : null);
-		return { prev: i > 0 ? href(rows[i - 1]) : null, next: i >= 0 ? href(rows[i + 1]) : null, pos: i, count: rows.length, list: `/replays${q}` };
+		const n = nbQ.data;
+		return {
+			prev: n?.prev ? `/replays/${n.prev}${q}` : null, next: n?.next ? `/replays/${n.next}${q}` : null,
+			pos: n?.pos ?? -1, count: n?.count ?? 0, list: `/replays${q}`, run: false
+		};
 	});
 
 	// ---------- transport ----------
@@ -210,7 +273,6 @@
 		const t = dir > 0 ? ts.find((x) => x > time + 0.02) : [...ts].reverse().find((x) => x < time - 0.02);
 		seek(t ?? (dir > 0 ? t1 : t0));
 	}
-	function restart() { time = t0; playing = scenes.length > 0 && !reduceMotion ? true : playing; }
 
 	function onkey(e: KeyboardEvent) {
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -236,22 +298,44 @@
 		else if (k === '[') cycleCue(-1);
 		else if (k === 'h') { const on = !(aids.highlight && aids.line); aids = { ...aids, highlight: on, line: on }; }
 		else if (k === 't') aids = { ...aids, tag: !aids.tag };
+		else if (k === 'n' && nav.next) goto(nav.next);
+		else if (k === 'p' && nav.prev) goto(nav.prev);
 		else done = false;
 		if (done) e.preventDefault();
 	}
 
-	const MARKER_LABEL: Record<Marker['kind'], string> = { powerStart: 'Power on', eat: 'Ate', turnAway: 'Turned away', powerEnd: 'Power out', death: 'Caught' };
-	const markerText = (m: Marker) => (m.kind === 'eat' ? `Ate ${ghostName(m.ghost) ?? 'ghost'}` : m.kind === 'powerEnd' && !expired ? 'Power cut' : MARKER_LABEL[m.kind]);
+	const markerText = (m: Marker) =>
+		m.kind === 'eat' ? `Ate ${ghostName(m.ghost) ?? 'ghost'}`
+		: m.kind === 'powerStart' ? 'Power on'
+		: m.kind === 'turnAway' ? 'Turned away'
+		: m.kind === 'death' ? deathWord
+		: expired ? 'Power out'
+		: trial?.endReason === 'quit' ? 'Run ended'
+		: 'Power cut';
 
-	const fmt = (x: number | null | undefined, d = 1) => (x === null || x === undefined ? null : x.toFixed(d));
+	const fmt = (x: number | null | undefined, d = 1) => (x === null || x === undefined ? null : Math.abs(x) < 0.1 && x !== 0 && d === 1 ? x.toFixed(2) : x.toFixed(d));
 	const W = $derived(scene?.maze.W ?? 28);
 	const H = $derived(scene?.maze.H ?? 31);
 	const outcome = $derived((trial?.outcome ?? 'other') as keyof typeof OUTCOME_MEANING);
-	const noClipReason = $derived(
-		!trial ? '' : !trial.engaged && trial.outcome !== 'caught'
-			? `Only power-ups where the player was chasing in the last 3 s, or was caught, are recorded. This one was "${outcomeLabel(outcome).toLowerCase()}", so only its numbers and distance series were kept.`
-			: 'This power-up qualified for a recording, but none was stored (the recording buffer did not reach back far enough, or the save failed). Its numbers and distance series are below.'
-	);
+	const who = $derived(trial?.participant ? (trial.participant.nickname ?? `P${String(trial.participant.number).padStart(2, '0')}`) : '-');
+	const oldRules = $derived(!!trial && (trial.rulesVersion ?? 1) !== RULES_VERSION);
+	const noClipReason = $derived.by(() => {
+		if (!trial) return '';
+		if (trial.outcome === 'interrupted') {
+			const why: Record<string, string> = {
+				died: 'The player was caught while the power was still on',
+				cleared: 'The maze was cleared before the power ran out',
+				refreshed: 'A second power dot restarted the power',
+				quit: 'The run ended (or the page was left) while the power was on'
+			};
+			return `${why[trial.endReason] ?? 'The power did not run out by itself'}, so there was no end to record. Its numbers and distance chart are here.`;
+		}
+		if (!trial.engaged && trial.outcome !== 'caught') {
+			return `Only power-ups where the player was chasing in the last 3 s, or was caught, are recorded. This one was "${outcomeLabel(outcome).toLowerCase()}", so only its numbers and distance chart were kept.`;
+		}
+		if (trial.after.cut === 'quit') return 'The run ended before the 3 s after this power-up were over, so its recording was not kept. Its numbers and distance chart are here.';
+		return 'This power-up qualified for a recording, but none was stored (the save did not reach the database). Its numbers and distance chart are here.';
+	});
 </script>
 
 <svelte:head><title>Replay{trial ? ` · ${outcomeLabel(outcome)} · ${cue.name}` : ''} · Circle Chase</title></svelte:head>
@@ -280,9 +364,15 @@
 <Page width="full" class="replay-page">
 	<div class="top">
 		<nav class="crumbs" aria-label="Replays">
-			<a href={nav.list}>&larr; All replays</a>
-			<span aria-hidden="true">&middot;</span>
-			<a href="/dashboard">Dashboard</a>
+			{#if nav.run}
+				{#if nav.list}<a href={nav.list}>&larr; Back to run summary</a>{:else}<span>&larr; Back to run summary</span>{/if}
+				<span aria-hidden="true">&middot;</span>
+				<a href="/replays">All replays</a>
+			{:else}
+				<a href={nav.list}>&larr; All replays</a>
+				<span aria-hidden="true">&middot;</span>
+				<a href="/dashboard">Dashboard</a>
+			{/if}
 		</nav>
 		{#if trial}
 			<div class="headline">
@@ -292,9 +382,11 @@
 					<CueChip cue={cue} size="md" />
 				</h1>
 				{#if trial.source === 'bot'}<Badge tone="sim" title="Recorded from a simulated player, not a person">Simulated</Badge>{/if}
+				{#if oldRules}<Badge tone="warn" title="Classed by older rules: shown, but left out of the rates">Older rules</Badge>{/if}
+				{#if switching}<span class="switching" role="status">Loading the next replay&hellip;</span>{/if}
 			</div>
 			<div class="prevnext">
-				{#if nav.pos >= 0}<span class="pos num">{nav.pos + 1} of {nav.count}</span>{/if}
+				{#if nav.pos >= 0}<span class="pos num">{nav.pos + 1} of {nav.count}{nav.run ? ' in this run' : ''}</span>{/if}
 				{#if nav.prev}<Button size="sm" href={nav.prev}>&larr; Previous</Button>{:else}<Button size="sm" disabled>&larr; Previous</Button>{/if}
 				{#if nav.next}<Button size="sm" href={nav.next}>Next &rarr;</Button>{:else}<Button size="sm" disabled>Next &rarr;</Button>{/if}
 			</div>
@@ -306,10 +398,16 @@
 			There is no trial with this link. It may have been deleted when the data was cleared.
 			{#snippet actions()}<Button variant="primary" href="/replays">Browse replays</Button>{/snippet}
 		</EmptyState>
-	{:else if loading || !trial}
-		<p class="loading">Loading the replay&hellip;</p>
+	{:else if !trial}
+		{#if late.current}
+			<EmptyState title="Can't reach the database" icon="replay" compact>
+				The replay appears as soon as the connection is back. Nothing needs to be reloaded.
+			</EmptyState>
+		{:else}
+			<p class="loading">Loading the replay&hellip;</p>
+		{/if}
 	{:else}
-		<div class="player" class:compare style:--aspect={W / H} style:--n={compare ? 2 : 1}>
+		<div class="player" class:compare class:switching style:--aspect={W / H} style:--n={compare ? 2 : 1}>
 			<section class="stage" aria-label="Replay board">
 				{#if scene}
 					<div class="captions">
@@ -353,7 +451,7 @@
 					</div>
 					<div class="ro">
 						<span class="lab">Distance <InfoTip term="Distance">Path distance through the maze to the nearest scared ghost (after the end: to the ghosts that were scared and now hunt the player).</InfoTip></span>
-						<span class="val num">{seriesAt?.dist != null ? seriesAt.dist.toFixed(1) : target.dist != null ? target.dist.toFixed(1) : '-'}<small> tiles</small></span>
+						<span class="val num">{distNow != null ? distNow.toFixed(1) : '-'}<small> tiles</small></span>
 					</div>
 					<div class="ro">
 						<span class="lab">Chasing <InfoTip term="Chasing">Distance to the nearest scared ghost within 8 tiles shrinking over the last 0.3 s, or at most 1 tile.</InfoTip></span>
@@ -422,26 +520,26 @@
 					<h2 class="eyebrow">Key numbers</h2>
 					<dl>
 						<div><dt>Power length</dt><dd class="num">{fmt(trial.total)} s</dd></div>
-						<div><dt>Turned away <InfoTip term="Turn-away time">Time left when the player was closest, before they stopped closing in for good. Negative: after the end.</InfoTip></dt><dd class="num">{trial.turnLeft === null ? 'never' : signed(trial.turnLeft) + ' s'}</dd></div>
+						<div><dt>{trial.outcome === 'catch' ? 'Ate the ghost' : 'Turned away'} <InfoTip term="Turn-away time">Time left when the player was closest, before they stopped closing in for good (for a chase that ended by eating the ghost: when it was eaten). Negative: after the end.</InfoTip></dt><dd class="num">{trial.turnLeft === null ? 'never' : signed(trial.turnLeft) + ' s'}</dd></div>
 						<div><dt>Distance at the turn</dt><dd class="num">{fmt(trial.turnDist) ?? '-'} {trial.turnDist !== null ? 'tiles' : ''}</dd></div>
 						<div><dt>Distance at the end</dt><dd class="num">{fmt(trial.endDist) ?? '-'} {trial.endDist !== null ? 'tiles' : ''}</dd></div>
-						<div><dt>Caught after the end</dt><dd class="num" class:bad={trial.after.caught}>{trial.after.timeToCaught !== null ? fmt(trial.after.timeToCaught) + ' s' : 'no'}</dd></div>
+						<div><dt>{trial.outcome === 'caught' ? 'Caught after the end' : 'Died after the end'}</dt><dd class="num" class:bad={trial.after.died}>{trial.after.died && trial.after.timeToCaught !== null ? fmt(trial.after.timeToCaught) + ' s after' : trial.after.died ? 'yes' : 'no'}</dd></div>
 						<div><dt>Ghosts eaten</dt><dd class="num">{trial.eats.length}{isLateCatch(trial) ? ' (late catch)' : ''}</dd></div>
 						<div><dt>Closest danger after</dt><dd class="num">{fmt(trial.after.minDangerDist) ?? '-'} {trial.after.minDangerDist !== null ? 'tiles' : ''}{trial.after.nearMiss ? ' (near miss)' : ''}</dd></div>
 						<div><dt>Reaction <InfoTip term="Reaction">For players still closing in at the end: time from the end until they first moved away.</InfoTip></dt><dd class="num">{trial.reaction !== null ? fmt(trial.reaction, 2) + ' s' : '-'}</dd></div>
 						{#if trial.wasted !== null}<div><dt>Power left unused</dt><dd class="num">{fmt(trial.wasted)} s</dd></div>{/if}
-						<div><dt>Counts in the rates</dt><dd>{isDecision(trial) ? 'yes' : trial.outcome === 'catch' ? 'no: a catch shows no decision' : (trial.rulesVersion ?? 1) < 2 ? 'no: scored by older rules' : 'no'}</dd></div>
+						<div><dt>Counts in the rates</dt><dd>{isDecision(trial) ? 'yes' : oldRules ? 'no: classed by older rules' : trial.outcome === 'catch' ? 'no: a catch shows no decision' : trial.outcome === 'interrupted' ? 'no: cut short' : trial.outcome === 'not-engaged' ? 'no: not chasing near the end' : trial.after.cut === 'quit' ? 'no: the run ended within 3 s' : 'no'}</dd></div>
 					</dl>
 				</section>
 
 				<section class="context" aria-label="Context">
 					<h2 class="eyebrow">Context</h2>
 					<dl>
-						<div><dt>Participant</dt><dd class="num">{trial.participant ? `P${trial.participant.number}` : '-'}{trial.participant?.nickname ? ` (${trial.participant.nickname})` : ''}</dd></div>
+						<div><dt>Participant</dt><dd class="num">{who}</dd></div>
 						<div><dt>Data</dt><dd>{#if trial.source === 'bot'}<Badge tone="sim">Simulated player</Badge>{:else}Human{/if}</dd></div>
 						<div><dt>Condition</dt><dd><CueChip cue={cue} size="sm" /></dd></div>
-						<div><dt>Block</dt><dd class="num">{trial.blockIndex + 1} ({trial.mode === 'study' ? 'study' : 'free play'})</dd></div>
-						<div><dt>Trial in block</dt><dd class="num">{trial.trialIndex + 1}{trial.block ? ` of ${trial.block.trialCount}` : ''}</dd></div>
+						<div><dt>Run</dt><dd class="num">{trial.blockIndex + 1} ({modeLabel(trial.mode)})</dd></div>
+						<div><dt>Power-up in run</dt><dd class="num">{trial.trialIndex + 1}{trial.block ? ` of ${trial.block.trialCount}` : ''}</dd></div>
 						<div><dt>Sound</dt><dd>{trial.sound ? 'on' : 'off'}</dd></div>
 						<div><dt>Input</dt><dd>{trial.inputType}</dd></div>
 						<div><dt>Recorded</dt><dd title={new Date(trial.createdAt).toLocaleString()}>{ago(trial.createdAt)}</dd></div>
@@ -459,6 +557,7 @@
 						<li><Kbd>L</Kbd> loop, <Kbd>Home</Kbd> start</li>
 						<li><Kbd>C</Kbd> compare, <Kbd>[</Kbd> <Kbd>]</Kbd> cue</li>
 						<li><Kbd>H</Kbd> highlight, <Kbd>T</Kbd> time tag</li>
+						<li><Kbd>P</Kbd> <Kbd>N</Kbd> previous, next replay</li>
 					</ul>
 				</section>
 			</div>
@@ -495,6 +594,8 @@
 	.prevnext { display: flex; align-items: center; gap: var(--space-2); }
 	.pos { color: var(--ink-faint); font-size: var(--text-sm); margin-right: var(--space-1); }
 	.loading { color: var(--ink-dim); padding: var(--space-6) 0; }
+	.switching { color: var(--ink-dim); font-size: var(--text-sm); }
+	.player.switching { opacity: 0.6; transition: opacity var(--dur) var(--ease); }
 
 	.player {
 		display: grid;

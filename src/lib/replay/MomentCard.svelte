@@ -7,12 +7,13 @@
 	import { useQuery } from 'convex-svelte';
 	import { api } from '#convex/_generated/api.js';
 	import { cueById } from '#lib/game/cues/index.ts';
-	import { SceneView } from '#lib/game/render/index.ts';
 	import { decodeClip, type EncodedClip } from '#lib/telemetry/recorder.ts';
 	import { Badge, CueChip } from '#lib/ui/index.ts';
 	import { sceneAt } from './interp';
 	import { keyTime, type Moment } from './list';
 	import { OUTCOME_TONE, ago, leftWords, outcomeLabel } from './story';
+	import ZoomView from './ZoomView.svelte';
+	import { focusWindow } from './focus';
 
 	interface Props {
 		m: Moment;
@@ -39,18 +40,21 @@
 	});
 	const cue = $derived(cueById(m.cue));
 	const outcome = $derived(m.outcome as keyof typeof OUTCOME_TONE);
+	// The still zooms on the player and the ghost that matters, so they are not dots in a whole maze.
+	const view = $derived(still ? focusWindow(still.frame, still.maze, { min: 11, pad: 6 }) : null);
 	const stillLabel = $derived(
 		(m.outcome === 'timely-retreat' || m.outcome === 'early-retreat') && m.turnAt !== null ? 'At the turn-away'
 		: (m.outcome === 'catch' || m.outcome === 'late-catch') && m.lastEatAt !== null ? 'At the catch'
+		: m.outcome === 'interrupted' ? 'Just before it was cut short'
 		: 'Just after the switch'
 	);
 	const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 </script>
 
-<a class="card" {href} bind:this={el} aria-label="{outcomeLabel(outcome)} with {cue.name}, participant {m.participant ?? 'unknown'}{m.source === 'bot' ? ', simulated' : ''}">
+<a class="card" {href} bind:this={el} aria-label="{outcomeLabel(outcome)} with {cue.name}, participant {m.label ?? 'unknown'}{m.source === 'bot' ? ', simulated' : ''}{m.oldRules ? ', older rules' : ''}">
 	<div class="thumb">
 		{#if still}
-			<SceneView scene={still} {cue} fit banners={false} reduceMotion={reduce} label="Still of the moment" />
+			<ZoomView scene={still} {cue} view={view!} reduceMotion={reduce} label="Close-up still of the moment" />
 		{:else}
 			<div class="ph" aria-hidden="true"></div>
 		{/if}
@@ -59,15 +63,18 @@
 	<div class="body">
 		<div class="row1">
 			<span class="outcome {OUTCOME_TONE[outcome]}">{outcomeLabel(outcome)}</span>
-			{#if m.source === 'bot'}<Badge tone="sim">Simulated</Badge>{/if}
+			<span class="tags">
+				{#if m.oldRules}<Badge tone="warn" title="Classed by older rules: shown, but left out of the rates">Older rules</Badge>{/if}
+				{#if m.source === 'bot'}<Badge tone="sim">Simulated</Badge>{/if}
+			</span>
 		</div>
 		<CueChip {cue} size="sm" />
 		<dl>
-			<div><dt>Turned away</dt><dd class="num">{m.turnLeft === null ? 'never' : leftWords(m.turnLeft)}</dd></div>
+			<div><dt>{m.outcome === 'catch' ? 'Ate the ghost' : 'Turned away'}</dt><dd class="num">{m.outcome === 'interrupted' ? '-' : m.turnLeft === null ? 'never' : leftWords(m.turnLeft, Math.abs(m.turnLeft) < 0.1 ? 2 : 1)}</dd></div>
 			<div><dt>At the end</dt><dd class="num">{m.endDist === null ? '-' : m.endDist.toFixed(1) + ' tiles'}</dd></div>
 			{#if m.timeToCaught !== null}<div class="wide"><dt>Caught</dt><dd class="num bad">{m.timeToCaught.toFixed(1)} s after the end</dd></div>{/if}
 		</dl>
-		<p class="meta"><span class="num">{m.participant !== null ? `P${m.participant}` : 'P?'}</span>{m.nickname ? ` ${m.nickname}` : ''} &middot; block {m.blockIndex + 1}, trial {m.trialIndex + 1} &middot; {ago(m.createdAt, now)}</p>
+		<p class="meta"><span class="num">{m.label ?? 'Unknown participant'}</span> &middot; run {m.blockIndex + 1}, power-up {m.trialIndex + 1} &middot; {ago(m.createdAt, now)}</p>
 	</div>
 </a>
 
@@ -86,7 +93,8 @@
 	}
 	.card:hover { border-color: var(--rule-strong); transform: translateY(-1px); }
 	.card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-	.thumb { position: relative; min-width: 0; aspect-ratio: 1; background: var(--bg); padding: 8px; }
+	.thumb { position: relative; min-width: 0; aspect-ratio: 1; background: var(--bg); overflow: hidden; }
+	.tags { display: inline-flex; gap: 4px; }
 	.ph { width: 100%; height: 100%; border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--surface-2), var(--bg)); }
 	.still-tag {
 		position: absolute;

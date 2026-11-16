@@ -133,7 +133,7 @@
 					</table>
 				</div>
 				{#if notCounted.length}
-					<p class="note">{notCounted.length} of {d.rows.length} power-up{d.rows.length === 1 ? '' : 's'} do not count toward the rates; the reason is under each one.</p>
+					<p class="note">{notCounted.length} of {d.rows.length} power-up{d.rows.length === 1 ? '' : 's'} do not count toward the rates{d.oldRules ? `, ${d.oldRules} of them because they were recorded under older rules` : ''}; the reason is under each one.</p>
 				{/if}
 			{:else if res.isLoading || (!d && recent.length)}
 				<p class="empty">{waiting.current ? "Can't reach the database yet. What was measured is kept on this machine and sent when it is back." : 'Waiting for the server...'}</p>

@@ -74,6 +74,8 @@ function tally(ts: Doc<'trials'>[]) {
 		caught: counted.filter((t) => t.outcome === 'caught').length,
 		catches: ts.filter((t) => t.outcome === 'catch').length,
 		clips: ts.filter((t) => t.clipId).length,
+		/** Eligible trials classed by older rules: left out of the rates. */
+		oldRules: ts.filter((t) => t.inRates && (t.rulesVersion ?? 1) !== RULES_VERSION).length,
 		outcomes
 	};
 }

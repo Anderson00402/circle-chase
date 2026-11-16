@@ -84,6 +84,12 @@
 			ctx.beginPath();
 			ctx.moveTo(pxx, pyy);
 			ctx.lineTo(ax, ay);
+			// Through a tunnel: the same line again from the other side, so it comes back onto the board.
+			if (gx !== g.x) {
+				const dx = (g.x - gx) * T;
+				ctx.moveTo(pxx + dx, pyy);
+				ctx.lineTo(ax + dx, ay);
+			}
 			ctx.stroke();
 			ctx.restore();
 		}

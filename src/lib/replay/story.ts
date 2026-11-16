@@ -4,6 +4,7 @@
  */
 import { OUTCOME_INFO, OUTCOME_LABEL, OUTCOME_ORDER, outcomeLabel, type AnyOutcome, type OutcomeTone } from '../outcomes';
 import type { Outcome } from '../telemetry/types';
+import { RULES_VERSION } from '#convex/lib/rules.ts';
 
 export { OUTCOME_LABEL, OUTCOME_ORDER, outcomeLabel };
 type Any = AnyOutcome;
@@ -22,7 +23,8 @@ export const OUTCOME_MEANING = Object.fromEntries(Object.values(OUTCOME_INFO).ma
 export type Tone = OutcomeTone;
 export const OUTCOME_TONE = Object.fromEntries(Object.values(OUTCOME_INFO).map((o) => [o.id, o.tone])) as Record<Any, Tone>;
 
-const s1 = (x: number) => (Math.round(x * 10) / 10).toFixed(1);
+/** One decimal, two under 0.1 s so a near miss never reads "0.0". */
+const s1 = (x: number) => (Math.abs(x) < 0.1 && x !== 0 ? x.toFixed(2) : (Math.round(x * 10) / 10).toFixed(1));
 const s2 = (x: number) => x.toFixed(2);
 
 /** "1.4 s left" or "0.6 s after the end". */
@@ -67,7 +69,7 @@ export function describe(t: StoryTrial, opts: { turnGhost?: string | null; endGh
 	const tiles = (d: number | null) => (d === null ? '' : `, ${s1(d)} tiles away`);
 	const caughtTail = a.timeToCaught !== null ? `${s1(a.timeToCaught)} s after the power ended` : 'after the power ended';
 
-	const old = t.rulesVersion !== undefined && t.rulesVersion < 2 ? ' (Scored by older rules; not in the rates.)' : '';
+	const old = t.rulesVersion !== undefined && t.rulesVersion !== RULES_VERSION ? ' (Classed by older rules; not in the rates.)' : '';
 	return said(t, a, { killer, lastEat, turnG, endG, tiles, caughtTail }) + old;
 }
 
@@ -80,7 +82,7 @@ function said(
 	// ghost that had not been scared) leaves the class as it is; say what happened anyway.
 	const afterDeath = !a.died ? ''
 		: a.caught
-			? `; was caught${killer ? ` by the ${killer}` : ''} ${caughtTail}, but was ${t.endDist !== null ? `${s1(t.endDist)} tiles` : 'too far'} away when the power ran out, too far for that to count as caught`
+			? `; then died${killer ? ` to the ${killer}` : ''} ${caughtTail}, but had been too far from it when the power ran out for that to count as caught`
 			: '; later died to a ghost that had not been scared';
 	switch (t.outcome) {
 		case 'caught': {
@@ -142,4 +144,15 @@ export function ago(ms: number, now = Date.now()): string {
 	if (s < 3600) return `${Math.round(s / 60)} min ago`;
 	if (s < 86400) return `${Math.round(s / 3600)} h ago`;
 	return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+/**
+ * When the power-up ended, in game time, robust to rows written before the stored end time was
+ * fixed: a "player left" trial could carry an end long before its start. Such ends fall back to
+ * the start plus the power length (or the last moment the clip saw, when that is earlier).
+ */
+export function endTimeOf(t: { startedAt: number; endedAt: number; total: number }, lastSeen?: number): number {
+	const latest = t.startedAt + t.total;
+	if (t.endedAt >= t.startedAt - 1e-6 && t.endedAt <= latest + 0.05) return t.endedAt;
+	return lastSeen !== undefined && lastSeen > t.startedAt ? Math.min(latest, lastSeen) : latest;
 }

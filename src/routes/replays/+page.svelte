@@ -2,7 +2,8 @@
 	/**
 	 * Replay browser: every stored moment (the last seconds of a power-up and 3 s after), as cards
 	 * with a still of the key frame. Filters and sort live in the URL query so a view can be shared
-	 * and the player's previous / next links walk the same list. Updates live as clips arrive.
+	 * and the player's previous / next links walk the same list. The server filters and sorts and
+	 * sends one page at a time ("Show more" asks for more). Updates live as clips arrive.
 	 */
 	import { useQuery } from 'convex-svelte';
 	import { page } from '$app/state';
@@ -10,41 +11,34 @@
 	import { api } from '#convex/_generated/api.js';
 	import { Badge, Button, EmptyState, CONSOLE_HREF, Page, PageHeader, Segmented, Select, cueListings } from '#lib/ui/index.ts';
 	import MomentCard from '#lib/replay/MomentCard.svelte';
-	import { SORTS, applyList, filterMoments, readState, toSearch, type ListState, type Source } from '#lib/replay/list.ts';
+	import { SORTS, queryArgs, readState, toSearch, type ListState, type Source } from '#lib/replay/list.ts';
 	import { OUTCOME_LABEL, OUTCOME_ORDER } from '#lib/replay/story.ts';
+	import { slow } from '#lib/ui/connection.svelte.ts';
 
 	const PAGE = 24;
 	const ls = $derived(readState(page.url.searchParams));
-	const q = useQuery(api.replays.list, () => ({ source: ls.source }), { keepPreviousData: true });
-	const rows = $derived(q.data?.rows ?? []);
-	const list = $derived(applyList(rows, ls));
 	let shown = $state(PAGE);
+	const q = useQuery(api.replays.list, () => ({ ...queryArgs(ls), limit: shown }), { keepPreviousData: true });
+	const list = $derived(q.data?.rows ?? []);
+	const total = $derived(q.data?.total ?? 0);
+	const late = slow(() => q.isLoading && !q.data);
 
 	function set(patch: Partial<ListState>) {
 		shown = PAGE;
 		goto(`/replays${toSearch({ ...ls, ...patch })}`, { replace: true, reset: false });
 	}
 
-	// Counts for the outcome chips: everything but the outcome filter applied.
-	const outcomeCounts = $derived.by(() => {
-		const base = filterMoments(rows, { ...ls, outcome: '' });
-		const c: Record<string, number> = {};
-		for (const r of base) c[r.outcome] = (c[r.outcome] ?? 0) + 1;
-		return { all: base.length, by: c };
-	});
-	const cueCounts = $derived.by(() => {
-		const c: Record<string, number> = {};
-		for (const r of filterMoments(rows, { ...ls, cue: '' })) c[r.cue] = (c[r.cue] ?? 0) + 1;
-		return c;
-	});
+	// Counts for the outcome chips: every filter but the outcome.
+	const outcomeCounts = $derived({ all: q.data?.all ?? 0, by: q.data?.outcomes ?? {} });
 	const cueOptions = $derived([
 		{ value: '', label: 'All conditions' },
-		...cueListings().map((c) => ({ value: c.id as string, label: `${c.code} · ${c.name} (${cueCounts[c.id] ?? 0})` }))
+		...cueListings().map((c) => ({ value: c.id as string, label: `${c.code} · ${c.name}` }))
 	]);
-	const participantOptions = $derived.by(() => {
-		const nums = [...new Set(rows.map((r) => r.participant).filter((n): n is number => n !== null))].sort((a, b) => a - b);
-		return [{ value: '', label: 'Everyone' }, ...nums.map((n) => ({ value: String(n), label: `P${n}` }))];
-	});
+	const participantOptions = $derived([
+		{ value: '', label: 'Everyone' },
+		...(q.data?.participants ?? []).map((p) => ({ value: String(p.number), label: p.label })),
+		...(ls.participant && !(q.data?.participants ?? []).some((p) => String(p.number) === ls.participant) ? [{ value: ls.participant, label: `Participant ${ls.participant}` }] : [])
+	]);
 	const sourceOptions: { value: Source; label: string }[] = [
 		{ value: 'human', label: 'Humans' },
 		{ value: 'bot', label: 'Simulated' },
@@ -105,27 +99,33 @@
 	</section>
 
 	{#if q.isLoading && !q.data}
-		<p class="status">Loading moments&hellip;</p>
+		{#if late.current}
+			<EmptyState title="Can't reach the database" icon="replay" compact>
+				The replays will appear as soon as the connection is back. Nothing needs to be reloaded.
+			</EmptyState>
+		{:else}
+			<p class="status">Loading moments&hellip;</p>
+		{/if}
 	{:else if q.error}
 		<EmptyState title="Could not load replays" icon="replay">
 			The database did not answer. Check that the Convex dev server is running, then reload.
 		</EmptyState>
-	{:else if !rows.length}
+	{:else if !outcomeCounts.all && !ls.cue && !ls.participant}
 		{#if ls.source === 'human' && q.data?.has.bot}
 			<EmptyState title="No human replays yet" icon="replay">
 				Nobody has played a recorded moment yet. Simulated players have, and their moments show how
 				replays work.
 				{#snippet actions()}
 					<Button variant="primary" onclick={() => set({ source: 'bot' })}>Show simulated moments</Button>
-					<Button href="/study">Take the study</Button>
+					<Button href={CONSOLE_HREF}>Go to the run console</Button>
 				{/snippet}
 			</EmptyState>
 		{:else}
 			<EmptyState title="No replays yet" icon="replay">
 				A replay is saved for every power-up where the player was chasing near the end, or was caught.
-				Play a round and come back.
+				Play a case from the run console and come back.
 				{#snippet actions()}
-					<Button variant="primary" href={CONSOLE_HREF}>Play a round</Button>
+					<Button variant="primary" href={CONSOLE_HREF}>Go to the run console</Button>
 				{/snippet}
 			</EmptyState>
 		{/if}
@@ -138,17 +138,17 @@
 		</EmptyState>
 	{:else}
 		<p class="status" aria-live="polite">
-			<span class="num">{list.length}</span> {list.length === 1 ? 'moment' : 'moments'}{filtered ? ' match' : ''}, {SORTS.find((s) => s.value === ls.sort)?.label.toLowerCase()}.
+			<span class="num">{total}</span> {total === 1 ? 'moment' : 'moments'}{filtered ? ' match' : ''}, {SORTS.find((s) => s.value === ls.sort)?.label.toLowerCase()}.
 			<span class="live"><i></i>Updates live</span>
 		</p>
 		<ul class="grid">
-			{#each list.slice(0, shown) as m (m.trialId)}
+			{#each list as m (m.trialId)}
 				<li><MomentCard {m} {now} href="/replays/{m.trialId}{search}" /></li>
 			{/each}
 		</ul>
-		{#if list.length > shown}
+		{#if total > list.length}
 			<div class="more">
-				<Button onclick={() => (shown += PAGE * 2)}>Show more ({list.length - shown} left)</Button>
+				<Button onclick={() => (shown += PAGE * 2)} disabled={q.isLoading}>Show more ({total - list.length} left)</Button>
 			</div>
 		{/if}
 		{#if q.data?.truncated}
