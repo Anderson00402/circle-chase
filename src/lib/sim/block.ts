@@ -23,8 +23,13 @@ const STEPS_PER_FRAME = 2;
 export interface BlockPlan {
 	cue: string;
 	seed: number;
-	/** Seconds of play in the block. */
+	/** Seconds of play in the block (the most it lasts when `powerUps` is set). */
 	seconds: number;
+	/**
+	 * End the block once this many power-ups have been measured (their trials closed, aftermath
+	 * included), the way the run console's run length ends a human run. Unset: play `seconds`.
+	 */
+	powerUps?: number;
 	skill: number;
 	/** Awareness for the k-th power-up of this block (0-based). */
 	awareness: (k: number) => TrialAwareness;
@@ -84,7 +89,10 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 	};
 
 	const steps = Math.round(plan.seconds / STEP);
+	let played = 0;
 	for (let i = 1; i <= steps; i++) {
+		if (plan.powerUps && out.length >= plan.powerUps) { played = i - 1; break; }
+		played = i;
 		// A new power-up: set this trial's awareness before the bot draws its error for it.
 		const s = game.peek().power.serial;
 		if (s !== serial) {
@@ -105,5 +113,5 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 		}
 	}
 	for (const t of tracker.finish()) store(t);
-	return { trials: out, deaths: game.deaths, score: game.peek().score, seconds: plan.seconds };
+	return { trials: out, deaths: game.deaths, score: game.peek().score, seconds: played * STEP };
 }

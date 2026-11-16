@@ -225,7 +225,7 @@ describe('power-ups', () => {
 				const { game, pilot } = botGame({ ...config, seed }, { chase: 'eager' });
 				const m = game.maze;
 				const trail = new Map<string, number[]>();
-				let field = new Int16Array(0);
+				let field: Int16Array = new Int16Array(0);
 				for (let i = 0; i < 150 / STEP; i++) {
 					pilot();
 					game.update(STEP);

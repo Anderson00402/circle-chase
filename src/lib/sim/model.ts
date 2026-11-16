@@ -80,8 +80,19 @@ export const PLANTED: PlantedLevel[] = [
 export const FLAT_NOISE = round2(PLANTED.reduce((a, p) => a + p.noise, 0) / PLANTED.length);
 export const FLAT_DISTRACTION = round2(PLANTED.reduce((a, p) => a + p.distraction, 0) / PLANTED.length);
 
-/** Bumped whenever the model changes, stored with every simulated session. */
-export const MODEL_VERSION = 1;
+/**
+ * Bumped whenever the model changes, stored with every simulated session.
+ * 1: the bot plans each chase (only goes after a ghost it believes it can reach in time).
+ * 2: eager chasing (`CHASE_STYLE`): goes after any scared ghost it can reach safely until it
+ *    believes the power is about to end; played under the study rules with fleeing ghosts.
+ */
+export const MODEL_VERSION = 2;
+/**
+ * How simulated participants decide to go after a scared ghost (`BotOptions.chase`). People chase
+ * readily and judge the clock rather than the distance, so the simulated participant chases any
+ * ghost it can reach safely while it believes (time left - caution) is above zero.
+ */
+export const CHASE_STYLE = 'eager' as const;
 
 export function levelsFor(preset: Preset, cues: readonly string[]): PlantedLevel[] {
 	return cues.map((cue) => {

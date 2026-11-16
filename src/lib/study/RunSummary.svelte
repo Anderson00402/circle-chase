@@ -26,12 +26,14 @@
 		number: number | null;
 		/** What the play page measured, shown until the server has the rows. */
 		recent: RecentTrial[];
+		/** Decisions the play page counted in this run, shown until the server has the rows. */
+		decisions?: number | null;
 		hideCase: boolean;
 		next: Cue | null;
 		onnext: () => void;
 		onagain: () => void;
 	}
-	let { cue, rules, blockKey, label, number, recent, hideCase, next, onnext, onagain }: Props = $props();
+	let { cue, rules, blockKey, label, number, recent, decisions = null, hideCase, next, onnext, onagain }: Props = $props();
 
 	const client = useConvexClient();
 	const res = useQuery(api.runs.block, () => ({ blockKey }));
@@ -42,6 +44,8 @@
 	const localOutcomes = $derived(recent.reduce<Record<string, number>>((m, t) => ((m[t.outcome] = (m[t.outcome] ?? 0) + 1), m), {}));
 	const outcomes = $derived(d?.outcomes ?? localOutcomes);
 	const trials = $derived(d?.trials ?? recent.length);
+	/** Before the server answers: the decisions this page counted (passed in by the play page). */
+	const localDecisions = $derived(decisions ?? null);
 	const runNo = $derived(number ?? (d ? d.orderIndex + 1 : null));
 	const who = $derived(d?.label ?? label ?? '');
 
@@ -94,7 +98,9 @@
 			<h2 id="sum-title">What was measured</h2>
 			<dl class="stats">
 				<div><dt>Power-ups</dt><dd class="num">{trials}</dd></div>
-				<div><dt title="Power-ups where the player had to decide about the end: turned away or stayed on. The rates use these.">Count toward the rates</dt><dd class="num">{d?.counted ?? '-'}</dd></div>
+				{#if !hideCase}
+					<div><dt title="Power-ups where the player had to decide about the end: turned away or stayed on. The rates use these.">Decisions measured this run</dt><dd class="num">{d?.counted ?? localDecisions ?? '-'}</dd></div>
+				{/if}
 				<div><dt>{outcomeLabel('timely-retreat')}</dt><dd class="num good">{d ? `${d.wellTimed}` : '-'} <small>{d ? pct(d.wellTimed, d.counted) : ''}</small></dd></div>
 				<div><dt>{outcomeLabel('caught')}</dt><dd class="num bad">{d ? `${d.caught}` : '-'} <small>{d ? pct(d.caught, d.counted) : ''}</small></dd></div>
 				<div><dt>Replays saved</dt><dd class="num">{d?.clips ?? '-'}</dd></div>

@@ -595,6 +595,14 @@ export const simCheck = query({
 			};
 		}).sort((x, y) => x.plantedNoise - y.plantedNoise || x.cue.localeCompare(y.cue));
 		const ok = cues.filter((c) => c.wellTimed.rate !== null);
+		// Separated pairs exactly as the dashboard decides them (`main`): paired within participants,
+		// Holm-adjusted over every pair of conditions with ENOUGH decision trials.
+		const cells = cellsOf(rows.filter(decision));
+		const ranked = cues.filter((c) => c.inRates >= ENOUGH).map((c) => c.cue);
+		const separatedOn = (k: RateKey) => {
+			const fam = allPairs(cells, ranked, RATE_INDEX[k]).filter((c) => c.clear);
+			return { k: fam.length, of: (ranked.length * (ranked.length - 1)) / 2, pairs: fam.map((c) => ({ a: c.a, b: c.b, diff: c.diff, pAdj: c.pAdj })) };
+		};
 		const rhoOf = (get: (c: (typeof ok)[number]) => number | null) => spearman(ok.map((c) => c.plantedNoise), ok.map((c) => get(c) ?? 0));
 		return {
 			runs,
@@ -609,6 +617,7 @@ export const simCheck = query({
 				turnMedian: rhoOf((c) => c.turnMedian),
 				clarity: rhoOf((c) => c.clarity.mean)
 			},
+			separated: { wellTimed: separatedOn('wellTimed'), tooLate: separatedOn('tooLate'), tooEarly: separatedOn('tooEarly') },
 			trials: rows.length,
 			participants: new Set(rows.map((t) => t.participantId)).size
 		};

@@ -13,6 +13,7 @@ import { CUES, cueById } from '../game/cues/index';
 import type { Cue, CueId } from '../game/types';
 import { detectSource, type Mode, type Source } from '../telemetry/client.svelte.ts';
 import { caseOrder } from './order';
+import { RUN_LENGTH } from './length';
 import { getOutbox } from './outbox.svelte.ts';
 
 export interface RunRecord {
@@ -60,10 +61,13 @@ function read(): Participant {
 	return fresh();
 }
 
-/** `participantView` is no longer read: participant view is on whenever a run starts. */
-export interface Settings { rules: Mode; selected: CueId; participantView: boolean }
+/**
+ * `participantView` is no longer read: participant view is on whenever a run starts.
+ * `runLength`: power-ups after which a run ends itself (0: no limit); see length.ts.
+ */
+export interface Settings { rules: Mode; selected: CueId; participantView: boolean; runLength: number }
 function readSettings(): Settings {
-	const d: Settings = { rules: 'study', selected: 'timer-bar', participantView: true };
+	const d: Settings = { rules: 'study', selected: 'timer-bar', participantView: true, runLength: RUN_LENGTH };
 	try { return { ...d, ...JSON.parse(localStorage.getItem(SETTINGS) ?? '{}') }; } catch { return d; }
 }
 
@@ -213,3 +217,5 @@ export function setActiveRun(a: ActiveRun | null) {
 
 /** What this page measured in a run that just ended, for the summary until Convex has the rows. */
 export const endedLocally = new Map<string, import('../telemetry/client.svelte.ts').RecentTrial[]>();
+/** The decisions this page counted in a run that just ended (the summary shows them until Convex answers). */
+export const endedDecisions = new Map<string, number>();

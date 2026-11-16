@@ -112,11 +112,23 @@ function printCheck(d) {
 	const r = (x) => (x === null ? '-' : x.toFixed(2));
 	console.log(`\nSpearman rank correlation with planted noise (recovered if in time is strongly negative, too late and too early positive):`);
 	console.log(`  in time ${r(d.rhos.wellTimed)}, too late ${r(d.rhos.tooLate)}, too early ${r(d.rhos.tooEarly)}, caught ${r(d.rhos.caught)}, turn-away median ${r(d.rhos.turnMedian)}, clarity ${r(d.rhos.clarity)}`);
-	// Pairs whose intervals do not overlap on the headline rate (the dashboard's "clear" test).
-	const ok = d.cues.filter((c) => c.inRates >= 10 && c.wellTimed.rate !== null);
-	let clear = 0;
-	for (const a of ok) for (const b of ok) if (a !== b && a.wellTimed.lo > b.wellTimed.hi) clear++;
-	console.log(`  ${clear} of ${(ok.length * (ok.length - 1)) / 2} pairs of conditions differ clearly on the in-time rate.`);
+	// Pairs that differ clearly, decided by the dashboard's own method (dashboard.simCheck uses
+	// convex/lib/compare.ts: paired within participants, Holm-adjusted over every pair of conditions
+	// with 10 or more decision trials), so this line and the dashboard never disagree.
+	const sep = d.separated;
+	if (!sep) console.log('  (this Convex deployment does not report separated pairs yet: push convex/ first)');
+	else {
+		const line = (name, s) => `${s.k} of ${s.of} pairs on ${name}`;
+		console.log(`  Pairs that differ clearly (paired within participants, Holm-adjusted): ${line('in time', sep.wellTimed)}, ${line('too late', sep.tooLate)}, ${line('too early', sep.tooEarly)}.`);
+		const noise = new Map(d.cues.map((c) => [c.cue, c.plantedNoise]));
+		for (const p of sep.wellTimed.pairs) {
+			const [hi, lo] = p.diff >= 0 ? [p.a, p.b] : [p.b, p.a];
+			const agrees = noise.get(hi) < noise.get(lo) ? 'as planted' : noise.get(hi) > noise.get(lo) ? 'AGAINST the plant' : 'planted equal';
+			console.log(`    in time: ${hi} above ${lo} by ${(Math.abs(p.diff) * 100).toFixed(0)} points (adjusted p ${p.pAdj.toFixed(3)}; planted noise ${noise.get(hi)} vs ${noise.get(lo)}: ${agrees})`);
+		}
+	}
+	const counted = d.cues.map((c) => c.inRates);
+	console.log(`  Decision trials per condition: ${Math.min(...counted)} to ${Math.max(...counted)} (total ${counted.reduce((a, b) => a + b, 0)}).`);
 	console.log('\nSimulated data: bots cannot see a cue. This checks the pipeline, not the cues.');
 }
 

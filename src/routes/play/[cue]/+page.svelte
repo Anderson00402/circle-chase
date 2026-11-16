@@ -6,7 +6,9 @@
 	 * Header: back to the console, the case (hidden in participant view), the participant, restart,
 	 * previous / next case, participant view, End run. Participant view (no panel, no case name) is
 	 * on whenever a run starts. End run lets the power-up in progress finish and its 3 s aftermath
-	 * play out, then shows the summary. Keys: E end run (again: end now), R restart, [ ] previous /
+	 * play out, then shows the summary. The run also ends itself that way once the run length set on
+	 * the console (a number of power-ups) has been measured. Outside participant view the header
+	 * shows the decisions measured this run, which change only when a trial closes. Keys: E end run (again: end now), R restart, [ ] previous /
 	 * next, V participant view, Esc (paused or not started) console, N next case on the summary.
 	 */
 	import { onMount, tick } from 'svelte';
@@ -19,10 +21,11 @@
 	import RunBoard, { type RunEnd } from '#lib/study/RunBoard.svelte';
 	import RunSummary from '#lib/study/RunSummary.svelte';
 	import {
-		activeRun, endedLocally, ensureIfNamed, ensureParticipant, nextOrderIndex, playHref, queueSetup, recordRun, run, setActiveRun,
+		activeRun, endedDecisions, endedLocally, ensureIfNamed, ensureParticipant, nextOrderIndex, playHref, queueSetup, recordRun, run, setActiveRun,
 		suggestedNext, summaryHref, uid
 	} from '#lib/study/run.svelte.ts';
 	import { MODE_LABEL } from '#lib/outcomes.ts';
+	import { runLengthWords } from '#lib/study/length.ts';
 
 	const client = useConvexClient();
 	const cue = $derived(CUES.find((c) => c.id === page.params.cue) ?? null);
@@ -40,6 +43,8 @@
 	/** End run was pressed while a power-up (or its aftermath) was being measured: end when it is over. */
 	let finishing = $state<{ last: string | null } | null>(null);
 	let participantView = $state(true);
+	/** Power-ups after which this run ends itself (0: no limit), read from the console when the run starts. */
+	let target = $state(run.settings.runLength);
 	let board = $state<ReturnType<typeof RunBoard>>();
 	let lastRoute = '';
 	let firstRun = true;
@@ -65,6 +70,7 @@
 		ending = false;
 		finishing = null;
 		participantView = true;
+		target = run.settings.runLength;
 	}
 
 	function toggleView() { participantView = !participantView; }
@@ -98,6 +104,13 @@
 			finish();
 		}
 	});
+	/** What this run has measured so far; both change only when a trial closes (never during a power-up). */
+	const tally = $derived(board && !done ? { measured: board.live().measured, decisions: board.live().decisions } : null);
+	// The run length is reached: end the run the way End run does (a power-up in progress is measured first).
+	$effect(() => {
+		if (!tally || !target || ending || finishing || tally.measured < target) return;
+		endRun();
+	});
 	/** Seconds of the aftermath still to watch; null while the power is on (that number would give the time left away). */
 	const finishLeft = $derived.by(() => {
 		if (!finishing || !board) return null;
@@ -112,6 +125,7 @@
 		if (restarting) return; // Restart starts the next run in place
 		if (!r.started || !cue) { goto('/'); return; } // nothing was played: nothing to summarise
 		endedLocally.set(r.blockKey, r.recent);
+		endedDecisions.set(r.blockKey, r.decisions);
 		goto(summaryHref(cue.id, r.blockKey, rules), { replace: true });
 	}
 
@@ -176,6 +190,12 @@
 				{#if rules === 'arcade'}<span class="tag">{MODE_LABEL.arcade}</span>{/if}
 			</div>
 			<span class="who" title="Participant (change it on the console)"><span class="dim">Participant</span> <strong class="num">{run.p.label || '-'}</strong>{#if !done} <span class="dim">run {orderIndex + 1}</span>{/if}</span>
+			{#if tally && !participantView}
+				<span class="tally" role="status" title="Updated when a power-up has been measured to its end. Run length: {runLengthWords(target)} (set on the console).">
+					Decisions measured this run: <strong class="num">{tally.decisions}</strong>
+					<span class="dim">· {tally.measured}{target ? ` of ${target}` : ''} power-up{tally.measured === 1 && !target ? '' : 's'}</span>
+				</span>
+			{/if}
 
 			<div class="tools" role="toolbar" aria-label="Run controls">
 				{#if !done}
@@ -206,7 +226,7 @@
 				{#key done}
 					<RunSummary
 						{cue} {rules} blockKey={done} label={run.p.label} number={doneNumber === null ? null : doneNumber + 1}
-						recent={endedLocally.get(done) ?? []} hideCase={participantView}
+						recent={endedLocally.get(done) ?? []} decisions={endedDecisions.get(done) ?? null} hideCase={participantView}
 						next={nextCase} onnext={() => go(nextCase.id)} onagain={() => go(cue.id)}
 					/>
 				{/key}
@@ -240,6 +260,8 @@
 	.tag { padding: 1px 8px; border-radius: var(--radius-pill); background: var(--warn-soft); color: var(--warn); font-size: var(--text-xs); font-weight: 650; }
 	.who { font-size: var(--text-sm); }
 	.who strong { margin: 0 4px; }
+	.tally { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+	.tally strong { margin-left: 2px; }
 	.dim { color: var(--ink-faint); }
 	.tools { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 	.tool {

@@ -18,6 +18,7 @@
 	import { OUTCOME_LABEL, outcomeColor } from '#lib/outcomes.ts';
 	import { FLAT_NOISE, levelsFor, PRESETS, type Preset } from '#lib/sim/model.ts';
 	import { runSimulation, type RunProgress } from '#lib/sim/writer.ts';
+	import { BLOCK_POWER_UPS } from '#lib/sim/session.ts';
 	import { Badge, Button, CueChip, DataTable, Dialog, Field, Page, PageHeader, Panel, Segmented, Stat, cueListings } from '#lib/ui/index.ts';
 
 	const client = useConvexClient();
@@ -143,7 +144,7 @@
 	</div>
 
 	<div class="grid">
-		<Panel title="Run a simulation" sub="Each participant plays a study session: one 90 second block per condition, in a counterbalanced order.">
+		<Panel title="Run a simulation" sub="Each participant plays a study session: one run per condition, in a counterbalanced order, each ending after {BLOCK_POWER_UPS} power-ups like a run at the default run length.">
 			<div class="form">
 				<Field label="Behaviour preset" hint={PRESETS.find((p) => p.value === preset)?.hint}>
 					{#snippet children()}
@@ -151,7 +152,7 @@
 					{/snippet}
 				</Field>
 				<div class="row">
-					<Field label="Participants" hint="A few seconds each: about 2 s to simulate, plus writing, which slows as the database grows.">
+					<Field label="Participants" hint="About 10 s each to simulate, plus writing, which slows as the database grows.">
 						{#snippet children(id)}
 							<input {id} class="input num" type="number" min="1" max="200" bind:value={participants} disabled={running} data-testid="participants" />
 						{/snippet}

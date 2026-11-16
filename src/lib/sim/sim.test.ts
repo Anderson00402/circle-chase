@@ -4,7 +4,8 @@ import { cueOrder, seededShuffle, williamsRow } from './order';
 import {
 	blockRatings, drawProfile, FLAT_NOISE, IGNORE_CAUTION, levelsFor, PLANTED, trialAwareness, type Profile
 } from './model';
-import { simulateSession } from './session';
+import { BLOCK_POWER_UPS, simulateSession } from './session';
+import { RUN_LENGTH } from '../study/length';
 import { makeRng } from '../game/engine/game';
 
 const ALL = PLANTED.map((p) => p.cue);
@@ -140,5 +141,17 @@ describe('simulated session', () => {
 		const d = decodeClip(withClip[0].args.clip!);
 		expect(d.scenes.length).toBeGreaterThan(20);
 		expect(d.meta.cue).toBe(withClip[0].args.clip!.cue);
+	});
+
+	it('by default a block ends once the run length in power-ups has been measured, as a human run does', () => {
+		const s = simulateSession({ ...opts, blockSeconds: undefined, blockPowerUps: 5, cues: ['timer-bar'] });
+		const b = s.blocks[0];
+		expect(b.trials).toHaveLength(5);
+		// The last power-up was measured to its end: the block stopped when its trial closed.
+		expect(b.trials.at(-1)!.measures.endReason).not.toBe('quit');
+		expect(b.seconds).toBeGreaterThan(5 * 6);
+		expect(b.seconds).toBeLessThan(5 * 40);
+		// The planned default is the run console's.
+		expect(BLOCK_POWER_UPS).toBe(RUN_LENGTH);
 	});
 });

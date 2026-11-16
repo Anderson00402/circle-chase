@@ -29,6 +29,8 @@ export interface RunOptions {
 	/** Seed of the run; random when absent. */
 	seed?: number;
 	blockSeconds?: number;
+	/** Power-ups per block (default: the run console's default run length). */
+	blockPowerUps?: number;
 	signal?: AbortSignal;
 	onProgress?: (p: RunProgress) => void;
 }
@@ -125,7 +127,7 @@ async function participant(
 	const plan0 = { run, runSeed: seed, index };
 	const pid = simPid(run, index);
 	const { number } = await send(client, api.participants.ensure, { pid, source: 'bot', device: SIM_DEVICE }) as { number: number };
-	const plan = planSession({ preset: o.preset, allCues: o.allCues, cues: o.cues, participantNumber: number, blockSeconds: o.blockSeconds, ...plan0 });
+	const plan = planSession({ preset: o.preset, allCues: o.allCues, cues: o.cues, participantNumber: number, blockSeconds: o.blockSeconds, blockPowerUps: o.blockPowerUps, ...plan0 });
 	const sessionKey = plan.key;
 	await send(client, api.sessions.start, {
 		key: sessionKey, pid, mode: 'study', source: 'bot', cueOrder: plan.cueOrder, appVersion: APP_VERSION,

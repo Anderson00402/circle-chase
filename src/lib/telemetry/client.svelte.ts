@@ -19,6 +19,7 @@ import { createRecorder } from './recorder';
 import { createTracker } from './tracker';
 import type { LiveReadout, Outcome, TrialMeasures } from './types';
 import { APP_VERSION, trialWrite } from './write';
+import { isDecision } from '#convex/lib/rules.ts';
 
 export { APP_VERSION };
 
@@ -64,6 +65,10 @@ export interface TelemetryLive {
 	online: boolean;
 	/** Trials stored in this block. */
 	saved: number;
+	/** Power-ups measured in this block so far (trials closed, whatever their outcome). Changes only when a trial closes. */
+	measured: number;
+	/** Decision trials among them (`isDecision`: the trials the rates use). Changes only when a trial closes. */
+	decisions: number;
 	source: Source;
 	participantNumber: number | null;
 }
@@ -163,7 +168,7 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 
 	const live: TelemetryLive = $state({
 		readout: { state: 'idle', left: 0, total: 0, nearest: null, chasing: false, engaged: false, guess: null },
-		recent: [], pending: 0, online: true, saved: 0, source, participantNumber: null
+		recent: [], pending: 0, online: true, saved: 0, measured: 0, decisions: 0, source, participantNumber: null
 	});
 
 	// ----- writes (through the app's outbox, in order for this session) -----
@@ -214,6 +219,8 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 			live.pending = outbox.count(mine);
 		});
 		trialInput.clear();
+		live.measured++;
+		if (isDecision(trial)) live.decisions++;
 		live.recent = [
 			{ key, outcome: trial.outcome, engaged: trial.engaged, total: trial.total, turnLeft: trial.turnLeft, eats: trial.eats.length, hasClip: !!clip, saved: false },
 			...live.recent

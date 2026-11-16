@@ -15,7 +15,7 @@
 	import LivePanel from '../telemetry/LivePanel.svelte';
 	import type { Participant } from './run.svelte.ts';
 
-	export interface RunEnd { blockKey: string; recent: RecentTrial[]; started: boolean }
+	export interface RunEnd { blockKey: string; recent: RecentTrial[]; started: boolean; decisions: number }
 
 	interface Props {
 		cue: Cue;
@@ -67,8 +67,9 @@
 		gameRef?.setPaused(true);
 		await tel.endBlock(5000);
 		const recent = $state.snapshot(tel.live.recent) as RecentTrial[];
+		const decisions = tel.live.decisions;
 		tel.destroy();
-		onended({ blockKey, recent, started });
+		onended({ blockKey, recent, started, decisions });
 	}
 
 	export function restartGame() { gameRef?.restart(); }

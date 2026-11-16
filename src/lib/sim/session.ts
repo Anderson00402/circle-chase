@@ -7,13 +7,16 @@
 import { simulateBlock, type SimTrial } from './block';
 import { cueOrder } from './order';
 import {
-	blockRatings, drawProfile, levelsFor, mix, MODEL_VERSION, sessionRatings, trialAwareness,
+	blockRatings, CHASE_STYLE, drawProfile, levelsFor, mix, MODEL_VERSION, sessionRatings, trialAwareness,
 	type PlantedLevel, type Preset, type Profile
 } from './model';
 import { makeRng } from '../game/engine/game';
+import { RUN_LENGTH } from '../study/length';
 
-/** Seconds per block, as in the study (STUDY.md "Design"). */
+/** Seconds per block when blocks are timed rather than counted. */
 export const BLOCK_SECONDS = 90;
+/** Power-ups per block: the run console's default run length (STUDY.md "How long a run is"). */
+export const BLOCK_POWER_UPS = RUN_LENGTH;
 
 export interface SessionOptions {
 	preset: Preset;
@@ -29,7 +32,14 @@ export interface SessionOptions {
 	index: number;
 	/** 1-based participant number given by the server (picks the Latin square row). */
 	participantNumber: number;
+	/** Seconds per block, when blocks are timed (`blockPowerUps` unset). */
 	blockSeconds?: number;
+	/**
+	 * Power-ups per block: a block ends once this many were measured, as a human run ends at the run
+	 * console's run length. Default `BLOCK_POWER_UPS` unless `blockSeconds` is given; 0 times blocks
+	 * by `blockSeconds`.
+	 */
+	blockPowerUps?: number;
 }
 
 /** Stored on the session row (`sessions.sim`) so the dashboard can show planted vs recovered. */
@@ -105,7 +115,9 @@ export function planSession(o: SessionOptions): SessionPlan {
  */
 export function* playSession(plan: SessionPlan): Generator<SimBlock, SimSession['final'], void> {
 	const { profile, levels, seed, key } = plan;
-	const full = plan.options.blockSeconds ?? BLOCK_SECONDS;
+	const powerUps = plan.options.blockPowerUps ?? (plan.options.blockSeconds ? 0 : BLOCK_POWER_UPS);
+	// A block of power-ups lasts about 15 s per power-up; the cap only stops a stuck block.
+	const full = powerUps ? powerUps * 15 : plan.options.blockSeconds ?? BLOCK_SECONDS;
 	const played = profile.quitAfter ?? levels.length;
 	let sessionTrial = 0;
 	for (let b = 0; b < played; b++) {
@@ -117,11 +129,12 @@ export function* playSession(plan: SessionPlan): Generator<SimBlock, SimSession[
 		const blockKey = `${key}:b${b + 1}`;
 		let t = 0;
 		const res = simulateBlock({
-			cue: level.cue, seed: mix(seed, 100 + b), seconds, skill: profile.skill,
+			cue: level.cue, seed: mix(seed, 100 + b), seconds: leaving || !powerUps ? seconds : seconds * 3, skill: profile.skill,
+			powerUps: leaving ? undefined : powerUps || undefined, bot: { chase: CHASE_STYLE },
 			awareness: () => trialAwareness(profile, level, sessionTrial++, rng)
 		}, { sessionKey: key, blockKey, trialKey: () => `${blockKey}:t${++t}` });
 		yield {
-			key: blockKey, cue: level.cue, orderIndex: b, seconds, trials: res.trials, deaths: res.deaths, score: res.score,
+			key: blockKey, cue: level.cue, orderIndex: b, seconds: Math.round(res.seconds), trials: res.trials, deaths: res.deaths, score: res.score,
 			rating: leaving ? null : blockRatings(profile, level, rng)
 		};
 	}

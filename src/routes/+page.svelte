@@ -21,6 +21,7 @@
 	import OutcomeBar from '#lib/study/OutcomeBar.svelte';
 	import { MODE_LABEL, outcomeMix as mixWords } from '#lib/outcomes.ts';
 	import { ensureIfNamed, newParticipant, persist, playHref, reload, run, setLabel, suggestedNext, summaryHref } from '#lib/study/run.svelte.ts';
+	import { RUN_LENGTH, RUN_LENGTHS, runLengthWords } from '#lib/study/length.ts';
 
 	const client = useConvexClient();
 
@@ -94,6 +95,11 @@
 	});
 
 	// ----- settings -----
+	const lengthOptions = RUN_LENGTHS.map((n) => ({ value: String(n), label: n ? String(n) : 'No limit' }));
+	function setLength(v: string) {
+		run.settings.runLength = Number(v);
+		persist();
+	}
 	let sound = $state(true);
 	function setSound(on: boolean) {
 		sound = on;
@@ -193,9 +199,9 @@
 			<span class="code num">{c.code}</span>
 			<span class="name">{c.name}</span>
 			{#if p}
-				<span class="tick" title="Played {p.runs} time{p.runs === 1 ? '' : 's'}: {p.trials} power-ups{p.trials ? `, ${mixWords(p.outcomes)}` : ''}">
+				<span class="tick" title="Played {p.runs} time{p.runs === 1 ? '' : 's'}: {p.counted} decision{p.counted === 1 ? '' : 's'} measured from {p.trials} power-ups{p.trials ? `, ${mixWords(p.outcomes)}` : ''}">
 					<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-					<span class="num">{p.trials}</span><span class="visually-hidden"> power-ups played</span>
+					<span class="num">{p.counted}</span><span class="visually-hidden"> decisions measured</span>
 				</span>
 			{/if}
 		</span>
@@ -251,14 +257,15 @@
 					<p class="suggest good">Every case has been played.</p>
 				{/if}
 				{#if runs.length}
+					<p class="runs-head" aria-hidden="true"><span>Run</span><span>Case</span><span title="Decisions measured: the power-ups that ended in a decision about the end, which the rates use">Decisions</span></p>
 					<ol class="runs">
 						{#each runs as r (r.key)}
 							{@const c = cueById(r.cue)}
 							<li>
-								<a href={summaryHref(r.cue, r.key, r.mode)} title="Open the summary of run {r.orderIndex + 1}: {mixWords(r.outcomes, 8) || 'no power-ups'}">
+								<a href={summaryHref(r.cue, r.key, r.mode)} title="Open the summary of run {r.orderIndex + 1}: {r.counted} decision{r.counted === 1 ? '' : 's'} from {r.trials} power-ups{r.trials ? `; ${mixWords(r.outcomes, 8)}` : ''}">
 									<span class="i num">{r.orderIndex + 1}</span>
 									<span class="what"><span class="num">{c.code}</span> {c.name}{r.mode === 'arcade' ? ` (${MODE_LABEL.arcade.toLowerCase()})` : ''}</span>
-									<span class="count num">{r.trials}</span>
+									<span class="count num">{r.counted}<span class="of"> / {r.trials}</span></span>
 									<span class="bar"><OutcomeBar outcomes={r.outcomes} height={4} /></span>
 								</a>
 							</li>
@@ -300,6 +307,10 @@
 				<Segmented label="Rules" size="sm" options={[{ value: 'study', label: MODE_LABEL.study }, { value: 'arcade', label: MODE_LABEL.arcade }]} bind:value={run.settings.rules} onchange={() => persist()} />
 			</div>
 			<div class="set">
+				<span class="lab" title={runLengthWords(run.settings.runLength ?? RUN_LENGTH)}>Run length <InfoTip term="Run length">A run ends by itself after this many power-ups (the one in progress is measured to its end first). About one power-up in three ends in a decision, and one comes about every 15 s, so {RUN_LENGTH} power-ups take about 4 minutes and measure 5 or 6 decisions. End run still ends a run early.</InfoTip></span>
+				<Segmented label="Run length in power-ups" size="sm" options={lengthOptions} value={String(run.settings.runLength ?? RUN_LENGTH)} onchange={setLength} />
+			</div>
+			<div class="set">
 				<span class="lab">Sound</span>
 				<Segmented label="Sound" size="sm" options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} value={sound ? 'on' : 'off'} onchange={(v) => setSound(v === 'on')} />
 			</div>
@@ -314,7 +325,7 @@
 	<footer class="status">
 		<span class="who-line">{run.p.label || 'This participant'}:</span>
 		<span><span class="num">{sheet.isLoading ? '-' : n(totals.trials)}</span> power-up{totals.trials === 1 ? '' : 's'} measured</span>
-		<span><span class="num">{sheet.isLoading ? '-' : n(totals.counted)}</span> count toward the rates</span>
+		<span><span class="num">{sheet.isLoading ? '-' : n(totals.counted)}</span> decision{totals.counted === 1 ? '' : 's'} measured</span>
 		<span><span class="num">{sheet.isLoading ? '-' : n(totals.clips)}</span> replay{totals.clips === 1 ? '' : 's'}</span>
 		<ConnectionDot saving={outboxStatus} />
 		<span class="links"><a href="/replays{run.p.number ? `?p=${run.p.number}` : ''}">This participant's replays</a><a href="/dashboard">Dashboard</a></span>
@@ -455,12 +466,15 @@
 	.suggest.good { color: var(--good); }
 	.link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 650; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 	.runs { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
-	.runs a { display: grid; grid-template-columns: 22px minmax(0, 1fr) 28px 70px; align-items: center; gap: 8px; padding: 2px 4px; border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--ink); text-decoration: none; }
+	.runs-head { display: grid; grid-template-columns: 22px minmax(0, 1fr) 52px 70px; gap: 8px; padding: 0 4px; margin: 0; color: var(--ink-faint); font-size: var(--text-xs); }
+	.runs-head span:first-child, .runs-head span:nth-child(3) { text-align: right; }
+	.runs a { display: grid; grid-template-columns: 22px minmax(0, 1fr) 52px 70px; align-items: center; gap: 8px; padding: 2px 4px; border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--ink); text-decoration: none; }
 	.runs a:hover { background: var(--surface-2); }
 	.runs a:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
 	.runs .i { color: var(--ink-faint); text-align: right; }
 	.runs .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.runs .count { text-align: right; color: var(--ink-dim); }
+	.runs .count { text-align: right; color: var(--ink); font-weight: 650; }
+	.runs .count .of { color: var(--ink-faint); font-weight: 400; }
 	.empty { color: var(--ink-faint); font-size: var(--text-sm); }
 
 	/* ----- selected case ----- */
