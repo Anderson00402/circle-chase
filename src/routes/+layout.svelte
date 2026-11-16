@@ -7,7 +7,7 @@
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
 	import Mark from '#lib/ui/Mark.svelte';
-	import { NAV, isCurrent } from '#lib/ui/nav.ts';
+	import { DEV_NAV, NAV, isCurrent } from '#lib/ui/nav.ts';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
@@ -74,6 +74,11 @@
 					<li>
 						<a href={item.href} aria-current={current ? 'page' : undefined}>{item.label}</a>
 					</li>
+				{/each}
+			</ul>
+			<ul class="dev" aria-label="Developer tools">
+				{#each DEV_NAV as item (item.href)}
+					<li><a href={item.href} aria-current={isCurrent(item, page.url.pathname) ? 'page' : undefined}>{item.label}</a></li>
 				{/each}
 			</ul>
 		</nav>
@@ -203,6 +208,23 @@
 		background: var(--accent);
 	}
 
+	/* Developer tools: small, at the far right, apart from the main links. */
+	nav {
+		display: flex;
+		align-items: center;
+		flex: 1;
+	}
+	nav ul.dev {
+		margin-left: auto;
+	}
+	nav .dev a {
+		height: 28px;
+		padding: 0 8px;
+		color: var(--ink-faint);
+		font-size: var(--text-xs);
+		font-weight: 500;
+	}
+
 	.menu-btn {
 		display: none;
 		align-items: center;
@@ -236,6 +258,11 @@
 		}
 		nav.open {
 			display: block;
+		}
+		nav ul.dev {
+			margin: var(--space-2) 0 0;
+			padding-top: var(--space-2);
+			border-top: 1px solid var(--rule);
 		}
 		nav ul {
 			flex-direction: column;

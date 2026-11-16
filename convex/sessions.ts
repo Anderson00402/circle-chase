@@ -59,7 +59,7 @@ export const overview = query({
 			out.push({
 				_id: s._id, key: s.key, mode: s.mode, source: s.source, startedAt: s.startedAt, endedAt: s.endedAt ?? null,
 				lastActiveAt: s.lastActiveAt, appVersion: s.appVersion, difficulty: s.difficulty, inputType: s.inputType,
-				sound: s.sound, reducedMotion: s.reducedMotion, viewport: s.viewport, cueOrder: s.cueOrder, trials: s.trials,
+				sound: s.sound, reducedMotion: s.reducedMotion, viewport: s.viewport, cueOrder: s.cueOrder, trials: s.trials, run: s.run ?? null,
 				participant: p ? { _id: p._id, number: p.number, nickname: p.nickname ?? null } : null,
 				blocks: blocks.map((b) => ({
 					_id: b._id, cue: b.cue, orderIndex: b.orderIndex, startedAt: b.startedAt, endedAt: b.endedAt ?? null,

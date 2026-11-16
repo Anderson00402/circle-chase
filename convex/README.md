@@ -54,6 +54,9 @@ routes at `http://127.0.0.1:3211`. `npm run convex` pushes this folder on save.
 | `ratings.saveSession` | `{ key, sessionKey, clearest?, leastClear?, comment? }` | rating id |
 | `presence.heartbeat` | `{ sessionKey, pid, cue, mode, source, state: 'playing'\|'idle', score, level, powerLeft, nickname? }` | row id |
 | `presence.leave` | `{ sessionKey }` | - |
+| `blocks.start` | also takes `mode?` (rules of this run, when they differ from the session's) | |
+| `runs.setup` | `{ sessionKey, run: { participantLabel, participantNumber, orderRow } }` | session id, or null until the session exists |
+| `runs.markBlock` | `{ blockKey, pauses?, pausedSeconds? }` | block id, or null until the block exists |
 
 Cue, mode, source, participant and block index of a trial are taken from its block and session,
 not from the caller.
@@ -72,6 +75,8 @@ not from the caller.
 | `participants.overview` | `{ source? }` | participants with `sessions`, `studySessions`, `trials` counts, most recently seen first |
 | `live.counters` | `{ source?, now? }` | `{ trials, engaged, inRates, clips, sessions, participants, lastMinute, lastTrialAt, nowPlaying, playing[] }` |
 | `presence.nowPlaying` | `{}` | presence rows updated in the last 20 s (no `pid`) |
+| `runs.session` | `{ sessionKey }` | the run sheet: `participant`, `run` info, `runs[]` (one per block: `cue`, `orderIndex`, `mode`, `trials`, `counted` decisions, `wellTimed`, `caught`, `catches`, `clips`, `outcomes`, `clarity`, `distraction`); null until the session exists |
+| `runs.block` | `{ blockKey }` | one run for its summary: the same tally plus `rows[]` (each trial: `outcome`, `counted`, `total`, `turnLeft`, `eats`, `clipId`) and its rating; null until the block exists |
 | `exports.trials` | filter + `format: 'csv'\|'json'` | `{ filename, contentType, rows, body }`; CSV is one flat row per trial (48 columns, no series), JSON is full rows with the series unpacked |
 
 HTTP downloads with the same filter as query parameters:
@@ -108,6 +113,18 @@ draw a scene with `renderScene(canvas, scene, { cue })`. Markers: `powerStart`, 
 and time left), `turnAway`, `powerEnd`, `death`, each with game time `t`. `numbers` has outcome,
 power length, turn-away time and distance, distance at the end, time to caught, eats, engaged.
 Measured sizes: 5-12 KB per clip.
+
+## Runs (the run console, `/`)
+
+The researcher types a participant label ("P07"). Each label gets its own anonymous participant id
+(`run-<uuid>`, or `bot-<uuid>` under automation) and one session; `sessions.run` holds the label,
+the participant number and the row of the balanced Latin square used for the suggested order
+(stored in `cueOrder`). Every run of a case is a block: `orderIndex` is its position in the
+session, `mode` the rules of that run (trials and clips take their `mode` from the block, so a
+session may mix study and arcade runs), `pauses` / `pausedSeconds` how often and how long the game
+was paused. A refresh in the middle of a run closes that block (the power-up in progress is stored
+as `interrupted`) and the next play starts a new block. `practice`, `abandoned` and `study` exist
+only on rows from an earlier guided study flow and are no longer written.
 
 ## Clearing data
 

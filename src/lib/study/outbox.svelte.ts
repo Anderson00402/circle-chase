@@ -1,5 +1,5 @@
 /**
- * The study's own writes (setup, ratings, block notes, finish), sent in order, one at a time,
+ * The run console's own writes (session run info, ratings, pause notes), sent in order, one at a time,
  * retried with back-off and kept in localStorage until Convex has them. Gameplay (sessions, blocks,
  * trials, clips) goes through the telemetry client's queue as usual; these writes refer to rows it
  * creates, so a write that arrives first simply fails ("unknown block") and is retried a moment later.
@@ -8,17 +8,15 @@ import type { ConvexClient } from 'convex/browser';
 import { api } from '#convex/_generated/api.js';
 
 const FNS = {
-	setup: api.study.setup,
-	finish: api.study.finish,
-	markBlock: api.study.markBlock,
-	rateBlock: api.ratings.saveBlock,
-	rateSession: api.ratings.saveSession
+	setup: api.runs.setup,
+	markBlock: api.runs.markBlock,
+	rateBlock: api.ratings.saveBlock
 } as const;
 type Fn = keyof typeof FNS;
 interface Job { id: string; fn: Fn; args: Record<string, unknown>; tries: number; waits?: number }
 
-const WAITS = new Set<Fn>(['setup', 'finish', 'markBlock']);
-const KEY = 'cc.study.outbox';
+const WAITS = new Set<Fn>(['setup', 'markBlock']);
+const KEY = 'cc.run.outbox';
 const MAX_TRIES = 40; // errors: with the back-off cap this is about 8 minutes of trying per write
 const MAX_WAITS = 600; // waiting for a session or block to exist: 3 s apart, about 30 minutes
 
@@ -39,6 +37,12 @@ export interface Outbox {
 	/** Resolves when nothing is waiting, or after `timeout` ms. */
 	flush(timeout?: number): Promise<void>;
 	destroy(): void;
+}
+
+let shared: Outbox | null = null;
+/** The one outbox of the app (pages come and go; the queue stays). */
+export function getOutbox(client: ConvexClient): Outbox {
+	return (shared ??= createOutbox(client));
 }
 
 export function createOutbox(client: ConvexClient): Outbox {
@@ -72,7 +76,7 @@ export function createOutbox(client: ConvexClient): Outbox {
 					if (waiting) job.waits = (job.waits ?? 0) + 1;
 					else { job.tries++; state.failing = job.tries > 2; }
 					if (job.tries >= MAX_TRIES || (job.waits ?? 0) >= MAX_WAITS) {
-						console.warn('[study] giving up on', job.fn, err);
+						console.warn('[run] giving up on', job.fn, err);
 						jobs = jobs.filter((j) => j !== job);
 					} else if (waiting) {
 						again = again || 3000;

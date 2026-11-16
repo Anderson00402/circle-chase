@@ -17,7 +17,7 @@ import { Page, PageHeader, Panel, Stat, Button } from '#lib/ui/index.ts';
   `<main>` fills what is left under the bar (`100dvh - var(--bar-h)`). Make your page a flex column
   with `flex: 1; min-height: 0` (or use `<Page width="full">`) and size the board to it. To give
   another route the same treatment, add it to `fill` in the layout.
-- Top-level links live in `nav.ts` (`NAV`, `FREE_PLAY_HREF`); change them there only.
+- Top-level links live in `nav.ts` (`NAV`, `DEV_NAV` for the small developer links, `FREE_PLAY_HREF`); change them there only.
 - Every page sets `<svelte:head><title>Name · Circle Chase</title></svelte:head>`.
 - UI text: plain words, sentence case, no em dashes.
 
@@ -41,10 +41,11 @@ import { Page, PageHeader, Panel, Stat, Button } from '#lib/ui/index.ts';
 | `EmptyState` | Where content will appear. `title`, text children, `actions` snippet, `icon`: `maze` \| `chart` \| `replay` \| `study`, `compact`. | `<EmptyState title="No replays yet" icon="replay">…</EmptyState>` |
 | `DataTable` | Sticky header, `numeric` columns right-aligned in mono, `info` and `unit` on headers, custom `cell(row, col)` snippet, `maxHeight`, `onrowclick`, `dense`. `caption` is required (hidden unless `showCaption`). | `<DataTable caption="Trials" rows={trials} key={(r) => r._id} columns={[{ key: 'left', label: 'Time left', unit: 's', numeric: true, format: (r) => r.left.toFixed(2) }]} />` |
 | `CueChip` | Code + name of a condition, coloured by role (reference dashed grey, baseline blue, idea yellow). `href`, `compact` (code only), `size`, `wrap`. | `<CueChip cue={cueById(id)} href="/play/{id}" />` |
-| `CuePreviewSlot` | Board-shaped box (19:21) for a live cue thumbnail. Placeholder today; pass the preview as children or replace its placeholder branch. | `<CuePreviewSlot {cue}><LivePreview {cue} /></CuePreviewSlot>` |
+| `CuePreviewSlot` | Board-shaped box (19:21) with a live `CuePreview` when the cue is registered, a placeholder otherwise. `play`: `loop` (default) \| `hover` (animates while the closest `[data-preview-host]` card is hovered or focused) \| `still`; `fps`; or pass children. | `<li data-preview-host><CuePreviewSlot cue={listing} play="hover" /></li>` |
+| `CuePreview` | The shared bot-played moment (power dot, chase, power runs out) drawn with one cue. All previews share one clock, draw only while on screen, at most `fps` (20) times a second; reduced motion shows a still with a play button. `controls` adds play / pause, a scrubber and a seconds-left readout. | `<CuePreview {cue} controls fps={60} />` |
 | `Kbd` | A keyboard key. | `<Kbd>P</Kbd> to pause` |
 | `Mark` | The logo mark (countdown ring, chaser, scared dot). `size`, `tile`, `title`. | `<Mark size={32} />` |
-| `HeroArt` | Home page illustration. Not exported from `index.ts`. | |
+| `HeroArt` | Illustration from the former marketing home page; unused since the run console replaced it. Not exported from `index.ts`. | |
 
 Helpers:
 
@@ -52,7 +53,7 @@ Helpers:
   is not written yet (`ready: false`), with `code`, `name`, `role`, `tagline` and the `cue` itself
   when registered. Use it for any list that should always show thirteen.
 - `ROLE_LABEL`: `{ reference: 'Reference', baseline: 'Baseline', idea: 'Idea' }`.
-- `NAV`, `FREE_PLAY_HREF`, `isCurrent(item, pathname)` from `nav.ts`.
+- `NAV`, `DEV_NAV`, `FREE_PLAY_HREF` (the run console), `isCurrent(item, pathname)` from `nav.ts`.
 
 ## Tokens (`src/app.css`)
 

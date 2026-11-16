@@ -25,16 +25,16 @@
 	/** One line in plain words per outcome. */
 	const SAYS: Record<Outcome, string> = {
 		caught: 'Kept chasing and was caught just after the power ran out',
-		'late-catch': 'Caught a ghost in the last 1.5 s',
 		overstayed: 'Still chasing when it ran out, but got away',
-		'timely-retreat': 'Backed off 0.2 to 2 s before the end',
+		'timely-retreat': 'Turned away 0.2 to 2 s before the end',
 		'early-retreat': 'Gave up with more than 2 s to spare',
+		catch: 'Chased the ghost down and ate it',
 		'not-engaged': 'Was not chasing near the end',
 		other: 'Chased, but no clear ending',
 		interrupted: 'Cut short (death, new level or left the page)'
 	};
 	const TONE: Record<Outcome, 'good' | 'bad' | 'dim'> = {
-		caught: 'bad', 'late-catch': 'good', overstayed: 'bad', 'timely-retreat': 'good', 'early-retreat': 'bad',
+		caught: 'bad', catch: 'dim', overstayed: 'bad', 'timely-retreat': 'good', 'early-retreat': 'bad',
 		'not-engaged': 'dim', other: 'dim', interrupted: 'dim'
 	};
 
@@ -105,7 +105,7 @@
 						<span class="dot {TONE[t.outcome]}" aria-hidden="true"></span>
 						<span class="what">
 							<strong>{OUTCOME_LABEL[t.outcome]}</strong>
-							<small>{SAYS[t.outcome]}{t.turnLeft !== null && t.outcome !== 'interrupted' ? `. Turned away ${t.turnLeft >= 0 ? `with ${t.turnLeft.toFixed(1)} s left` : `${(-t.turnLeft).toFixed(1)} s late`}` : ''}.</small>
+							<small>{SAYS[t.outcome]}{t.turnLeft !== null && t.outcome !== 'interrupted' ? (t.outcome === 'catch' ? `, with ${t.turnLeft.toFixed(1)} s left` : `. Turned away ${t.turnLeft >= 0 ? `with ${t.turnLeft.toFixed(1)} s left` : `${(-t.turnLeft).toFixed(1)} s late`}`) : ''}.</small>
 						</span>
 						<span class="flag" title={t.saved ? (t.hasClip ? 'Saved, with a replay' : 'Saved') : 'Saving'}>{t.saved ? (t.hasClip ? 'saved, replay' : 'saved') : 'saving'}</span>
 					</li>
@@ -132,8 +132,8 @@
 
 	<details>
 		<summary>What do these words mean?</summary>
-		<p><strong>Counts toward the rates</strong>: the player was chasing in the last 3 s and the power ran out by itself.</p>
-		<p><strong>Well timed</strong>: a late catch or a timely retreat. <strong>Caught</strong>: caught within 3 s after the end by a ghost that had been scared.</p>
+		<p><strong>Counts toward the rates</strong>: the player was chasing in the last 3 s, the power ran out by itself, and the player had to decide about the end (turned away, or stayed on). Eating the ghost is not a decision.</p>
+		<p><strong>Well timed</strong>: turned away 0.2 to 2 s before the end. <strong>Caught</strong>: caught within 3 s after the end by a ghost that had been scared.</p>
 		<p>Distances are measured along the maze paths, in tiles. Full definitions are on the <a href="/dashboard">dashboard</a>.</p>
 	</details>
 </aside>

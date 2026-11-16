@@ -19,4 +19,4 @@ export { default as Select } from './Select.svelte';
 export { default as Stat } from './Stat.svelte';
 export { default as Tabs } from './Tabs.svelte';
 export { cueListings, ROLE_LABEL, type CueListing } from './cues.ts';
-export { NAV, FREE_PLAY_HREF, isCurrent } from './nav.ts';
+export { NAV, DEV_NAV, FREE_PLAY_HREF, isCurrent } from './nav.ts';

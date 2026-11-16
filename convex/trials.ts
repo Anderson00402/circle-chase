@@ -32,13 +32,13 @@ export const save = mutation({
 		const now = Date.now();
 		const trialId = await ctx.db.insert('trials', {
 			...trial, key, participantId: s.participantId, sessionId: s._id, blockId: b._id, cue: b.cue,
-			mode: s.mode, source: s.source, blockIndex: b.orderIndex, createdAt: now,
+			mode: b.mode, source: s.source, blockIndex: b.orderIndex, createdAt: now,
 			...(b.practice ? { practice: true } : {})
 		});
 		let clipId = null;
 		if (clip) {
 			clipId = await ctx.db.insert('clips', {
-				...clip, trialId, sessionId: s._id, participantId: s.participantId, mode: s.mode, source: s.source,
+				...clip, trialId, sessionId: s._id, participantId: s.participantId, mode: b.mode, source: s.source,
 				outcome: trial.outcome, createdAt: now, size: clip.data.byteLength, ...(b.practice ? { practice: true } : {}),
 				numbers: { ...clip.numbers, outcome: trial.outcome }
 			});

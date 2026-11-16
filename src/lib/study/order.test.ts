@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { CUE_IDS } from '../game/cues/index';
-import { balancedLatinSquare, studyOrder } from './order';
+import { balancedLatinSquare, caseOrder } from './order';
 
 function checkSquare(n: number) {
 	const rows = balancedLatinSquare(n);
@@ -24,40 +24,28 @@ describe('balanced Latin square', () => {
 	test.each([2, 4, 5, 6, 12, 13, 14])('n = %i is balanced', (n) => checkSquare(n));
 });
 
-describe('study order', () => {
+describe('case order', () => {
 	const all = [...CUE_IDS];
 
-	test('full session plays every condition once', () => {
-		for (let p = 1; p <= 30; p++) {
-			const o = studyOrder(p, 'full', all);
-			expect([...o.cues].sort()).toEqual([...all].sort());
-		}
-		// 13 conditions: 26 rows, so participant 27 repeats participant 1.
-		expect(studyOrder(27, 'full', all).cues).toEqual(studyOrder(1, 'full', all).cues);
-		expect(studyOrder(14, 'full', all).cues).toEqual([...studyOrder(1, 'full', all).cues].reverse());
+	test('every participant gets every case once', () => {
+		for (let p = 1; p <= 30; p++) expect([...caseOrder(p, all).cues].sort()).toEqual([...all].sort());
 	});
 
-	test('quick session: 5 conditions, always the control and the timer bar, others evenly covered', () => {
-		const seen = new Map<string, number>();
+	test('13 cases: 26 rows, the second half mirrors the first', () => {
+		expect(caseOrder(27, all).cues).toEqual(caseOrder(1, all).cues);
+		expect(caseOrder(14, all).cues).toEqual([...caseOrder(1, all).cues].reverse());
+		expect(caseOrder(14, all).row).toBe(13);
+	});
+
+	test('over 26 participants each case opens the order twice', () => {
 		const firsts = new Map<string, number>();
-		for (let p = 1; p <= 110; p++) {
-			const o = studyOrder(p, 'quick', all);
-			expect(o.cues.length).toBe(5);
-			expect(new Set(o.cues).size).toBe(5);
-			expect(o.cues).toContain('none');
-			expect(o.cues).toContain('timer-bar');
-			for (const c of o.cues) seen.set(c, (seen.get(c) ?? 0) + 1);
-			firsts.set(o.cues[0], (firsts.get(o.cues[0]) ?? 0) + 1);
-		}
-		// Over 110 participants each of the 11 others is played exactly 30 times.
-		for (const c of all.filter((c) => c !== 'none' && c !== 'timer-bar')) expect(seen.get(c)).toBe(30);
-		// The control and the timer bar open the session one time in five.
-		expect(firsts.get('none')).toBe(22);
-		expect(firsts.get('timer-bar')).toBe(22);
+		for (let p = 1; p <= 26; p++) { const c = caseOrder(p, all).cues[0]; firsts.set(c, (firsts.get(c) ?? 0) + 1); }
+		expect([...firsts.values()]).toEqual(new Array(13).fill(2));
 	});
 
 	test('copes with a shorter or longer list', () => {
-		expect(studyOrder(3, 'quick', ['none', 'timer-bar', 'a', 'b'] as never).cues.length).toBe(4);
-		expect(studyOrder(3, 'full', [...all, 'x' as never]).cues.length).toBe(14);
+		expect(caseOrder(3, ['none', 'timer-bar'] as never).cues.length).toBe(2);
+		expect(caseOrder(3, [...all, 'x' as never]).cues.length).toBe(14);
+		expect(caseOrder(1, []).cues).toEqual([]);
 	});
 });

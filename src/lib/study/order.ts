@@ -1,28 +1,15 @@
 /**
- * Counterbalanced block orders for the guided study.
+ * The counterbalanced order of cases the run console suggests (docs/STUDY.md "Design").
  *
- * Full session (every condition): a balanced Latin square (Williams design). Row r of an n x n
- * square is the sequence 0, 1, n-1, 2, n-2, ... shifted by r, so every condition appears once in
- * every position across n participants and, for even n, every condition directly follows every
- * other exactly once. For odd n (13 today) the n mirrored rows are added, giving 2n rows in which
- * each ordered pair of neighbours appears exactly twice. Participant number k uses row (k-1) mod
- * rows.
- *
- * Quick session (5 conditions): "No signal" and the timer bar always, plus 3 of the other ideas.
- * Participant k takes the next three in a fixed cycle through the others, so over every 11
- * participants each other condition is played exactly 3 times. The five are then ordered by a
- * balanced Latin square of size 5 (10 rows), row (k-1) mod 10. Because 10 and 11 share no factor,
- * the subset and its order vary independently.
+ * A balanced Latin square (Williams design): row r of an n x n square is the sequence
+ * 0, 1, n-1, 2, n-2, ... shifted by r, so every case appears once in every position across n
+ * participants and, for even n, every case directly follows every other exactly once. For odd n
+ * (13 today) the n mirrored rows are added, giving 2n rows in which each ordered pair of
+ * neighbours appears exactly twice. Participant number k uses row (k-1) mod rows.
  */
 import type { CueId } from '../game/types';
 
-export type StudyLength = 'quick' | 'full';
-
-/** The always-present conditions of a quick session. */
-export const QUICK_FIXED: CueId[] = ['none', 'timer-bar'];
-export const QUICK_SIZE = 5;
-
-/** Rows of a balanced Latin square for n conditions (n rows when n is even, 2n when odd). */
+/** Rows of a balanced Latin square for n cases (n rows when n is even, 2n when odd). */
 export function balancedLatinSquare(n: number): number[][] {
 	if (n <= 0) return [];
 	const first: number[] = [];
@@ -36,29 +23,20 @@ export function balancedLatinSquare(n: number): number[][] {
 	return rows;
 }
 
-export interface StudyOrder {
+export interface CaseOrder {
 	cues: CueId[];
-	/** Row of the Latin square used (for the record). */
+	/** Row of the Latin square used (stored on the session). */
 	row: number;
 }
 
 /**
- * The order of conditions for participant `number` (1, 2, 3...). `all` is every condition in its
- * display order (pass the registered cue ids, so the study copes with the list growing).
+ * Suggested order for participant `number` (1, 2, 3...). `all` is every case in display order
+ * (pass the registered ids, so the order copes with the list growing).
  */
-export function studyOrder(number: number, length: StudyLength, all: CueId[]): StudyOrder {
+export function caseOrder(number: number, all: CueId[]): CaseOrder {
 	const k = Math.max(0, Math.floor(number) - 1);
-	if (length === 'full' || all.length <= QUICK_SIZE) {
-		const rows = balancedLatinSquare(all.length);
-		const row = k % rows.length;
-		return { cues: rows[row].map((i) => all[i]), row };
-	}
-	const fixed = QUICK_FIXED.filter((c) => all.includes(c));
-	const others = all.filter((c) => !fixed.includes(c));
-	const pick = QUICK_SIZE - fixed.length;
-	const chosen = Array.from({ length: pick }, (_, j) => others[(k * pick + j) % others.length]);
-	const set = [...fixed, ...chosen];
-	const rows = balancedLatinSquare(set.length);
+	const rows = balancedLatinSquare(all.length);
+	if (!rows.length) return { cues: [], row: 0 };
 	const row = k % rows.length;
-	return { cues: rows[row].map((i) => set[i]), row };
+	return { cues: rows[row].map((i) => all[i]), row };
 }

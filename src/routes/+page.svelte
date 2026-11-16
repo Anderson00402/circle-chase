@@ -1,409 +1,487 @@
 <script lang="ts">
-	import {
-		Badge,
-		Button,
-		CueChip,
-		CuePreviewSlot,
-		FREE_PLAY_HREF,
-		Kbd,
-		Page,
-		Stat,
-		cueListings,
-		ROLE_LABEL
-	} from '#lib/ui/index.ts';
-	import HeroArt from '#lib/ui/HeroArt.svelte';
-	import { useQuery } from 'convex-svelte';
+	/**
+	 * The run console: pick a case, then play it with the participant.
+	 *
+	 * Left: the thirteen cases as live previews (references and the timer bar apart from the ten
+	 * ideas), and the run sheet of the current participant. Right: the selected case with a larger
+	 * preview, the run settings and the Play button. Keys: arrows move, 0-9 / A / B pick a case
+	 * (1 then 0 for 10), Enter plays.
+	 */
+	import { onMount, tick } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { useConvexClient, useQuery } from 'convex-svelte';
 	import { api } from '#convex/_generated/api.js';
+	import { CUES, cueById } from '#lib/game/cues/index.ts';
+	import type { Cue, CueId } from '#lib/game/types.ts';
+	import CuePreview from '#lib/ui/CuePreview.svelte';
+	import { Button, CueChip, InfoTip, Kbd, Segmented, ROLE_LABEL } from '#lib/ui/index.ts';
+	import OutcomeBar from '#lib/study/OutcomeBar.svelte';
+	import { mixWords } from '#lib/study/outcomes.ts';
+	import { ensureIfNamed, newParticipant, persist, playHref, reload, run, setLabel, suggestedNext } from '#lib/study/run.svelte.ts';
 
-	const listings = cueListings();
-	const ready = listings.filter((c) => c.ready).length;
+	const client = useConvexClient();
 
-	const STEPS = [
-		{ title: 'Play', text: 'Clear the maze as usual. Eat a power dot and the chasers turn scared for a few seconds.' },
-		{ title: 'Measure', text: 'Every power-up is one trial: did you chase to the end, get out in time, or get caught?' },
-		{ title: 'Compare', text: 'The same game runs with thirteen different countdown signals, so trials can be compared cue by cue.' },
-		{ title: 'Replay', text: 'Close calls are saved and can be watched again, frame by frame, with the cue the player saw.' }
-	];
+	const REFS = CUES.filter((c) => c.role !== 'idea');
+	const IDEAS = CUES.filter((c) => c.role === 'idea');
+	const ALL = [...REFS, ...IDEAS];
 
-	// Live strip: totals of human play, straight from Convex (updates as trials arrive). `now` moves
-	// every 10 s so "playing now" also drops back when people leave.
+	const CHANNEL: Record<Cue['channel'], string> = {
+		hud: 'beside the board', ghosts: 'on the ghosts', player: 'on the player', maze: 'in the maze', screen: 'whole screen'
+	};
+
+	const selected = $derived(cueById(run.settings.selected));
+	function select(id: CueId, focus = false) {
+		run.settings.selected = id;
+		persist();
+		if (focus) tick().then(() => cards[id]?.focus());
+	}
+
+	// ----- participant and run sheet -----
+	let labelDraft = $state(run.p.label);
+	$effect(() => { labelDraft = run.p.label; });
+	let labelInput = $state<HTMLInputElement>();
+	function commitLabel() {
+		if (labelDraft.trim() !== run.p.label) setLabel(client, labelDraft);
+	}
+	function freshParticipant() {
+		newParticipant(client);
+		labelDraft = '';
+		tick().then(() => labelInput?.focus());
+	}
+
+	const sheet = useQuery(api.runs.session, () => ({ sessionKey: run.p.sessionKey }));
+	interface Played { runs: number; trials: number; counted: number; wellTimed: number; caught: number; outcomes: Record<string, number> }
+	const played = $derived.by(() => {
+		const m = new Map<string, Played>();
+		for (const r of sheet.data?.runs ?? []) {
+			const x = m.get(r.cue) ?? { runs: 0, trials: 0, counted: 0, wellTimed: 0, caught: 0, outcomes: {} };
+			x.runs++; x.trials += r.trials; x.counted += r.counted; x.wellTimed += r.wellTimed; x.caught += r.caught;
+			for (const [k, n] of Object.entries(r.outcomes)) x.outcomes[k] = (x.outcomes[k] ?? 0) + n;
+			m.set(r.cue, x);
+		}
+		// Runs not yet on the server (offline) still count as played.
+		for (const r of run.p.runs) if (!m.has(r.cue)) m.set(r.cue, { runs: 1, trials: 0, counted: 0, wellTimed: 0, caught: 0, outcomes: {} });
+		return m;
+	});
+	const runs = $derived([...(sheet.data?.runs ?? [])].sort((a, b) => a.orderIndex - b.orderIndex));
+	const next = $derived(suggestedNext(played.keys()));
+
+	// ----- settings -----
+	let sound = $state(true);
+	function setSound(on: boolean) {
+		sound = on;
+		try { localStorage.setItem('cc:sound', on ? '1' : '0'); } catch { /* ignore */ }
+	}
+
+	function play(cue: Cue = selected) {
+		commitLabel();
+		persist();
+		goto(playHref(cue.id));
+	}
+
+	// ----- keyboard -----
+	const cards: Record<string, HTMLButtonElement | undefined> = $state({});
+	let pendingOne = 0;
+	function byCode(code: string) { return ALL.find((c) => c.code.toLowerCase() === code.toLowerCase()); }
+
+	function spatial(dir: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight') {
+		const from = cards[selected.id]?.getBoundingClientRect();
+		if (!from) return;
+		const fx = from.left + from.width / 2, fy = from.top + from.height / 2;
+		let best: Cue | null = null, bestD = Infinity;
+		for (const c of ALL) {
+			const r = cards[c.id]?.getBoundingClientRect();
+			if (!r || c.id === selected.id) continue;
+			const dx = r.left + r.width / 2 - fx, dy = r.top + r.height / 2 - fy;
+			const along = dir === 'ArrowLeft' ? -dx : dir === 'ArrowRight' ? dx : dir === 'ArrowUp' ? -dy : dy;
+			const across = dir === 'ArrowLeft' || dir === 'ArrowRight' ? Math.abs(dy) : Math.abs(dx);
+			if (along < 8) continue;
+			const d = along + across * 2.5;
+			if (d < bestD) { bestD = d; best = c; }
+		}
+		// Left / right walk the list in order when nothing lies that way (end of a row).
+		if (!best && (dir === 'ArrowLeft' || dir === 'ArrowRight')) {
+			const i = ALL.findIndex((c) => c.id === selected.id) + (dir === 'ArrowRight' ? 1 : -1);
+			best = ALL[(i + ALL.length) % ALL.length];
+		}
+		if (best) select(best.id, true);
+	}
+
+	function onkeydown(e: KeyboardEvent) {
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
+		const t = e.target as HTMLElement;
+		if (t.closest('input, textarea, select, [contenteditable="true"], dialog')) return;
+		const inCases = !!t.closest('.cases-grid');
+		if (e.key.startsWith('Arrow') && (inCases || t === document.body)) {
+			e.preventDefault();
+			spatial(e.key as 'ArrowUp');
+			return;
+		}
+		if (e.key === 'Enter') {
+			if (t.tagName === 'A' || (t.tagName === 'BUTTON' && !inCases)) return;
+			e.preventDefault();
+			play();
+			return;
+		}
+		const k = e.key.toLowerCase();
+		if (/^[0-9ab]$/.test(k)) {
+			// "1" then "0" quickly picks case 10.
+			if (k === '0' && pendingOne && performance.now() - pendingOne < 800 && byCode('10')) { select(byCode('10')!.id, inCases); pendingOne = 0; return; }
+			pendingOne = k === '1' ? performance.now() : 0;
+			const c = byCode(k);
+			if (c) select(c.id, inCases);
+		}
+	}
+
+	// ----- live totals -----
 	let now = $state(Date.now());
-	$effect(() => {
+	const counters = useQuery(api.live.counters, () => ({ source: 'human' as const, now: Math.floor(now / 10_000) * 10_000 }));
+	const n = (x: number | undefined) => (x === undefined ? '-' : x.toLocaleString('en-US'));
+
+	onMount(() => {
+		reload();
+		labelDraft = run.p.label;
+		try { sound = localStorage.getItem('cc:sound') !== '0'; } catch { /* ignore */ }
+		ensureIfNamed(client);
 		const id = setInterval(() => (now = Date.now()), 10_000);
 		return () => clearInterval(id);
 	});
-	const counters = useQuery(api.live.counters, () => ({ source: 'human' as const, now: Math.floor(now / 10_000) * 10_000 }));
-	const live = $derived({
-		trials: counters.data?.trials ?? null,
-		participants: counters.data?.participants ?? null,
-		playing: counters.data?.nowPlaying ?? null
-	});
-	const fmt = (n: number | null) => (n === null ? null : n.toLocaleString('en-US'));
 </script>
 
-<svelte:head>
-	<title>Circle Chase · Which countdown works?</title>
-</svelte:head>
+<svelte:head><title>Run · Circle Chase</title></svelte:head>
+<svelte:window {onkeydown} />
 
-<Page width="wide">
-	<section class="hero">
-		<div class="copy">
-			<p class="eyebrow">A maze-chase game that is also an experiment</p>
-			<h1>When the power is about to run out, which signal tells you best?</h1>
-			<p class="lead">
-				Circle Chase plays like a classic maze chase. Behind the scenes it tests thirteen ways of showing
-				how much power-up time is left, and measures every power-up to see which one players actually
-				read in time.
-			</p>
-			<div class="actions">
-				<Button variant="primary" size="lg" href="/study">Take the study</Button>
-				<Button size="lg" href={FREE_PLAY_HREF}>Free play</Button>
-				<Button size="lg" variant="ghost" href="/dashboard">See the data →</Button>
-			</div>
-			<p class="note">
-				The study takes about 8 minutes (or 20 for the full version). Use <Kbd>←</Kbd><Kbd>↑</Kbd><Kbd>↓</Kbd><Kbd>→</Kbd> or
-				<Kbd>W</Kbd><Kbd>A</Kbd><Kbd>S</Kbd><Kbd>D</Kbd> to move.
-			</p>
-		</div>
-		<div class="art">
-			<HeroArt />
-		</div>
-	</section>
-
-	<section class="live" aria-labelledby="live-title">
-		<div class="live-head">
-			<h2 id="live-title" class="eyebrow">So far</h2>
-			{#if counters.error}
-				<Badge tone="warn">Offline</Badge>
-			{:else if live.trials === null}
-				<Badge>Connecting</Badge>
-			{:else}
-				<Badge tone="live">Live</Badge>
+{#snippet card(c: Cue)}
+	{@const p = played.get(c.id)}
+	<button
+		bind:this={cards[c.id]}
+		class="case {c.role}"
+		class:on={c.id === selected.id}
+		class:done={!!p}
+		class:next={next?.id === c.id}
+		role="radio"
+		aria-checked={c.id === selected.id}
+		tabindex={c.id === selected.id ? 0 : -1}
+		onclick={() => select(c.id)}
+		ondblclick={() => play(c)}
+		data-preview-host
+	>
+		<span class="thumb"><CuePreview cue={c} fps={15} /></span>
+		<span class="meta">
+			<span class="code num">{c.code}</span>
+			<span class="name">{c.name}</span>
+			{#if p}
+				<span class="tick" title="Played {p.runs} time{p.runs === 1 ? '' : 's'}: {p.trials} power-ups{p.trials ? `, ${mixWords(p.outcomes)}` : ''}">
+					<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+					<span class="num">{p.trials}</span><span class="visually-hidden"> power-ups played</span>
+				</span>
 			{/if}
-		</div>
-		<div class="live-stats">
-			<Stat
-				label="Power-ups measured"
-				value={fmt(live.trials)}
-				info="Each power-up a person plays is one trial: from eating the power dot until 3 seconds after it ends."
-				sub="human players only"
-			/>
-			<Stat label="Participants" value={fmt(live.participants)} sub="anonymous" />
-			<Stat label="Playing now" value={fmt(live.playing)} tone="accent" sub="open game pages" />
-		</div>
-	</section>
+		</span>
+		{#if p && p.trials}<span class="mix"><OutcomeBar outcomes={p.outcomes} height={3} /></span>{/if}
+	</button>
+{/snippet}
 
-	<section class="how" aria-labelledby="how-title">
-		<h2 id="how-title">How it works</h2>
-		<ol>
-			{#each STEPS as s, i (s.title)}
-				<li>
-					<span class="step num">{String(i + 1).padStart(2, '0')}</span>
-					<h3>{s.title}</h3>
-					<p>{s.text}</p>
-				</li>
-			{/each}
-		</ol>
-	</section>
+<div class="console">
+	<section class="cases" aria-labelledby="cases-title">
+		<header class="top">
+			<h1 id="cases-title">Run console</h1>
+			<p>Pick a case, then play it with the participant.</p>
+			<span class="keys"><Kbd>←</Kbd><Kbd>→</Kbd> or <Kbd>0</Kbd>-<Kbd>9</Kbd> <Kbd>A</Kbd> <Kbd>B</Kbd> to pick, <Kbd>Enter</Kbd> to play</span>
+		</header>
 
-	<section class="conditions" aria-labelledby="cond-title">
-		<div class="cond-head">
-			<div>
-				<h2 id="cond-title">The thirteen conditions</h2>
-				<p class="sub">
-					Each shows one signal only. Two references, a timer bar as the baseline, and ten new ideas.
-					<span class="num">{ready}</span> of <span class="num">{listings.length}</span> are playable so far.
-				</p>
+		<div class="cases-grid" role="radiogroup" aria-label="Case">
+			<div class="group refs">
+				<h2>References and baseline</h2>
+				<div class="row">{#each REFS as c (c.id)}{@render card(c)}{/each}</div>
 			</div>
-			<ul class="legend" aria-label="Roles">
-				{#each Object.entries(ROLE_LABEL) as [role, label] (role)}
-					<li class={role}><span aria-hidden="true"></span>{label}</li>
-				{/each}
-			</ul>
+
+			<aside class="sheet" aria-labelledby="sheet-title">
+				<div class="sheet-head">
+					<h2 id="sheet-title">{run.p.label || 'New participant'}{run.p.number ? ` · #${run.p.number}` : ''}</h2>
+					<span class="dim">{runs.length || run.p.runs.length} run{(runs.length || run.p.runs.length) === 1 ? '' : 's'} · {played.size} of {CUES.length} cases</span>
+				</div>
+				{#if next}
+					<p class="suggest">
+						Suggested next: <button class="link" onclick={() => select(next.id, true)}><span class="num">{next.code}</span> · {next.name}</button>
+						<InfoTip term="Suggested next">From a counterbalanced order (balanced Latin square, row {(run.p.row ?? 0) + 1}) picked by participant number, so no case always comes early or late. Any case may be played; the real order is recorded.</InfoTip>
+					</p>
+				{:else if run.p.number === null}
+					<p class="suggest dim">{run.p.label ? 'Connecting to suggest an order...' : 'Enter a participant label to see the suggested order.'}</p>
+				{:else}
+					<p class="suggest good">Every case has been played.</p>
+				{/if}
+				{#if runs.length}
+					<ol class="runs">
+						{#each runs as r (r.key)}
+							{@const c = cueById(r.cue)}
+							<li>
+								<span class="i num">{r.orderIndex + 1}</span>
+								<span class="what"><span class="num">{c.code}</span> {c.name}{r.mode === 'arcade' ? ' (arcade)' : ''}</span>
+								<span class="count num" title={mixWords(r.outcomes, 8) || 'No power-ups'}>{r.trials}</span>
+								<span class="bar"><OutcomeBar outcomes={r.outcomes} height={4} /></span>
+							</li>
+						{/each}
+					</ol>
+				{:else}
+					<p class="empty">No runs yet for this participant. Each case played appears here with its power-ups.</p>
+				{/if}
+			</aside>
+
+			<div class="group ideas">
+				<h2>Ideas</h2>
+				<div class="row">{#each IDEAS as c (c.id)}{@render card(c)}{/each}</div>
+			</div>
+		</div>
+	</section>
+
+	<section class="selected" aria-labelledby="sel-title">
+		<div class="sel-head">
+			<CueChip cue={selected} size="sm" />
+			<span class="role">{ROLE_LABEL[selected.role]} · {CHANNEL[selected.channel]}</span>
+		</div>
+		<h2 id="sel-title">{selected.name}</h2>
+		<p class="tagline">{selected.tagline}</p>
+		<div class="big">{#key selected.id}<CuePreview cue={selected} controls fps={30} />{/key}</div>
+		<p class="desc">{selected.description}</p>
+
+		<div class="settings">
+			<div class="set">
+				<label for="participant">Participant</label>
+				<div class="pinput">
+					<input
+						id="participant"
+						bind:this={labelInput}
+						bind:value={labelDraft}
+						onchange={commitLabel}
+						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitLabel(); (e.currentTarget as HTMLInputElement).blur(); } }}
+						maxlength="24"
+						autocomplete="off"
+						spellcheck="false"
+						placeholder="P07"
+					/>
+					<Button size="sm" variant="ghost" onclick={freshParticipant}>New participant</Button>
+				</div>
+			</div>
+			<div class="set">
+				<span class="lab">Rules <InfoTip term="Rules">Study: each power-up lasts a random 4 to 8 s, power dots grow back, no game over, one maze. Arcade: the normal game with fixed power lengths, lives and levels. Both are measured.</InfoTip></span>
+				<Segmented label="Rules" size="sm" options={[{ value: 'study', label: 'Study' }, { value: 'arcade', label: 'Arcade' }]} bind:value={run.settings.rules} onchange={() => persist()} />
+			</div>
+			<div class="set">
+				<span class="lab">Sound</span>
+				<Segmented label="Sound" size="sm" options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} value={sound ? 'on' : 'off'} onchange={(v) => setSound(v === 'on')} />
+			</div>
 		</div>
 
-		<ul class="grid">
-			{#each listings as c (c.id)}
-				<li class="card" class:pending={!c.ready} data-preview-host>
-					<CuePreviewSlot cue={c} play="hover" />
-					<div class="card-body">
-						<CueChip cue={c} wrap />
-						<p class="tag">{c.tagline}</p>
-					</div>
-					{#if c.ready}
-						<a class="play" href="/play/{c.id}">Play with this cue<span class="visually-hidden">: {c.name}</span></a>
-					{:else}
-						<span class="soon">Coming soon</span>
-					{/if}
-				</li>
-			{/each}
-		</ul>
+		<Button variant="primary" size="lg" block onclick={() => play()}>
+			<span class="wide-only">Play this case</span><span class="phone-only">Play {selected.code} · {selected.name}</span>
+			<span class="enter"><Kbd>Enter</Kbd></span>
+		</Button>
 	</section>
-</Page>
+
+	<footer class="status">
+		<span><span class="num">{n(counters.data?.trials)}</span> power-up{counters.data?.trials === 1 ? '' : 's'} measured</span>
+		<span><span class="num">{n(counters.data?.participants)}</span> participant{counters.data?.participants === 1 ? '' : 's'}</span>
+		<span><span class="num">{n(counters.data?.nowPlaying)}</span> playing now</span>
+		<span class="dim">people only, all sessions</span>
+		<span class="links"><a href="/dashboard">Dashboard</a><a href="/replays">Replays</a></span>
+	</footer>
+</div>
 
 <style>
-	/* Hero */
-	.hero {
+	.console {
+		/* Thumbnail size: three rows of cards must fit the screen height, five the left column's width. */
+		--thumb: clamp(84px, min(calc((100dvh - 330px) / 3), calc((100vw - 520px) / 5 - 14px)), 190px);
+		--gap: 10px;
 		display: grid;
-		grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-		align-items: center;
-		gap: var(--space-7);
-		padding: var(--space-6) 0 var(--space-7);
-	}
-	.eyebrow {
-		color: var(--accent);
-	}
-	h1 {
-		margin-top: var(--space-3);
-		font-size: var(--text-3xl);
-		font-weight: 600;
-		line-height: 1.08;
-		letter-spacing: -0.02em;
-	}
-	.lead {
-		max-width: 56ch;
-		margin-top: var(--space-4);
-		color: var(--ink-dim);
-		font-size: var(--text-lg);
-	}
-	.actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-3);
-		margin-top: var(--space-6);
-	}
-	.note {
-		margin-top: var(--space-4);
-		color: var(--ink-faint);
-		font-size: var(--text-sm);
-	}
-	.note :global(kbd) {
-		margin-right: 2px;
+		grid-template-columns: minmax(0, 1fr) 380px;
+		grid-template-rows: minmax(0, 1fr) auto;
+		gap: var(--space-4) var(--space-5);
+		width: 100%;
+		max-width: 1440px;
+		margin: 0 auto;
+		padding: var(--space-4) var(--gutter) var(--space-3);
+		min-height: calc(100dvh - var(--bar-h));
+		box-sizing: border-box;
 	}
 
-	/* Live strip */
-	.live {
-		display: flex;
-		align-items: center;
-		gap: var(--space-6);
-		padding: var(--space-4) var(--space-5);
-		background: var(--surface);
-		border: 1px solid var(--rule);
-		border-radius: var(--radius-lg);
+	/* ----- cases ----- */
+	.top { display: flex; align-items: baseline; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); }
+	h1 { font-size: var(--text-xl); font-weight: 600; }
+	.top p { color: var(--ink-dim); }
+	.keys { margin-left: auto; color: var(--ink-faint); font-size: var(--text-xs); }
+	.keys :global(kbd) { margin: 0 1px; }
+	.cases-grid {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-areas: 'refs sheet' 'ideas ideas';
+		gap: var(--space-3) var(--space-4);
+		align-items: start;
 	}
-	.live-head {
+	.refs { grid-area: refs; }
+	.ideas { grid-area: ideas; }
+	.sheet { grid-area: sheet; }
+	h2 { font-size: var(--text-xs); font-family: var(--font-mono); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
+	.row { display: grid; grid-template-columns: repeat(5, calc(var(--thumb) + 14px)); gap: var(--gap); }
+	.refs .row { grid-template-columns: repeat(3, calc(var(--thumb) + 14px)); }
+
+	.case {
+		position: relative;
 		display: flex;
 		flex-direction: column;
-		align-items: flex-start;
-		gap: var(--space-2);
-		padding-right: var(--space-6);
-		border-right: 1px solid var(--rule);
+		gap: 5px;
+		padding: 6px 6px 7px;
+		border: 1px solid var(--rule);
+		border-radius: var(--radius-md);
+		background: var(--surface);
+		color: var(--ink);
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
 	}
-	.live-head h2 {
-		font-family: var(--font-mono);
+	.case:hover { border-color: var(--rule-strong); }
+	.case.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), var(--glow-accent); }
+	.case:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+	.case.reference { --c: var(--role-reference); }
+	.case.baseline { --c: var(--role-baseline); }
+	.case.idea { --c: var(--role-idea); }
+	.thumb { display: block; width: var(--thumb); height: var(--thumb); border-radius: var(--radius-sm); overflow: hidden; background: #05070f; }
+	.meta { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-sm); line-height: 1.2; }
+	.code {
+		flex: none;
+		min-width: 20px;
+		padding: 1px 4px;
+		border-radius: 4px;
+		border: 1px solid color-mix(in srgb, var(--c) 60%, transparent);
+		color: var(--c);
 		font-size: var(--text-xs);
-		color: var(--ink-dim);
+		font-weight: 700;
+		text-align: center;
 	}
-	.live-stats {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: var(--space-5);
-		flex: 1;
-	}
-
-	/* How it works */
-	section.how,
-	section.conditions {
-		margin-top: var(--space-8);
-	}
-	section > h2,
-	.cond-head h2 {
-		font-size: var(--text-xl);
-		font-weight: 600;
-	}
-	.how ol {
-		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: var(--space-5);
-		margin: var(--space-5) 0 0;
-		padding: 0;
-		list-style: none;
-		counter-reset: step;
-	}
-	.how li {
-		position: relative;
-		padding-top: var(--space-4);
-		border-top: 2px solid var(--rule);
-	}
-	.how li:first-child {
-		border-top-color: var(--accent);
-	}
-	.step {
-		color: var(--accent);
-		font-size: var(--text-sm);
-		font-weight: 600;
-	}
-	.how h3 {
-		margin-top: var(--space-1);
-		font-size: var(--text-lg);
-	}
-	.how p {
-		margin-top: var(--space-2);
-		color: var(--ink-dim);
-		font-size: var(--text-sm);
+	.reference .code { border-style: dashed; }
+	.name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+	.tick { flex: none; display: inline-flex; align-items: center; gap: 2px; color: var(--good); font-size: var(--text-xs); }
+	.mix { display: block; padding: 0 1px; }
+	.case.next:not(.on)::after {
+		content: 'next';
+		position: absolute;
+		top: 10px;
+		left: 10px;
+		padding: 1px 6px;
+		border-radius: var(--radius-pill);
+		background: var(--accent);
+		color: var(--on-accent);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
 	}
 
-	/* Conditions */
-	.cond-head {
-		display: flex;
-		align-items: flex-end;
-		justify-content: space-between;
-		gap: var(--space-5);
-		flex-wrap: wrap;
-	}
-	.sub {
-		max-width: 64ch;
-		margin-top: var(--space-2);
-		color: var(--ink-dim);
-	}
-	.legend {
-		display: flex;
-		gap: var(--space-4);
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		color: var(--ink-dim);
-		font-size: var(--text-sm);
-	}
-	.legend li {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-	}
-	.legend span {
-		width: 10px;
-		height: 10px;
-		border-radius: 3px;
-		background: var(--role-reference);
-	}
-	.legend .baseline span {
-		background: var(--role-baseline);
-	}
-	.legend .idea span {
-		background: var(--role-idea);
-	}
-
-	.grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: var(--space-4);
-		margin: var(--space-5) 0 0;
-		padding: 0;
-		list-style: none;
-	}
-	.card {
-		position: relative;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
-		padding: var(--space-3);
-		background: var(--surface);
-		border: 1px solid var(--rule);
-		border-radius: var(--radius-lg);
-		transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
-	}
-	.card:not(.pending):hover {
-		border-color: var(--rule-strong);
-		transform: translateY(-2px);
-	}
-	.card:has(.play:focus-visible) {
-		outline: 2px solid var(--focus);
-		outline-offset: 2px;
-	}
-	.card-body {
+	/* ----- run sheet ----- */
+	.sheet {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-2);
-		flex: 1;
-		padding: 0 var(--space-1);
+		align-self: stretch;
+		max-height: calc(var(--thumb) + 60px);
+		min-width: 0;
+		padding: var(--space-3);
+		border: 1px solid var(--rule);
+		border-radius: var(--radius-md);
+		background: var(--surface);
+		margin-top: 22px;
 	}
-	.tag {
+	.sheet-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+	.sheet-head h2 { margin: 0; color: var(--ink); font-family: var(--font-body); font-size: var(--text-md); letter-spacing: 0; text-transform: none; }
+	.dim { color: var(--ink-faint); font-size: var(--text-xs); }
+	.suggest { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--ink-dim); }
+	.suggest.good { color: var(--good); }
+	.link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 650; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+	.runs { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+	.runs li { display: grid; grid-template-columns: 22px minmax(0, 1fr) 28px 70px; align-items: center; gap: 8px; font-size: var(--text-sm); }
+	.runs .i { color: var(--ink-faint); text-align: right; }
+	.runs .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.runs .count { text-align: right; color: var(--ink-dim); }
+	.empty { color: var(--ink-faint); font-size: var(--text-sm); }
+
+	/* ----- selected case ----- */
+	.selected {
+		grid-row: 1 / 2;
+		grid-column: 2;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		min-height: 0;
+		padding: var(--space-4);
+		border: 1px solid var(--rule);
+		border-radius: var(--radius-lg);
+		background: var(--surface);
+	}
+	.sel-head { display: flex; align-items: center; gap: var(--space-2); }
+	.role { color: var(--ink-faint); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; }
+	.selected h2 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: var(--text-xl); letter-spacing: 0; text-transform: none; }
+	.tagline { color: var(--ink); }
+	.big { width: 100%; height: clamp(180px, calc(100dvh - 600px), 330px); }
+	.desc { flex: 1 1 auto; min-height: 2.6em; overflow-y: auto; color: var(--ink-dim); font-size: var(--text-sm); }
+	.settings { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) 0; border-top: 1px solid var(--rule); }
+	.set { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+	.set > label, .lab { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-dim); font-size: var(--text-sm); }
+	.pinput { display: flex; align-items: center; gap: var(--space-2); }
+	.pinput input {
+		width: 96px;
+		height: 32px;
+		padding: 0 10px;
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--rule-strong);
+		background: var(--surface-2);
+		color: var(--ink);
+		font: inherit;
+		font-family: var(--font-mono);
+		font-weight: 600;
+	}
+	.pinput input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+	.enter { margin-left: 6px; opacity: 0.75; }
+	.phone-only { display: none; }
+	.enter :global(kbd) { background: transparent; color: inherit; border-color: currentColor; }
+
+	/* ----- status line ----- */
+	.status {
+		grid-column: 1 / -1;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2) var(--space-5);
+		padding-top: var(--space-2);
+		border-top: 1px solid var(--rule);
 		color: var(--ink-dim);
 		font-size: var(--text-sm);
-		line-height: 1.45;
 	}
-	.play {
-		padding: 0 var(--space-1) var(--space-1);
-		font-size: var(--text-sm);
-		font-weight: 650;
-		text-decoration: none;
-	}
-	/* The whole card is the link target */
-	.play::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-		border-radius: inherit;
-	}
-	.play:focus-visible {
-		outline: none;
-	}
-	.soon {
-		padding: 0 var(--space-1) var(--space-1);
-		color: var(--ink-faint);
-		font-size: var(--text-sm);
-	}
-	.pending :global(.slot) {
-		opacity: 0.6;
-	}
+	.status .num { color: var(--ink); font-weight: 650; }
+	.links { margin-left: auto; display: flex; gap: var(--space-4); }
+	.links a { font-weight: 650; }
 
-	@media (max-width: 960px) {
-		.hero {
-			grid-template-columns: 1fr;
-			gap: var(--space-6);
-		}
-		.art {
-			max-width: 520px;
-		}
-		.how ol {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
+	/* ----- narrower screens ----- */
+	@media (max-width: 1100px) {
+		.console { --thumb: clamp(84px, calc((100vw - 470px) / 5 - 14px), 190px); grid-template-columns: minmax(0, 1fr) 340px; }
+		.keys { display: none; }
 	}
-	@media (max-width: 640px) {
-		.hero {
-			padding-top: var(--space-2);
+	@media (max-width: 860px) {
+		.console {
+			--thumb: calc((100vw - 2 * var(--gutter) - 2 * var(--gap)) / 3 - 14px);
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-rows: auto;
+			min-height: 0;
 		}
-		.art {
-			display: none;
-		}
-		.actions :global(.btn) {
-			flex: 1 1 auto;
-		}
-		.live {
-			flex-direction: column;
-			align-items: stretch;
-			gap: var(--space-4);
-		}
-		.live-head {
-			flex-direction: row;
-			align-items: center;
-			justify-content: space-between;
-			padding: 0 0 var(--space-3);
-			border-right: 0;
-			border-bottom: 1px solid var(--rule);
-		}
-		.live-stats {
-			gap: var(--space-3);
-		}
-		.live-stats :global(.value) {
-			font-size: 1.5rem;
-		}
-		.how ol {
-			grid-template-columns: 1fr;
-		}
-		.grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-			gap: var(--space-3);
-		}
+		.cases-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'refs' 'ideas' 'sheet'; }
+		.row, .refs .row { grid-template-columns: repeat(3, calc(var(--thumb) + 14px)); }
+		.sheet { margin-top: 0; max-height: 260px; }
+		.selected { grid-row: auto; grid-column: auto; position: relative; }
+		.big { height: min(80vw, 340px); }
+		/* The Play button stays in reach at the bottom of the screen. */
+		.selected :global(.btn.primary) { position: fixed; left: var(--gutter); right: var(--gutter); bottom: 12px; width: auto; z-index: 30; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); }
+		.console { padding-bottom: 84px; }
+		.phone-only { display: inline; }
+		.wide-only, .enter { display: none; }
+		.links { margin-left: 0; }
+		.top p { display: none; }
 	}
 </style>

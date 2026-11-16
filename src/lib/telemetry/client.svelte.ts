@@ -39,6 +39,8 @@ export interface TelemetryContext {
 	practice?: boolean;
 	/** A study flow's own block key (so it can rate and annotate the block later). Default: a new one. */
 	blockKey?: string;
+	/** Anonymous participant id to record under (the run console makes one per participant label). Default: this browser's. */
+	pid?: string;
 }
 
 export interface RecentTrial {
@@ -184,7 +186,7 @@ const MOVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'K
 
 export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Telemetry {
 	const source = ctx.source ?? detectSource();
-	const pid = participantId(source);
+	const pid = ctx.pid ?? participantId(source);
 	const sessionKey = ctx.session?.key ?? freePlaySession(ctx.mode, false).key;
 	const blockKey = ctx.blockKey ?? uid();
 	const instance = uid();
@@ -286,7 +288,7 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 			key: sessionKey, pid, mode: ctx.mode, source, cueOrder: ctx.session?.cueOrder ?? [], appVersion: APP_VERSION,
 			difficulty: ctx.difficulty ?? 'normal', sound: sound(), reducedMotion: reducedMotion(), inputType: inputLabel(inputSeen), viewport: viewport()
 		});
-		enqueue('blockStart', { key: blockKey, sessionKey, cue: ctx.cue, orderIndex: blockIndex, ...(ctx.practice ? { practice: true } : {}) });
+		enqueue('blockStart', { key: blockKey, sessionKey, cue: ctx.cue, orderIndex: blockIndex, mode: ctx.mode, ...(ctx.practice ? { practice: true } : {}) });
 	}
 
 	// ----- measuring -----

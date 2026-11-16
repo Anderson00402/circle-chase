@@ -1,12 +1,15 @@
 import { v } from 'convex/values';
 import { mutation } from './_generated/server';
+import { mode } from './validators';
 
 /** Open a block: one cue played in a session (idempotent by `key`). */
 export const start = mutation({
 	args: {
 		key: v.string(), sessionKey: v.string(), cue: v.string(), orderIndex: v.number(),
 		/** Study warm-up round: its trials are kept but left out of results by default. */
-		practice: v.optional(v.boolean())
+		practice: v.optional(v.boolean()),
+		/** Rules of this run when they differ from the session's (the console lets them change between runs). */
+		mode: v.optional(mode)
 	},
 	handler: async (ctx, a) => {
 		const old = await ctx.db.query('blocks').withIndex('by_key', (i) => i.eq('key', a.key)).unique();
@@ -16,7 +19,7 @@ export const start = mutation({
 		const now = Date.now();
 		const blockId = await ctx.db.insert('blocks', {
 			key: a.key, sessionId: s._id, participantId: s.participantId, cue: a.cue, orderIndex: a.orderIndex,
-			mode: s.mode, source: s.source, startedAt: now, trialCount: 0, engagedCount: 0, deaths: 0, score: 0,
+			mode: a.mode ?? s.mode, source: s.source, startedAt: now, trialCount: 0, engagedCount: 0, deaths: 0, score: 0,
 			...(a.practice ? { practice: true } : {})
 		});
 		await ctx.db.patch(s._id, { blocks: s.blocks + 1, lastActiveAt: now });

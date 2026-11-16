@@ -9,7 +9,7 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { clipFields, device, inputType, measures, mode, source, trialContext, viewport } from './validators';
-import { studyInfo } from './study';
+import { runInfo, studyInfo } from './runs';
 import { simInfo } from './sim';
 import { counterFields } from './counters';
 
@@ -46,8 +46,10 @@ export default defineSchema({
 		reducedMotion: v.boolean(),
 		inputType,
 		viewport,
-		/** Guided study sessions only: length, sound check, counterbalancing row (convex/study.ts). */
+		/** Legacy (replaced guided study flow, development rows only). See convex/runs.ts. */
 		study: v.optional(studyInfo),
+		/** Run console sessions: participant label and the counterbalancing row of the suggested order (convex/runs.ts). */
+		run: v.optional(runInfo),
 		blocks: v.number(),
 		trials: v.number(),
 		/** Simulated sessions only: preset, planted levels and the bot's traits (convex/sim.ts). */
