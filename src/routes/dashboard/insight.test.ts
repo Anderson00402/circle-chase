@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { wilson } from '#convex/lib/stats.ts';
+import { CONDITIONS, condition } from '#lib/charts/encoding.ts';
 import { insight, type Cmp, type CondStats, type Comparisons, type Named } from './insight';
 import flat from './fixtures/flat-run.json';
 import planted from './fixtures/planted-run.json';
@@ -74,30 +75,37 @@ describe('dashboard takeaway', () => {
 	});
 });
 
-describe('takeaway on real simulator runs', () => {
-	const all = (f: typeof flat) => f.cues.map((x) => x.cue);
-	const run = (f: typeof flat) => insight(f.cues as CondStats[], named, all(f), { pairs: f.pairs as Comparisons['pairs'], vsTimer: f.vsTimer as Cmp[] });
+describe('takeaway on real simulator runs (rules v3, 30 simulated players each)', () => {
+	const ids = CONDITIONS.map((x) => x.id);
+	const run = (f: typeof flat) => insight(f.cues as CondStats[], condition, ids, { pairs: f.pairs as Comparisons['pairs'], vsTimer: f.vsTimer as Cmp[] });
 
 	it('reads as "no real differences" on the flat run', () => {
 		const r = run(flat);
 		expect(r.tone).toBe('none');
-		expect(r.headline).toMatch(/^No condition is clearly best yet: across all 78 pairs of conditions, no difference is larger than chance/);
+		expect(r.headline).toBe('No condition is clearly best yet: across all 78 pairs of conditions, no difference is larger than chance would explain.');
 		expect(r.separated).toEqual({ k: 0, of: 78 });
 		expect(r.beatsTimer).toEqual([]);
 		const text = r.details.join(' ');
+		expect(text).toMatch(/^The highest well-timed rate is .* with 78 pairs compared, a gap this size is within chance\./);
 		expect(text).toMatch(/no idea does clearly better yet/);
-		expect(text).not.toMatch(/clearly worse/);
-		expect(text).not.toMatch(/clearly fewer/);
+		expect(text).not.toMatch(/clearly worse|clearly fewer|differ clearly/);
 	});
 
 	it('says what is and is not separated on the planted run', () => {
 		const r = run(planted);
-		// Nothing is the clear best and the leader is not named in the headline.
-		expect(r.tone).not.toBe('clear');
-		expect(r.headline).toMatch(/^No condition is clearly best yet/);
-		const text = r.details.join(' ');
-		// The planted weak conditions show up as clearly worse than the timer bar.
-		expect(text).toMatch(/clearly worse: .*No signal \(A\)/);
-		expect(text).toMatch(/The highest well-timed rate is/);
+		// No clear best, and the leader is not named in the headline.
+		expect(r.tone).toBe('some');
+		expect(r.headline).toBe('No condition is clearly best yet.');
+		const [lead, sep, ...rest] = r.details;
+		expect(lead).toMatch(/^The highest well-timed rate is Burning fuse \(3\) at 67%, but it is not clearly ahead of 11 others\./);
+		// What is separated (one pair, after adjustment), and that everything else could be chance.
+		expect(sep).toMatch(/^1 of 78 pairs differ clearly \(paired within people, adjusted for 78 comparisons\)/);
+		expect(sep).toMatch(/Clearly ahead of at least one other: Burning fuse \(3\), ahead of 1\./);
+		expect(sep).toMatch(/Clearly behind at least one other: Classic blink \(B\), behind 1\./);
+		expect(sep).toMatch(/Every other pair could be chance\./);
+		const text = rest.join(' ');
+		expect(text).toMatch(/Against the timer bar alone \(12 comparisons, paired within people\): no idea does clearly better yet\./);
+		expect(text).toMatch(/Fewest too late: Ink refill \(1\) .* clearly fewer than Dot sweep \(10\)/);
+		expect(text).toMatch(/Too early ranges from .* no pair differs by more than chance\./);
 	});
 });

@@ -1,421 +1,421 @@
 {
-	"run": "rz01t09f",
-	"note": "Simulator run rz01t09f (planted), dashboard:main on 2026-11-16, trimmed to what insight() reads.",
+	"run": "u7xd8pxf",
+	"note": "Simulator run u7xd8pxf (planted), dashboard:main on 2026-11-16, trimmed to what insight() reads.",
 	"cues": [
 		{
 			"cue": "burning-fuse",
-			"decisions": 100,
+			"decisions": 27,
 			"wellTimed": {
-				"k": 59,
-				"n": 100,
-				"rate": 0.59,
-				"lo": 0.4854368932038835,
-				"hi": 0.6947368421052632
+				"k": 18,
+				"n": 27,
+				"rate": 0.6666666666666666,
+				"lo": 0.4827586206896552,
+				"hi": 0.84
 			},
 			"tooLate": {
-				"k": 32,
-				"n": 100,
-				"rate": 0.32,
-				"lo": 0.24414935651388575,
-				"hi": 0.3932673918240497
+				"k": 2,
+				"n": 27,
+				"rate": 0.07407407407407407,
+				"lo": 0,
+				"hi": 0.17857142857142858
 			},
 			"tooEarly": {
-				"k": 9,
-				"n": 100,
-				"rate": 0.09,
-				"lo": 0.04040404040404041,
-				"hi": 0.14607426692244446
+				"k": 7,
+				"n": 27,
+				"rate": 0.25925925925925924,
+				"lo": 0.08695652173913043,
+				"hi": 0.45168621700879724
 			},
 			"caught": {
-				"k": 0,
-				"n": 100,
-				"rate": 0,
+				"k": 2,
+				"n": 27,
+				"rate": 0.07407407407407407,
 				"lo": 0,
-				"hi": 0.03699480747600191
+				"hi": 0.17857142857142858
 			}
 		},
 		{
 			"cue": "classic-blink",
-			"decisions": 114,
+			"decisions": 41,
 			"wellTimed": {
-				"k": 61,
-				"n": 114,
-				"rate": 0.5350877192982456,
-				"lo": 0.44537650997899164,
-				"hi": 0.6237623762376238
-			},
-			"tooLate": {
-				"k": 29,
-				"n": 114,
-				"rate": 0.2543859649122807,
-				"lo": 0.16806722689075632,
+				"k": 10,
+				"n": 41,
+				"rate": 0.24390243902439024,
+				"lo": 0.1282051282051282,
 				"hi": 0.35294117647058826
 			},
+			"tooLate": {
+				"k": 11,
+				"n": 41,
+				"rate": 0.2682926829268293,
+				"lo": 0.1282051282051282,
+				"hi": 0.391304347826087
+			},
 			"tooEarly": {
-				"k": 24,
-				"n": 114,
-				"rate": 0.21052631578947367,
-				"lo": 0.13392857142857142,
-				"hi": 0.2833366141732283
+				"k": 20,
+				"n": 41,
+				"rate": 0.4878048780487805,
+				"lo": 0.3181818181818182,
+				"hi": 0.6764705882352942
 			},
 			"caught": {
 				"k": 3,
-				"n": 114,
-				"rate": 0.02631578947368421,
+				"n": 41,
+				"rate": 0.07317073170731707,
 				"lo": 0,
-				"hi": 0.05691637630662017
+				"hi": 0.15384615384615385
 			}
 		},
 		{
 			"cue": "clock-halos",
-			"decisions": 99,
+			"decisions": 31,
 			"wellTimed": {
-				"k": 60,
-				"n": 99,
-				"rate": 0.6060606060606061,
-				"lo": 0.4893559204440333,
-				"hi": 0.7087378640776699
+				"k": 15,
+				"n": 31,
+				"rate": 0.4838709677419355,
+				"lo": 0.3103448275862069,
+				"hi": 0.6388888888888888
 			},
 			"tooLate": {
-				"k": 27,
-				"n": 99,
-				"rate": 0.2727272727272727,
-				"lo": 0.1904642857142857,
-				"hi": 0.35870261984392415
+				"k": 4,
+				"n": 31,
+				"rate": 0.12903225806451613,
+				"lo": 0.029411764705882353,
+				"hi": 0.26666666666666666
 			},
 			"tooEarly": {
 				"k": 12,
-				"n": 99,
-				"rate": 0.12121212121212122,
-				"lo": 0.05824960487694739,
-				"hi": 0.1900119047619047
+				"n": 31,
+				"rate": 0.3870967741935484,
+				"lo": 0.24239811912225706,
+				"hi": 0.5517241379310345
 			},
 			"caught": {
-				"k": 2,
-				"n": 99,
-				"rate": 0.020202020202020204,
+				"k": 0,
+				"n": 31,
+				"rate": 0,
 				"lo": 0,
-				"hi": 0.05102040816326531
+				"hi": 0.11025900073475385
 			}
 		},
 		{
 			"cue": "deflating-player",
-			"decisions": 104,
+			"decisions": 28,
 			"wellTimed": {
-				"k": 67,
-				"n": 104,
-				"rate": 0.6442307692307693,
-				"lo": 0.5360824742268041,
-				"hi": 0.7422756966418291
+				"k": 18,
+				"n": 28,
+				"rate": 0.6428571428571429,
+				"lo": 0.4444444444444444,
+				"hi": 0.8215450310558999
 			},
 			"tooLate": {
-				"k": 16,
-				"n": 104,
-				"rate": 0.15384615384615385,
-				"lo": 0.08401610644257704,
-				"hi": 0.23078947368421043
+				"k": 4,
+				"n": 28,
+				"rate": 0.14285714285714285,
+				"lo": 0,
+				"hi": 0.30303030303030304
 			},
 			"tooEarly": {
-				"k": 21,
-				"n": 104,
-				"rate": 0.20192307692307693,
-				"lo": 0.14423076923076922,
-				"hi": 0.26923913043478254
+				"k": 6,
+				"n": 28,
+				"rate": 0.21428571428571427,
+				"lo": 0.07692307692307693,
+				"hi": 0.375
 			},
 			"caught": {
-				"k": 0,
-				"n": 104,
-				"rate": 0,
+				"k": 2,
+				"n": 28,
+				"rate": 0.07142857142857142,
 				"lo": 0,
-				"hi": 0.03562261687512055
+				"hi": 0.1724137931034483
 			}
 		},
 		{
 			"cue": "dot-sweep",
-			"decisions": 104,
+			"decisions": 32,
 			"wellTimed": {
-				"k": 55,
-				"n": 104,
-				"rate": 0.5288461538461539,
-				"lo": 0.4485810942367601,
-				"hi": 0.6082793323514971
+				"k": 7,
+				"n": 32,
+				"rate": 0.21875,
+				"lo": 0.08823529411764706,
+				"hi": 0.37037037037037035
 			},
 			"tooLate": {
-				"k": 23,
-				"n": 104,
-				"rate": 0.22115384615384615,
-				"lo": 0.15384615384615385,
-				"hi": 0.28440366972477066
+				"k": 13,
+				"n": 32,
+				"rate": 0.40625,
+				"lo": 0.25,
+				"hi": 0.5625
 			},
 			"tooEarly": {
-				"k": 26,
-				"n": 104,
-				"rate": 0.25,
-				"lo": 0.17755792445482865,
-				"hi": 0.336734693877551
+				"k": 12,
+				"n": 32,
+				"rate": 0.375,
+				"lo": 0.2068711967545639,
+				"hi": 0.5454545454545454
 			},
 			"caught": {
 				"k": 4,
-				"n": 104,
-				"rate": 0.038461538461538464,
-				"lo": 0.009523809523809525,
-				"hi": 0.07142857142857142
+				"n": 32,
+				"rate": 0.125,
+				"lo": 0.030303030303030304,
+				"hi": 0.2353328173374611
 			}
 		},
 		{
 			"cue": "final-count",
-			"decisions": 118,
+			"decisions": 26,
 			"wellTimed": {
-				"k": 71,
-				"n": 118,
-				"rate": 0.6016949152542372,
-				"lo": 0.5,
-				"hi": 0.7009550746023937
+				"k": 14,
+				"n": 26,
+				"rate": 0.5384615384615384,
+				"lo": 0.34615384615384615,
+				"hi": 0.75
 			},
 			"tooLate": {
-				"k": 32,
-				"n": 118,
-				"rate": 0.2711864406779661,
-				"lo": 0.18643082380764683,
-				"hi": 0.3643410852713178
+				"k": 2,
+				"n": 26,
+				"rate": 0.07692307692307693,
+				"lo": 0,
+				"hi": 0.18518518518518517
 			},
 			"tooEarly": {
-				"k": 15,
-				"n": 118,
-				"rate": 0.1271186440677966,
-				"lo": 0.06611375331358178,
-				"hi": 0.19130434782608696
+				"k": 10,
+				"n": 26,
+				"rate": 0.38461538461538464,
+				"lo": 0.17391304347826086,
+				"hi": 0.6
 			},
 			"caught": {
 				"k": 0,
-				"n": 118,
+				"n": 26,
 				"rate": 0,
 				"lo": 0,
-				"hi": 0.03152946120208532
+				"hi": 0.12873304380462175
 			}
 		},
 		{
 			"cue": "heartbeat",
-			"decisions": 105,
+			"decisions": 22,
 			"wellTimed": {
-				"k": 69,
-				"n": 105,
-				"rate": 0.6571428571428571,
-				"lo": 0.5578947368421052,
-				"hi": 0.7474747474747475
+				"k": 5,
+				"n": 22,
+				"rate": 0.22727272727272727,
+				"lo": 0.08333333333333333,
+				"hi": 0.4
 			},
 			"tooLate": {
-				"k": 27,
-				"n": 105,
-				"rate": 0.2571428571428571,
-				"lo": 0.17645697167755992,
-				"hi": 0.35294117647058826
+				"k": 7,
+				"n": 22,
+				"rate": 0.3181818181818182,
+				"lo": 0.12487500000000001,
+				"hi": 0.5652173913043478
 			},
 			"tooEarly": {
-				"k": 9,
-				"n": 105,
-				"rate": 0.08571428571428572,
-				"lo": 0.03,
-				"hi": 0.15178571428571427
+				"k": 10,
+				"n": 22,
+				"rate": 0.45454545454545453,
+				"lo": 0.23809523809523808,
+				"hi": 0.6522157190635449
 			},
 			"caught": {
-				"k": 2,
-				"n": 105,
-				"rate": 0.01904761904761905,
+				"k": 1,
+				"n": 22,
+				"rate": 0.045454545454545456,
 				"lo": 0,
-				"hi": 0.05
+				"hi": 0.14285714285714285
 			}
 		},
 		{
 			"cue": "ink-refill",
-			"decisions": 112,
+			"decisions": 31,
 			"wellTimed": {
-				"k": 63,
-				"n": 112,
-				"rate": 0.5625,
-				"lo": 0.487592710319983,
-				"hi": 0.6388888888888888
+				"k": 15,
+				"n": 31,
+				"rate": 0.4838709677419355,
+				"lo": 0.2857142857142857,
+				"hi": 0.6571428571428571
 			},
 			"tooLate": {
-				"k": 31,
-				"n": 112,
-				"rate": 0.2767857142857143,
-				"lo": 0.21098394495412845,
-				"hi": 0.3365895669291336
+				"k": 0,
+				"n": 31,
+				"rate": 0,
+				"lo": 0,
+				"hi": 0.11025900073475385
 			},
 			"tooEarly": {
-				"k": 18,
-				"n": 112,
-				"rate": 0.16071428571428573,
-				"lo": 0.09523809523809523,
-				"hi": 0.23587388282025806
+				"k": 16,
+				"n": 31,
+				"rate": 0.5161290322580645,
+				"lo": 0.34285714285714286,
+				"hi": 0.7142857142857143
 			},
 			"caught": {
-				"k": 1,
-				"n": 112,
-				"rate": 0.008928571428571428,
+				"k": 0,
+				"n": 31,
+				"rate": 0,
 				"lo": 0,
-				"hi": 0.028037383177570093
+				"hi": 0.11025900073475385
 			}
 		},
 		{
 			"cue": "none",
-			"decisions": 114,
+			"decisions": 33,
 			"wellTimed": {
-				"k": 50,
-				"n": 114,
-				"rate": 0.43859649122807015,
-				"lo": 0.3448275862068966,
-				"hi": 0.5384955752212387
+				"k": 13,
+				"n": 33,
+				"rate": 0.3939393939393939,
+				"lo": 0.21212121212121213,
+				"hi": 0.5806451612903226
 			},
 			"tooLate": {
-				"k": 36,
-				"n": 114,
-				"rate": 0.3157894736842105,
-				"lo": 0.25,
-				"hi": 0.38017443136107654
+				"k": 12,
+				"n": 33,
+				"rate": 0.36363636363636365,
+				"lo": 0.2,
+				"hi": 0.5428571428571428
 			},
 			"tooEarly": {
-				"k": 28,
-				"n": 114,
-				"rate": 0.24561403508771928,
-				"lo": 0.16813973376961405,
-				"hi": 0.32407407407407407
+				"k": 8,
+				"n": 33,
+				"rate": 0.24242424242424243,
+				"lo": 0.09090909090909091,
+				"hi": 0.40625
 			},
 			"caught": {
-				"k": 2,
-				"n": 114,
-				"rate": 0.017543859649122806,
+				"k": 1,
+				"n": 33,
+				"rate": 0.030303030303030304,
 				"lo": 0,
-				"hi": 0.044642857142857144
+				"hi": 0.10344827586206896
 			}
 		},
 		{
 			"cue": "pen-hourglass",
-			"decisions": 114,
+			"decisions": 32,
 			"wellTimed": {
-				"k": 55,
-				"n": 114,
-				"rate": 0.4824561403508772,
-				"lo": 0.40384615384615385,
-				"hi": 0.5607476635514018
+				"k": 10,
+				"n": 32,
+				"rate": 0.3125,
+				"lo": 0.16214036617262426,
+				"hi": 0.4722222222222222
 			},
 			"tooLate": {
-				"k": 38,
-				"n": 114,
-				"rate": 0.3333333333333333,
-				"lo": 0.23684210526315788,
-				"hi": 0.4230855855855855
+				"k": 7,
+				"n": 32,
+				"rate": 0.21875,
+				"lo": 0.0967741935483871,
+				"hi": 0.3548387096774194
 			},
 			"tooEarly": {
-				"k": 21,
-				"n": 114,
-				"rate": 0.18421052631578946,
-				"lo": 0.11864406779661017,
-				"hi": 0.2592681623931623
+				"k": 15,
+				"n": 32,
+				"rate": 0.46875,
+				"lo": 0.3333333333333333,
+				"hi": 0.6060876623376622
 			},
 			"caught": {
 				"k": 1,
-				"n": 114,
-				"rate": 0.008771929824561403,
+				"n": 32,
+				"rate": 0.03125,
 				"lo": 0,
-				"hi": 0.02830188679245283
+				"hi": 0.0967741935483871
 			}
 		},
 		{
 			"cue": "timer-bar",
-			"decisions": 111,
+			"decisions": 31,
 			"wellTimed": {
-				"k": 80,
-				"n": 111,
-				"rate": 0.7207207207207207,
-				"lo": 0.6290207373271889,
-				"hi": 0.8070421052631577
+				"k": 19,
+				"n": 31,
+				"rate": 0.6129032258064516,
+				"lo": 0.3793103448275862,
+				"hi": 0.818240093240093
 			},
 			"tooLate": {
-				"k": 18,
-				"n": 111,
-				"rate": 0.16216216216216217,
-				"lo": 0.08411214953271028,
-				"hi": 0.23479539641943728
+				"k": 2,
+				"n": 31,
+				"rate": 0.06451612903225806,
+				"lo": 0,
+				"hi": 0.15157342657342626
 			},
 			"tooEarly": {
-				"k": 13,
-				"n": 111,
-				"rate": 0.11711711711711711,
-				"lo": 0.06557377049180328,
-				"hi": 0.17823606044814996
+				"k": 10,
+				"n": 31,
+				"rate": 0.3225806451612903,
+				"lo": 0.14705882352941177,
+				"hi": 0.5333333333333333
 			},
 			"caught": {
 				"k": 1,
-				"n": 111,
-				"rate": 0.009009009009009009,
+				"n": 31,
+				"rate": 0.03225806451612903,
 				"lo": 0,
-				"hi": 0.02857142857142857
+				"hi": 0.10714285714285714
 			}
 		},
 		{
 			"cue": "waking-ghosts",
-			"decisions": 109,
+			"decisions": 26,
 			"wellTimed": {
-				"k": 62,
-				"n": 109,
-				"rate": 0.5688073394495413,
-				"lo": 0.48671968428605594,
-				"hi": 0.6486486486486487
+				"k": 9,
+				"n": 26,
+				"rate": 0.34615384615384615,
+				"lo": 0.17391304347826086,
+				"hi": 0.5185185185185185
 			},
 			"tooLate": {
-				"k": 29,
-				"n": 109,
-				"rate": 0.26605504587155965,
-				"lo": 0.19385517364840674,
-				"hi": 0.3391304347826087
+				"k": 5,
+				"n": 26,
+				"rate": 0.19230769230769232,
+				"lo": 0.04,
+				"hi": 0.36
 			},
 			"tooEarly": {
-				"k": 18,
-				"n": 109,
-				"rate": 0.1651376146788991,
-				"lo": 0.08601382488479263,
-				"hi": 0.2583405172413793
+				"k": 12,
+				"n": 26,
+				"rate": 0.46153846153846156,
+				"lo": 0.27263986013986014,
+				"hi": 0.6522157190635449
 			},
 			"caught": {
 				"k": 1,
-				"n": 109,
-				"rate": 0.009174311926605505,
+				"n": 26,
+				"rate": 0.038461538461538464,
 				"lo": 0,
-				"hi": 0.02885315533980579
+				"hi": 0.13636363636363635
 			}
 		},
 		{
 			"cue": "wall-tide",
-			"decisions": 103,
+			"decisions": 26,
 			"wellTimed": {
-				"k": 44,
-				"n": 103,
-				"rate": 0.42718446601941745,
-				"lo": 0.3332608695652174,
-				"hi": 0.520844414893617
+				"k": 9,
+				"n": 26,
+				"rate": 0.34615384615384615,
+				"lo": 0.17227011494252875,
+				"hi": 0.5357142857142857
 			},
 			"tooLate": {
-				"k": 39,
-				"n": 103,
-				"rate": 0.3786407766990291,
-				"lo": 0.28440366972477066,
-				"hi": 0.4762016021361815
+				"k": 6,
+				"n": 26,
+				"rate": 0.23076923076923078,
+				"lo": 0.05,
+				"hi": 0.3793103448275862
 			},
 			"tooEarly": {
-				"k": 20,
-				"n": 103,
-				"rate": 0.1941747572815534,
-				"lo": 0.11224489795918367,
-				"hi": 0.2777777777777778
+				"k": 11,
+				"n": 26,
+				"rate": 0.4230769230769231,
+				"lo": 0.23333333333333334,
+				"hi": 0.6666666666666666
 			},
 			"caught": {
-				"k": 1,
-				"n": 103,
-				"rate": 0.009708737864077669,
+				"k": 2,
+				"n": 26,
+				"rate": 0.07692307692307693,
 				"lo": 0,
-				"hi": 0.028578296703296664
+				"hi": 0.23076923076923078
 			}
 		}
 	],
@@ -424,547 +424,547 @@
 			{
 				"a": "burning-fuse",
 				"b": "classic-blink",
-				"people": 25,
-				"diff": -0.0995,
+				"people": 15,
+				"diff": -0.3889,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "clock-halos",
-				"people": 25,
-				"diff": -0.05,
+				"people": 11,
+				"diff": -0.2727,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "deflating-player",
-				"people": 25,
-				"diff": -0.1059,
+				"people": 15,
+				"diff": 0.0333,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "dot-sweep",
-				"people": 24,
-				"diff": -0.1576,
+				"people": 15,
+				"diff": -0.1,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "final-count",
-				"people": 25,
-				"diff": -0.018,
+				"people": 14,
+				"diff": 0.0238,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "heartbeat",
-				"people": 26,
-				"diff": 0.0228,
+				"people": 11,
+				"diff": -0.2727,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "ink-refill",
-				"people": 26,
-				"diff": -0.065,
+				"people": 13,
+				"diff": -0.1923,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "none",
-				"people": 25,
-				"diff": -0.188,
+				"people": 15,
+				"diff": 0.0333,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "pen-hourglass",
-				"people": 26,
-				"diff": -0.0929,
+				"people": 12,
+				"diff": -0.25,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": -0.0852,
+				"people": 15,
+				"diff": -0.2,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": -0.0929,
+				"people": 11,
+				"diff": -0.2273,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.0941,
+				"people": 10,
+				"diff": -0.025,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "clock-halos",
-				"people": 24,
-				"diff": 0.0551,
+				"people": 14,
+				"diff": 0,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "deflating-player",
-				"people": 26,
-				"diff": -0.001,
+				"people": 15,
+				"diff": 0.2333,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "dot-sweep",
-				"people": 25,
-				"diff": -0.0385,
+				"people": 18,
+				"diff": 0.1204,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "final-count",
-				"people": 26,
-				"diff": 0.0784,
+				"people": 17,
+				"diff": 0.2549,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "heartbeat",
-				"people": 25,
-				"diff": 0.1166,
+				"people": 12,
+				"diff": 0.1806,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "ink-refill",
-				"people": 25,
-				"diff": 0.0252,
+				"people": 17,
+				"diff": -0.049,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "none",
-				"people": 27,
-				"diff": -0.0572,
+				"people": 17,
+				"diff": 0.451,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "pen-hourglass",
-				"people": 26,
-				"diff": -0.0101,
+				"people": 14,
+				"diff": 0.0238,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": 0.0224,
-				"clear": false
-			},
-			{
-				"a": "classic-blink",
-				"b": "waking-ghosts",
-				"people": 24,
-				"diff": 0.0069,
-				"clear": false
-			},
-			{
-				"a": "classic-blink",
-				"b": "wall-tide",
-				"people": 25,
-				"diff": -0.005,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "deflating-player",
-				"people": 24,
-				"diff": -0.0534,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "dot-sweep",
-				"people": 23,
-				"diff": -0.1138,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "final-count",
-				"people": 24,
-				"diff": 0.0299,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "heartbeat",
-				"people": 25,
-				"diff": 0.0637,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "ink-refill",
-				"people": 25,
-				"diff": -0.0276,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "none",
-				"people": 24,
-				"diff": -0.1306,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "pen-hourglass",
-				"people": 25,
-				"diff": -0.0567,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "timer-bar",
-				"people": 25,
-				"diff": -0.0486,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "waking-ghosts",
-				"people": 24,
-				"diff": -0.0343,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "wall-tide",
-				"people": 25,
-				"diff": -0.0579,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "dot-sweep",
-				"people": 27,
-				"diff": -0.118,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "final-count",
-				"people": 28,
-				"diff": 0.0648,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "heartbeat",
-				"people": 27,
-				"diff": 0.1015,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "ink-refill",
-				"people": 25,
-				"diff": 0.0316,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "none",
-				"people": 27,
-				"diff": -0.0686,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "pen-hourglass",
-				"people": 28,
-				"diff": -0.0173,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "timer-bar",
-				"people": 25,
-				"diff": 0.0163,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "waking-ghosts",
-				"people": 26,
-				"diff": 0.0125,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "wall-tide",
-				"people": 26,
-				"diff": 0.0013,
-				"clear": false
-			},
-			{
-				"a": "dot-sweep",
-				"b": "final-count",
-				"people": 27,
+				"people": 18,
 				"diff": 0.1759,
 				"clear": false
 			},
 			{
+				"a": "classic-blink",
+				"b": "waking-ghosts",
+				"people": 13,
+				"diff": 0.0769,
+				"clear": false
+			},
+			{
+				"a": "classic-blink",
+				"b": "wall-tide",
+				"people": 9,
+				"diff": 0.037,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "deflating-player",
+				"people": 13,
+				"diff": 0.1282,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "dot-sweep",
+				"people": 14,
+				"diff": 0.0476,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "final-count",
+				"people": 14,
+				"diff": 0.0952,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "heartbeat",
+				"people": 10,
+				"diff": 0.05,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "ink-refill",
+				"people": 15,
+				"diff": -0.2111,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "none",
+				"people": 16,
+				"diff": 0.1979,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "pen-hourglass",
+				"people": 15,
+				"diff": 0.0222,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "timer-bar",
+				"people": 15,
+				"diff": 0.0111,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "waking-ghosts",
+				"people": 14,
+				"diff": -0.1667,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "wall-tide",
+				"people": 11,
+				"diff": -0.3409,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "dot-sweep",
+				"people": 15,
+				"diff": -0.0667,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "final-count",
+				"people": 15,
+				"diff": -0.1444,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "heartbeat",
+				"people": 9,
+				"diff": -0.0185,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "ink-refill",
+				"people": 16,
+				"diff": -0.4167,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "none",
+				"people": 14,
+				"diff": 0.0714,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "pen-hourglass",
+				"people": 13,
+				"diff": -0.2436,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "timer-bar",
+				"people": 13,
+				"diff": 0.0256,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "waking-ghosts",
+				"people": 11,
+				"diff": 0.0152,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "wall-tide",
+				"people": 12,
+				"diff": -0.2708,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "final-count",
+				"people": 16,
+				"diff": -0.1042,
+				"clear": false
+			},
+			{
 				"a": "dot-sweep",
 				"b": "heartbeat",
-				"people": 26,
-				"diff": 0.2452,
-				"clear": true
+				"people": 11,
+				"diff": -0.0152,
+				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "ink-refill",
-				"people": 24,
-				"diff": 0.1011,
+				"people": 18,
+				"diff": -0.3241,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "none",
-				"people": 26,
-				"diff": 0.0224,
+				"people": 18,
+				"diff": 0.1389,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "pen-hourglass",
-				"people": 27,
-				"diff": 0.1,
+				"people": 14,
+				"diff": -0.2024,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "timer-bar",
-				"people": 24,
-				"diff": 0.0852,
+				"people": 16,
+				"diff": 0.0521,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": 0.1518,
+				"people": 14,
+				"diff": -0.1667,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "wall-tide",
-				"people": 25,
-				"diff": 0.0868,
+				"people": 13,
+				"diff": -0.3782,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "heartbeat",
-				"people": 27,
-				"diff": 0.0294,
+				"people": 9,
+				"diff": 0.1111,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "ink-refill",
-				"people": 25,
-				"diff": -0.0563,
+				"people": 17,
+				"diff": -0.2059,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "none",
-				"people": 27,
-				"diff": -0.1358,
+				"people": 17,
+				"diff": 0.2059,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "pen-hourglass",
-				"people": 28,
-				"diff": -0.0821,
+				"people": 16,
+				"diff": -0.1562,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "timer-bar",
-				"people": 25,
-				"diff": -0.0716,
+				"people": 16,
+				"diff": 0,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "waking-ghosts",
-				"people": 26,
-				"diff": -0.0551,
+				"people": 12,
+				"diff": -0.125,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.0832,
+				"people": 12,
+				"diff": -0.3403,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "ink-refill",
-				"people": 26,
-				"diff": -0.0878,
+				"people": 12,
+				"diff": -0.3611,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "none",
-				"people": 26,
-				"diff": -0.1843,
+				"people": 12,
+				"diff": 0.2917,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "pen-hourglass",
-				"people": 28,
-				"diff": -0.1045,
+				"people": 10,
+				"diff": -0.2333,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": -0.108,
+				"people": 13,
+				"diff": 0.0385,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "waking-ghosts",
-				"people": 27,
-				"diff": -0.0771,
+				"people": 11,
+				"diff": -0.1212,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "wall-tide",
-				"people": 27,
-				"diff": -0.1126,
+				"people": 8,
+				"diff": -0.1667,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "none",
-				"people": 25,
-				"diff": -0.1137,
+				"people": 18,
+				"diff": 0.3981,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "pen-hourglass",
-				"people": 26,
-				"diff": -0.0279,
+				"people": 17,
+				"diff": 0.1765,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": -0.0202,
+				"people": 16,
+				"diff": 0.2396,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": -0.0053,
+				"people": 15,
+				"diff": 0.0111,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.0291,
+				"people": 14,
+				"diff": -0.0119,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "pen-hourglass",
-				"people": 27,
-				"diff": 0.0599,
+				"people": 17,
+				"diff": -0.2059,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": 0.0946,
+				"people": 18,
+				"diff": -0.2222,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": 0.1084,
+				"people": 16,
+				"diff": -0.2708,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "wall-tide",
-				"people": 25,
-				"diff": 0.0834,
+				"people": 14,
+				"diff": -0.381,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": 0.0077,
+				"people": 15,
+				"diff": 0.1333,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "waking-ghosts",
-				"people": 27,
-				"diff": 0.0313,
+				"people": 14,
+				"diff": -0.1667,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "wall-tide",
-				"people": 27,
-				"diff": 0.0081,
+				"people": 13,
+				"diff": -0.0513,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": 0.0157,
+				"people": 14,
+				"diff": -0.0714,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.0089,
+				"people": 11,
+				"diff": -0.303,
 				"clear": false
 			},
 			{
 				"a": "waking-ghosts",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.0144,
+				"people": 10,
+				"diff": -0.1,
 				"clear": false
 			}
 		],
@@ -972,547 +972,547 @@
 			{
 				"a": "burning-fuse",
 				"b": "classic-blink",
-				"people": 25,
-				"diff": 0.0499,
+				"people": 15,
+				"diff": -0.2111,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "clock-halos",
-				"people": 25,
-				"diff": 0.0122,
+				"people": 11,
+				"diff": -0.0152,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "deflating-player",
-				"people": 25,
-				"diff": 0.1266,
+				"people": 15,
+				"diff": 0.0111,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "dot-sweep",
-				"people": 24,
-				"diff": 0.0823,
+				"people": 15,
+				"diff": -0.2222,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "final-count",
-				"people": 25,
-				"diff": 0.0507,
+				"people": 14,
+				"diff": -0.0357,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "heartbeat",
-				"people": 26,
-				"diff": 0.0534,
+				"people": 11,
+				"diff": -0.197,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "ink-refill",
-				"people": 26,
-				"diff": 0.0283,
+				"people": 13,
+				"diff": 0.0256,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "none",
-				"people": 25,
-				"diff": -0.0516,
+				"people": 15,
+				"diff": -0.2556,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "pen-hourglass",
-				"people": 26,
-				"diff": -0.0234,
+				"people": 12,
+				"diff": -0.0972,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": 0.152,
+				"people": 15,
+				"diff": 0,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": 0.0672,
+				"people": 11,
+				"diff": -0.0303,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.0887,
+				"people": 10,
+				"diff": -0.125,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "clock-halos",
-				"people": 24,
-				"diff": -0.0622,
+				"people": 14,
+				"diff": 0.1071,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "deflating-player",
-				"people": 26,
-				"diff": 0.0865,
+				"people": 15,
+				"diff": 0.1556,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "dot-sweep",
-				"people": 25,
-				"diff": 0.0218,
+				"people": 18,
+				"diff": -0.1944,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "final-count",
-				"people": 26,
-				"diff": -0.0121,
+				"people": 17,
+				"diff": 0.1275,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "heartbeat",
-				"people": 25,
-				"diff": -0.0144,
+				"people": 12,
+				"diff": -0.0972,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "ink-refill",
-				"people": 25,
-				"diff": -0.0325,
+				"people": 17,
+				"diff": 0.2255,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "none",
-				"people": 27,
-				"diff": -0.086,
+				"people": 17,
+				"diff": -0.1863,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "pen-hourglass",
-				"people": 26,
-				"diff": -0.0777,
+				"people": 14,
+				"diff": 0.0714,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": 0.1031,
+				"people": 18,
+				"diff": 0.1944,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "waking-ghosts",
-				"people": 24,
-				"diff": -0.0028,
+				"people": 13,
+				"diff": 0,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "wall-tide",
-				"people": 25,
-				"diff": -0.1355,
+				"people": 9,
+				"diff": 0.0185,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "deflating-player",
-				"people": 24,
-				"diff": 0.1108,
+				"people": 13,
+				"diff": 0.0513,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "dot-sweep",
-				"people": 23,
-				"diff": 0.0847,
+				"people": 14,
+				"diff": -0.3929,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "final-count",
-				"people": 24,
-				"diff": 0.0526,
+				"people": 14,
+				"diff": 0.1786,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "heartbeat",
-				"people": 25,
-				"diff": 0.0367,
+				"people": 10,
+				"diff": -0.35,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "ink-refill",
-				"people": 25,
-				"diff": 0.0072,
+				"people": 15,
+				"diff": 0.1667,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "none",
-				"people": 24,
-				"diff": -0.0581,
+				"people": 16,
+				"diff": -0.3229,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "pen-hourglass",
-				"people": 25,
-				"diff": -0.0431,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "timer-bar",
-				"people": 25,
-				"diff": 0.1419,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "waking-ghosts",
-				"people": 24,
-				"diff": 0.0365,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "wall-tide",
-				"people": 25,
+				"people": 15,
 				"diff": -0.1111,
 				"clear": false
 			},
 			{
+				"a": "clock-halos",
+				"b": "timer-bar",
+				"people": 15,
+				"diff": 0.1333,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "waking-ghosts",
+				"people": 14,
+				"diff": 0.1071,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "wall-tide",
+				"people": 11,
+				"diff": 0.0985,
+				"clear": false
+			},
+			{
 				"a": "deflating-player",
 				"b": "dot-sweep",
-				"people": 27,
-				"diff": 0.0023,
+				"people": 15,
+				"diff": -0.2556,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "final-count",
-				"people": 28,
-				"diff": -0.0856,
+				"people": 15,
+				"diff": 0.0222,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "heartbeat",
-				"people": 27,
-				"diff": -0.0781,
+				"people": 9,
+				"diff": -0.3889,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "ink-refill",
-				"people": 25,
-				"diff": -0.1091,
+				"people": 16,
+				"diff": 0.0938,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "none",
-				"people": 27,
-				"diff": -0.1539,
+				"people": 14,
+				"diff": -0.3095,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "pen-hourglass",
-				"people": 28,
-				"diff": -0.1347,
+				"people": 13,
+				"diff": -0.1282,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "timer-bar",
-				"people": 25,
-				"diff": 0.0287,
+				"people": 13,
+				"diff": 0.0641,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "waking-ghosts",
-				"people": 26,
-				"diff": -0.0603,
+				"people": 11,
+				"diff": -0.1212,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.1976,
+				"people": 12,
+				"diff": -0.0069,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "final-count",
-				"people": 27,
-				"diff": -0.0837,
+				"people": 16,
+				"diff": 0.3542,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "heartbeat",
-				"people": 26,
-				"diff": -0.0931,
+				"people": 11,
+				"diff": 0.2424,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "ink-refill",
-				"people": 24,
-				"diff": -0.0781,
-				"clear": false
+				"people": 18,
+				"diff": 0.4537,
+				"clear": true
 			},
 			{
 				"a": "dot-sweep",
 				"b": "none",
-				"people": 26,
-				"diff": -0.1173,
+				"people": 18,
+				"diff": 0.1852,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "pen-hourglass",
-				"people": 27,
-				"diff": -0.1327,
+				"people": 14,
+				"diff": 0.3095,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "timer-bar",
-				"people": 24,
-				"diff": 0.0655,
+				"people": 16,
+				"diff": 0.4167,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": -0.0938,
+				"people": 14,
+				"diff": 0.2738,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "wall-tide",
-				"people": 25,
-				"diff": -0.174,
+				"people": 13,
+				"diff": 0.4423,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "heartbeat",
-				"people": 27,
-				"diff": -0.014,
+				"people": 9,
+				"diff": -0.5,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "ink-refill",
-				"people": 25,
-				"diff": -0.0332,
+				"people": 17,
+				"diff": 0.0588,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "none",
-				"people": 27,
-				"diff": -0.0682,
+				"people": 17,
+				"diff": -0.3039,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "pen-hourglass",
-				"people": 28,
-				"diff": -0.0491,
+				"people": 16,
+				"diff": -0.1979,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "timer-bar",
-				"people": 25,
-				"diff": 0.1046,
+				"people": 16,
+				"diff": 0.0625,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "waking-ghosts",
-				"people": 26,
-				"diff": -0.0047,
+				"people": 12,
+				"diff": -0.1389,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.1214,
+				"people": 12,
+				"diff": -0.0486,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "ink-refill",
-				"people": 26,
-				"diff": -0.0251,
+				"people": 12,
+				"diff": 0.4583,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "none",
-				"people": 26,
-				"diff": -0.071,
+				"people": 12,
+				"diff": -0.0833,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "pen-hourglass",
-				"people": 28,
-				"diff": -0.0594,
+				"people": 10,
+				"diff": 0.3167,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": 0.0986,
+				"people": 13,
+				"diff": 0.3846,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "waking-ghosts",
-				"people": 27,
-				"diff": 0.0053,
+				"people": 11,
+				"diff": 0.2273,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "wall-tide",
-				"people": 27,
-				"diff": -0.1307,
+				"people": 8,
+				"diff": 0.2917,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "none",
-				"people": 25,
-				"diff": -0.069,
+				"people": 18,
+				"diff": -0.3889,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "pen-hourglass",
-				"people": 26,
-				"diff": -0.0516,
+				"people": 17,
+				"diff": -0.1569,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": 0.1237,
+				"people": 16,
+				"diff": -0.0312,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": 0.0218,
+				"people": 15,
+				"diff": -0.2111,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.117,
+				"people": 14,
+				"diff": -0.131,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "pen-hourglass",
-				"people": 27,
-				"diff": -0.0105,
+				"people": 17,
+				"diff": 0.1765,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": 0.1975,
+				"people": 18,
+				"diff": 0.3148,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": 0.0789,
+				"people": 16,
+				"diff": 0.1875,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "wall-tide",
-				"people": 25,
-				"diff": -0.034,
+				"people": 14,
+				"diff": 0.3333,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": 0.1754,
+				"people": 15,
+				"diff": 0.2778,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "waking-ghosts",
-				"people": 27,
-				"diff": 0.0631,
+				"people": 14,
+				"diff": 0.1905,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "wall-tide",
-				"people": 27,
-				"diff": -0.0815,
+				"people": 13,
+				"diff": 0.1667,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": -0.1009,
+				"people": 14,
+				"diff": -0.0476,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.2408,
+				"people": 11,
+				"diff": -0.0758,
 				"clear": false
 			},
 			{
 				"a": "waking-ghosts",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": -0.1342,
+				"people": 10,
+				"diff": -0.0167,
 				"clear": false
 			}
 		],
@@ -1520,547 +1520,547 @@
 			{
 				"a": "burning-fuse",
 				"b": "classic-blink",
-				"people": 25,
-				"diff": 0.0496,
-				"clear": false
+				"people": 15,
+				"diff": 0.6,
+				"clear": true
 			},
 			{
 				"a": "burning-fuse",
 				"b": "clock-halos",
-				"people": 25,
-				"diff": 0.0378,
+				"people": 11,
+				"diff": 0.2879,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "deflating-player",
-				"people": 25,
-				"diff": -0.0207,
+				"people": 15,
+				"diff": -0.0444,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "dot-sweep",
-				"people": 24,
-				"diff": 0.0753,
+				"people": 15,
+				"diff": 0.3222,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "final-count",
-				"people": 25,
-				"diff": -0.0327,
+				"people": 14,
+				"diff": 0.0119,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "heartbeat",
-				"people": 26,
-				"diff": -0.0762,
+				"people": 11,
+				"diff": 0.4697,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "ink-refill",
-				"people": 26,
-				"diff": 0.0367,
+				"people": 13,
+				"diff": 0.1667,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "none",
-				"people": 25,
-				"diff": 0.2396,
+				"people": 15,
+				"diff": 0.2222,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "pen-hourglass",
-				"people": 26,
-				"diff": 0.1163,
+				"people": 12,
+				"diff": 0.3472,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": -0.0668,
+				"people": 15,
+				"diff": 0.2,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": 0.0257,
+				"people": 11,
+				"diff": 0.2576,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": 0.1829,
+				"people": 10,
+				"diff": 0.15,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "clock-halos",
-				"people": 24,
-				"diff": 0.0071,
+				"people": 14,
+				"diff": -0.1071,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "deflating-player",
-				"people": 26,
-				"diff": -0.0855,
+				"people": 15,
+				"diff": -0.3889,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "dot-sweep",
-				"people": 25,
-				"diff": 0.0167,
+				"people": 18,
+				"diff": 0.0741,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "final-count",
-				"people": 26,
-				"diff": -0.0663,
+				"people": 17,
+				"diff": -0.3824,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "heartbeat",
-				"people": 25,
-				"diff": -0.1022,
+				"people": 12,
+				"diff": -0.0833,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "ink-refill",
-				"people": 25,
-				"diff": 0.0072,
+				"people": 17,
+				"diff": -0.1765,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "none",
-				"people": 27,
-				"diff": 0.1432,
+				"people": 17,
+				"diff": -0.2647,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "pen-hourglass",
-				"people": 26,
-				"diff": 0.0878,
+				"people": 14,
+				"diff": -0.0952,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": -0.1255,
+				"people": 18,
+				"diff": -0.3704,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "waking-ghosts",
-				"people": 24,
-				"diff": -0.0041,
+				"people": 13,
+				"diff": -0.0769,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "wall-tide",
-				"people": 25,
-				"diff": 0.1406,
+				"people": 9,
+				"diff": -0.0556,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "deflating-player",
-				"people": 24,
-				"diff": -0.0574,
+				"people": 13,
+				"diff": -0.1795,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "dot-sweep",
-				"people": 23,
-				"diff": 0.0291,
+				"people": 14,
+				"diff": 0.3452,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "final-count",
-				"people": 24,
-				"diff": -0.0824,
+				"people": 14,
+				"diff": -0.2738,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "heartbeat",
-				"people": 25,
-				"diff": -0.1004,
+				"people": 10,
+				"diff": 0.3,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "ink-refill",
-				"people": 25,
-				"diff": 0.0204,
+				"people": 15,
+				"diff": 0.0444,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "none",
-				"people": 24,
-				"diff": 0.1887,
+				"people": 16,
+				"diff": 0.125,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "pen-hourglass",
-				"people": 25,
-				"diff": 0.0998,
+				"people": 15,
+				"diff": 0.0889,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "timer-bar",
-				"people": 25,
-				"diff": -0.0933,
+				"people": 15,
+				"diff": -0.1444,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "waking-ghosts",
-				"people": 24,
-				"diff": -0.0022,
+				"people": 14,
+				"diff": 0.0595,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "wall-tide",
-				"people": 25,
-				"diff": 0.169,
+				"people": 11,
+				"diff": 0.2424,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "dot-sweep",
-				"people": 27,
-				"diff": 0.1157,
+				"people": 15,
+				"diff": 0.3222,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "final-count",
-				"people": 28,
-				"diff": 0.0208,
+				"people": 15,
+				"diff": 0.1222,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "heartbeat",
-				"people": 27,
-				"diff": -0.0234,
+				"people": 9,
+				"diff": 0.4074,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "ink-refill",
-				"people": 25,
-				"diff": 0.0775,
+				"people": 16,
+				"diff": 0.3229,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "none",
-				"people": 27,
-				"diff": 0.2225,
+				"people": 14,
+				"diff": 0.2381,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "pen-hourglass",
-				"people": 28,
-				"diff": 0.152,
+				"people": 13,
+				"diff": 0.3718,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "timer-bar",
-				"people": 25,
-				"diff": -0.045,
+				"people": 13,
+				"diff": -0.0897,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "waking-ghosts",
-				"people": 26,
-				"diff": 0.0478,
+				"people": 11,
+				"diff": 0.1061,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": 0.1963,
+				"people": 12,
+				"diff": 0.2778,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "final-count",
-				"people": 27,
-				"diff": -0.0922,
+				"people": 16,
+				"diff": -0.25,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "heartbeat",
-				"people": 26,
-				"diff": -0.1521,
+				"people": 11,
+				"diff": -0.2273,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "ink-refill",
-				"people": 24,
-				"diff": -0.023,
+				"people": 18,
+				"diff": -0.1296,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "none",
-				"people": 26,
-				"diff": 0.0949,
+				"people": 18,
+				"diff": -0.3241,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "pen-hourglass",
-				"people": 27,
-				"diff": 0.0327,
+				"people": 14,
+				"diff": -0.1071,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "timer-bar",
-				"people": 24,
-				"diff": -0.1506,
+				"people": 16,
+				"diff": -0.4687,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": -0.058,
+				"people": 14,
+				"diff": -0.1071,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "wall-tide",
-				"people": 25,
-				"diff": 0.0872,
+				"people": 13,
+				"diff": -0.0641,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "heartbeat",
-				"people": 27,
-				"diff": -0.0153,
+				"people": 9,
+				"diff": 0.3889,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "ink-refill",
-				"people": 25,
-				"diff": 0.0895,
+				"people": 17,
+				"diff": 0.1471,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "none",
-				"people": 27,
-				"diff": 0.204,
+				"people": 17,
+				"diff": 0.098,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "pen-hourglass",
-				"people": 28,
-				"diff": 0.1312,
+				"people": 16,
+				"diff": 0.3542,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "timer-bar",
-				"people": 25,
-				"diff": -0.033,
+				"people": 16,
+				"diff": -0.0625,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "waking-ghosts",
-				"people": 26,
-				"diff": 0.0598,
+				"people": 12,
+				"diff": 0.2639,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": 0.2047,
+				"people": 12,
+				"diff": 0.3889,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "ink-refill",
-				"people": 26,
-				"diff": 0.1129,
+				"people": 12,
+				"diff": -0.0972,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "none",
-				"people": 26,
-				"diff": 0.2553,
+				"people": 12,
+				"diff": -0.2083,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "pen-hourglass",
-				"people": 28,
-				"diff": 0.1639,
+				"people": 10,
+				"diff": -0.0833,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": 0.0094,
+				"people": 13,
+				"diff": -0.4231,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "waking-ghosts",
-				"people": 27,
-				"diff": 0.0718,
+				"people": 11,
+				"diff": -0.1061,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "wall-tide",
-				"people": 27,
-				"diff": 0.2433,
+				"people": 8,
+				"diff": -0.125,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "none",
-				"people": 25,
-				"diff": 0.1828,
+				"people": 18,
+				"diff": -0.0093,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "pen-hourglass",
-				"people": 26,
-				"diff": 0.0796,
+				"people": 17,
+				"diff": -0.0196,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": -0.1035,
+				"people": 16,
+				"diff": -0.2083,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": -0.0165,
+				"people": 15,
+				"diff": 0.2,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": 0.1462,
+				"people": 14,
+				"diff": 0.1429,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "pen-hourglass",
-				"people": 27,
-				"diff": -0.0494,
+				"people": 17,
+				"diff": 0.0294,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": -0.2922,
+				"people": 18,
+				"diff": -0.0926,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": -0.1873,
+				"people": 16,
+				"diff": 0.0833,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "wall-tide",
-				"people": 25,
-				"diff": -0.0494,
+				"people": 14,
+				"diff": 0.0476,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "timer-bar",
-				"people": 26,
-				"diff": -0.1831,
+				"people": 15,
+				"diff": -0.4111,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "waking-ghosts",
-				"people": 27,
-				"diff": -0.0944,
+				"people": 14,
+				"diff": -0.0238,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "wall-tide",
-				"people": 27,
-				"diff": 0.0734,
+				"people": 13,
+				"diff": -0.1154,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "waking-ghosts",
-				"people": 25,
-				"diff": 0.0851,
+				"people": 14,
+				"diff": 0.119,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": 0.2497,
+				"people": 11,
+				"diff": 0.3788,
 				"clear": false
 			},
 			{
 				"a": "waking-ghosts",
 				"b": "wall-tide",
-				"people": 26,
-				"diff": 0.1486,
+				"people": 10,
+				"diff": 0.1167,
 				"clear": false
 			}
 		]
@@ -2069,86 +2069,86 @@
 		{
 			"a": "burning-fuse",
 			"b": "timer-bar",
-			"people": 26,
-			"diff": -0.0668,
+			"people": 15,
+			"diff": 0.2,
 			"clear": false
 		},
 		{
 			"a": "classic-blink",
 			"b": "timer-bar",
-			"people": 26,
-			"diff": -0.1255,
+			"people": 18,
+			"diff": -0.3704,
 			"clear": false
 		},
 		{
 			"a": "clock-halos",
 			"b": "timer-bar",
-			"people": 25,
-			"diff": -0.0933,
+			"people": 15,
+			"diff": -0.1444,
 			"clear": false
 		},
 		{
 			"a": "deflating-player",
 			"b": "timer-bar",
-			"people": 25,
-			"diff": -0.045,
+			"people": 13,
+			"diff": -0.0897,
 			"clear": false
 		},
 		{
 			"a": "dot-sweep",
 			"b": "timer-bar",
-			"people": 24,
-			"diff": -0.1506,
+			"people": 16,
+			"diff": -0.4687,
 			"clear": false
 		},
 		{
 			"a": "final-count",
 			"b": "timer-bar",
-			"people": 25,
-			"diff": -0.033,
+			"people": 16,
+			"diff": -0.0625,
 			"clear": false
 		},
 		{
 			"a": "heartbeat",
 			"b": "timer-bar",
-			"people": 26,
-			"diff": 0.0094,
+			"people": 13,
+			"diff": -0.4231,
 			"clear": false
 		},
 		{
 			"a": "ink-refill",
 			"b": "timer-bar",
-			"people": 26,
-			"diff": -0.1035,
+			"people": 16,
+			"diff": -0.2083,
 			"clear": false
 		},
 		{
 			"a": "none",
 			"b": "timer-bar",
-			"people": 26,
-			"diff": -0.2922,
-			"clear": true
+			"people": 18,
+			"diff": -0.0926,
+			"clear": false
 		},
 		{
 			"a": "pen-hourglass",
 			"b": "timer-bar",
-			"people": 26,
-			"diff": -0.1831,
+			"people": 15,
+			"diff": -0.4111,
 			"clear": false
 		},
 		{
 			"a": "waking-ghosts",
 			"b": "timer-bar",
-			"people": 25,
-			"diff": -0.0851,
+			"people": 14,
+			"diff": -0.119,
 			"clear": false
 		},
 		{
 			"a": "wall-tide",
 			"b": "timer-bar",
-			"people": 26,
-			"diff": -0.2497,
-			"clear": true
+			"people": 11,
+			"diff": -0.3788,
+			"clear": false
 		}
 	]
 }
