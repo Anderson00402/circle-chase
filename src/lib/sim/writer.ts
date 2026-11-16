@@ -64,6 +64,32 @@ export function newRunId(): string {
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
+/** A write that has not come back after this long is sent again (writes are idempotent by key). */
+const WRITE_TIMEOUT = 20_000;
+const WRITE_TRIES = 4;
+
+/**
+ * One mutation with a watchdog. A write can hang when the socket stalls (for example while Convex
+ * reloads functions pushed by `convex dev`); since every write has a key, sending it again is safe.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function send(client: ConvexClient, fn: any, args: Record<string, unknown>): Promise<any> {
+	let lastErr: unknown = null;
+	for (let i = 0; i < WRITE_TRIES; i++) {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const hang = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('write timed out')), WRITE_TIMEOUT); });
+		try {
+			return await Promise.race([client.mutation(fn, args), hang]);
+		} catch (err) {
+			lastErr = err;
+			if (!(err instanceof Error && err.message === 'write timed out')) throw err;
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+	throw new Error(`a write did not come back after ${WRITE_TRIES} tries: ${lastErr instanceof Error ? lastErr.message : lastErr}`);
+}
+
 export async function runSimulation(client: ConvexClient, o: RunOptions): Promise<RunProgress> {
 	const run = newRunId();
 	const seed = o.seed ?? Math.floor(Math.random() * 2 ** 31);
@@ -98,10 +124,10 @@ async function participant(
 ) {
 	const plan0 = { run, runSeed: seed, index };
 	const pid = simPid(run, index);
-	const { number } = await client.mutation(api.participants.ensure, { pid, source: 'bot', device: SIM_DEVICE });
+	const { number } = await send(client, api.participants.ensure, { pid, source: 'bot', device: SIM_DEVICE }) as { number: number };
 	const plan = planSession({ preset: o.preset, allCues: o.allCues, cues: o.cues, participantNumber: number, blockSeconds: o.blockSeconds, ...plan0 });
 	const sessionKey = plan.key;
-	await client.mutation(api.sessions.start, {
+	await send(client, api.sessions.start, {
 		key: sessionKey, pid, mode: 'study', source: 'bot', cueOrder: plan.cueOrder, appVersion: APP_VERSION,
 		difficulty: 'normal', sound: true, reducedMotion: false, inputType: 'none', viewport: SIM_VIEWPORT, sim: plan.sim
 	});
@@ -119,8 +145,8 @@ async function participant(
 		if (r.done) {
 			const final = r.value;
 			if (final) {
-				await client.mutation(api.ratings.saveSession, { key: sessionKey + ':rating', sessionKey, ...final });
-				await client.mutation(api.sessions.update, { key: sessionKey, end: true });
+				await send(client, api.ratings.saveSession, { key: sessionKey + ':rating', sessionKey, ...final });
+				await send(client, api.sessions.update, { key: sessionKey, end: true });
 			}
 			break;
 		}
@@ -133,10 +159,10 @@ async function participant(
 
 function writeBlock(client: ConvexClient, sessionKey: string, b: SimBlock): Promise<unknown>[] {
 	const out: Promise<unknown>[] = [];
-	out.push(client.mutation(api.blocks.start, { key: b.key, sessionKey, cue: b.cue, orderIndex: b.orderIndex }));
-	for (const t of b.trials) out.push(client.mutation(api.trials.save, t.args));
-	out.push(client.mutation(api.blocks.end, { key: b.key, deaths: b.deaths, score: b.score }));
-	if (b.rating) out.push(client.mutation(api.ratings.saveBlock, { key: b.key + ':rating', blockKey: b.key, ...b.rating }));
+	out.push(send(client, api.blocks.start, { key: b.key, sessionKey, cue: b.cue, orderIndex: b.orderIndex }));
+	for (const t of b.trials) out.push(send(client, api.trials.save, t.args));
+	out.push(send(client, api.blocks.end, { key: b.key, deaths: b.deaths, score: b.score }));
+	if (b.rating) out.push(send(client, api.ratings.saveBlock, { key: b.key + ':rating', blockKey: b.key, ...b.rating }));
 	return out;
 }
 
