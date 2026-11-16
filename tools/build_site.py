@@ -38,7 +38,18 @@ NOTES = {
                'and an evil laugh warns you the power-up is about to run out.'),
     'fortnite': ("Made to play two sound clips that are only on the owner's computer. "
                  'Here it uses the built-in sounds, so it plays like the main game.'),
+    'play-as-ghost': ('You steer the pink ghost and the computer plays the circle. '
+                      'Catch it 3 times before it eats every dot, and run when it eats a power dot.'),
+    'two-player': ('Two players on one keyboard: WASD against the arrow keys. '
+                   'Each has their own score and lives, and most points wins.'),
+    'dash': 'Shift, X or a tap gives a short burst of speed, then it takes 3 seconds to recharge.',
+    'fog': ("The maze is dark except the light around your circle. "
+            'A power dot lights up everything for a few seconds.'),
 }
+
+# Game modes: branches that change how the game plays. Their tabs sit together at the right end
+# of the tab row, in this order; every other version stays on the left.
+RIGHT_SIDE = ['play-as-ghost', 'two-player', 'dash', 'fog']
 
 FONTS = ('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700'
          '&family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Major+Mono+Display&display=swap')
@@ -191,6 +202,12 @@ HOME = '''<!doctype html>
   .tab .kind {
     font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--you);
   }
+  /* The game modes start here and sit at the right end of the row. On a narrow screen the row
+     scrolls, and they simply follow the other tabs. */
+  .tabs .group {
+    margin-left: auto; align-self: center; padding: 0 4px 0 14px; white-space: nowrap;
+    font: 600 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim);
+  }
 
   /* One line about the version that is playing. */
   .about {
@@ -328,12 +345,19 @@ HOME = '''<!doctype html>
 
 
 def write_home(versions):
-    tabs = ''.join(
-        f'<li><a class="tab" href="{html.escape(v["href"])}" data-key="{html.escape(v["key"])}">'
-        + (f'<span class="kind">{html.escape(v["kind_label"])}</span>' if v['kind_label'] else '')
-        + f'{html.escape(v["tab"])}</a></li>'
-        for v in versions)
-    data = [{k: v[k] for k in ('key', 'name', 'kind', 'path', 'note', 'updated', 'sandbox')} for v in versions]
+    def tab(v):
+        return (f'<li><a class="tab" href="{html.escape(v["href"])}" data-key="{html.escape(v["key"])}">'
+                + (f'<span class="kind">{html.escape(v["kind_label"])}</span>' if v['kind_label'] else '')
+                + f'{html.escape(v["tab"])}</a></li>')
+
+    modes = lambda v: v['kind'] == 'branch' and v['name'] in RIGHT_SIDE
+    left = [v for v in versions if not modes(v)]
+    right = sorted(filter(modes, versions), key=lambda v: RIGHT_SIDE.index(v['name']))
+    versions = left + right
+    tabs = ''.join(map(tab, left))
+    if right:
+        tabs += '<li class="group" aria-hidden="true">Game modes</li>' + ''.join(map(tab, right))
+    data =[{k: v[k] for k in ('key', 'name', 'kind', 'path', 'note', 'updated', 'sandbox')} for v in versions]
     page = (HOME.replace('__FONTS__', html.escape(FONTS))
                 .replace('__README__', html.escape(f'https://github.com/{REPO}#make-your-own-version'))
                 .replace('__TABS__', tabs)
