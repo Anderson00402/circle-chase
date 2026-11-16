@@ -9,8 +9,10 @@ import { beatPeakCrossed, corridorPath, finalBeat, hotness } from './shared-maze
  *
  * The light is on the corridor floor, not only on the dots, so the wedge reads just as well on a
  * board the player has already emptied. The hand is drawn bright on the floor and only faintly
- * over walls and the pen, so it never covers them. In the last 2 s the remaining wedge throbs and
- * the hand turns red; at the end the 12 o'clock line flashes.
+ * over walls and the pen, so it never covers them. In the last 2 s the remaining wedge throbs, the
+ * hand turns red and the swept floor (most of the board, wherever the player is) throbs red on the
+ * same five beats (a steady red glow that grows, with reduced motion); at the end the 12 o'clock
+ * line flashes.
  */
 
 const LIT = '#ffcf4d';
@@ -48,8 +50,19 @@ function drawLight(k: CueContext) {
 	const on = k.reduceMotion ? 1 : k.smoothstep(0, 0.1, power.elapsed);
 	const floor = corridorPath(k);
 	k.clip(floor, () => {
-		ctx.fillStyle = k.rgba(k.mix(LIT, HOT, hot * 0.35), (0.2 + 0.16 * beat) * on);
+		ctx.fillStyle = k.rgba(k.mix(LIT, HOT, hot * 0.35), (0.3 + 0.16 * beat) * on);
 		ctx.fill(wedge(k, a));
+		// Final warning where the player is: by now the lit wedge is a sliver near 12 o'clock, so
+		// the dark part the hand has swept (most of the board) throbs red on the five beats.
+		if (beat > 0) {
+			const rest = new Path2D();
+			const [cx, cy] = pivot(k), b = k.geo.board, R = Math.hypot(b.w, b.h);
+			rest.moveTo(cx, cy);
+			rest.arc(cx, cy, R, -Math.PI / 2, a - Math.PI / 2);
+			rest.closePath();
+			ctx.fillStyle = k.rgba(HOT, 0.26 * beat);
+			ctx.fill(rest);
+		}
 	});
 }
 
@@ -137,7 +150,7 @@ export const dotSweep: Cue = {
 	name: 'Dot sweep',
 	tagline: 'A clock hand sweeps the board; the part still lit is the time left.',
 	description:
-		'When you take a power dot the corridors glow and every dot turns gold. A clock hand starts at 12 o\'clock over the pen and sweeps round once, putting out the light as it passes, so the lit wedge left is the power left. In the last 2 seconds the wedge throbs and the hand turns red; at the end the 12 o\'clock line flashes.',
+		'When you take a power dot the corridors glow and every dot turns gold. A clock hand starts at 12 o\'clock over the pen and sweeps round once, putting out the light as it passes, so the lit wedge left is the power left. In the last 2 seconds the hand turns red and the rest of the floor throbs red five times; at the end the 12 o\'clock line flashes.',
 	channel: 'maze',
 	baseFlash: false,
 
