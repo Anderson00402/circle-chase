@@ -116,6 +116,8 @@
 	onMount(() => {
 		renderer = createRenderer(canvas);
 		newGame();
+		// Development hook for automated checks: `window.__cc.game` is the live game.
+		if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__cc = { get game() { return game; }, begin, restart };
 		const reduce = matchMedia('(prefers-reduced-motion: reduce)');
 		let last = performance.now(), acc = 0, raf = 0;
 		const tick = (now: number) => {

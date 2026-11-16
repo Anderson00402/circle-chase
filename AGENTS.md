@@ -10,7 +10,8 @@ personalities, tunnels, levels), but it is **an original game**: our own charact
 art and sounds. Never reproduce the name, characters, maze layouts, art or music of Pac-Man or any
 other existing game. Genre mechanics are fine; a recognisable copy is not.
 
-Eleven cues (a timer bar plus ten alternatives) can be plugged into the same game. Every power-up a
+Thirteen conditions (two references, a timer bar and ten alternative cues) can be plugged into
+the same game. Every power-up a
 person plays is measured, stored in Convex, replayable, and compared on a live dashboard.
 
 Read `docs/ARCHITECTURE.md` before changing code and `docs/STUDY.md` before touching anything that

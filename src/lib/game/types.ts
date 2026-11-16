@@ -234,6 +234,8 @@ export interface Sfx {
 
 // ---------- countdown cues ----------
 export type CueId =
+	| 'none'
+	| 'classic-blink'
 	| 'timer-bar'
 	| 'ink-refill'
 	| 'clock-halos'
@@ -313,15 +315,23 @@ export interface Palette {
  */
 export interface Cue {
 	id: CueId;
-	/** 0 for the timer bar, 1-10 for the alternatives. */
-	index: number;
+	/**
+	 * reference: the two yardsticks (no signal at all, and the genre's usual ghost blink).
+	 * baseline: the timer bar. idea: the ten alternatives.
+	 */
+	role: 'reference' | 'baseline' | 'idea';
+	/** Short label for lists and charts: "A", "B" for the references, "0" for the timer bar, "1"-"10" for the ideas. */
+	code: string;
 	name: string;
 	/** One short sentence shown in lists. */
 	tagline: string;
 	/** What the player sees from start to end, two or three sentences. */
 	description: string;
 	channel: CueChannel;
-	/** Keep the default white blink on scared ghosts in the last 2 s. */
+	/**
+	 * Keep the default white blink on scared ghosts in the last 2 s. Only `classic-blink` sets this:
+	 * every other cue must carry the message by itself, so the study compares one signal at a time.
+	 */
 	baseFlash: boolean;
 
 	/** Drawn right after the maze walls (tint walls, burn fuses...). */

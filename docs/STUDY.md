@@ -7,8 +7,21 @@
 A power-up makes ghosts edible for a few seconds. If a player knows how much time is left, they
 chase right up to the end and get out in time. If they do not, they either give up early (wasting
 the power) or keep chasing a ghost that turns on them (and get caught). So the player's own
-behaviour around the end of each power-up tells us whether the cue worked. We compare eleven cues:
-the timer bar (baseline) and ten alternatives.
+behaviour around the end of each power-up tells us whether the cue worked.
+
+## Conditions
+
+Thirteen, each showing **one signal only** so results are not muddied by a second cue:
+
+| Code | Condition | Role |
+| --- | --- | --- |
+| A | No signal | Reference: the floor. Players must guess. |
+| B | Classic blink | Reference: the genre's usual white blink in the last 2 s. |
+| 0 | Timer bar | Baseline: a draining bar with seconds. |
+| 1-10 | The ten ideas | Ink refill, clock halos, burning fuse, wall tide, heartbeat, waking ghosts, pen hourglass, deflating player, 3-2-1 stamps, dot sweep. |
+
+Only "Classic blink" uses the white ghost blink. The base game itself must never hint at the time
+left (no music that speeds up, no colour drift): that is the cue's job alone.
 
 ## Unit of analysis: the trial
 
