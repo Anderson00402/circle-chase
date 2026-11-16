@@ -80,7 +80,7 @@ after the stock sounds.
 | `k.power.startedAt`, `.endedAt` | Game times. |
 | `k.power.serial` | 1, 2, 3... per power-up: seed for `hash`. |
 | `k.power.chain` | Wisps eaten in this power-up. |
-| `k.baseFlash()` | True during the "on" half of the five beats in the last 2 s. |
+| `k.baseFlash()` | True during each of the five blinks in the last 2 s (0.2 s on, 0.25 s off, the first at 2 s left, the last ending with the power). With reduced motion, steadily true for the last 2 s. |
 
 ### Positions and geometry (CSS pixels)
 

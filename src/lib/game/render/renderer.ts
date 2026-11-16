@@ -40,18 +40,22 @@ export function paletteFor(maze: Maze): Palette {
 	};
 }
 
-/** Default "about to end" blink: five blinks over the last 2 s, the last one ending with the power. */
-const FLASHES = 5, FLASH_PERIOD = 0.4;
-export function powerFlash(left: number): boolean {
-	const warn = FLASHES * FLASH_PERIOD;
-	if (left <= 0 || left > warn) return false;
-	return (warn - left) % FLASH_PERIOD < FLASH_PERIOD / 2;
+/**
+ * Default "about to end" blink: five white blinks over the last 2 s. The first starts at 2 s left
+ * and the last ends exactly as the power runs out (0.2 s on, 0.25 s off). With reduced motion it
+ * does not blink (that would be over 2 flashes a second): it is steadily on for the last 2 s.
+ */
+const FLASH_WARN = 2, FLASH_ON = 0.2, FLASH_PERIOD = 0.45;
+export function powerFlash(left: number, reduceMotion = false): boolean {
+	if (left <= 0 || left > FLASH_WARN) return false;
+	if (reduceMotion) return true;
+	return (FLASH_WARN - left) % FLASH_PERIOD < FLASH_ON;
 }
 
 /** The look the renderer gives a ghost in this scene with this cue. */
-export function lookOf(g: GhostView, left: number, cue: Pick<Cue, 'baseFlash'>): GhostLook {
+export function lookOf(g: GhostView, left: number, cue: Pick<Cue, 'baseFlash'>, reduceMotion = false): GhostLook {
 	if (g.mode === 'returning') return 'eyes';
-	if (g.scared) return cue.baseFlash && powerFlash(left) ? 'scared-flash' : 'scared';
+	if (g.scared) return cue.baseFlash && powerFlash(left, reduceMotion) ? 'scared-flash' : 'scared';
 	return 'normal';
 }
 
@@ -160,7 +164,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 				startedAt: p.startedAt, endedAt: p.endedAt, endReason: p.endReason, serial: p.serial, chain: p.chain
 			},
 			px, eachWrap,
-			baseFlash: () => powerFlash(p.left),
+			baseFlash: () => powerFlash(p.left, reduce),
 			drawGhost: (g, i, look, cx, cy, o) => drawWisp(ctx, pal, T, g, i, look, cx, cy, time, o),
 			ghostPath: (g, i, cx, cy, o) => {
 				const lk = o?.look ?? 'normal', scared = lk === 'scared' || lk === 'scared-flash';
@@ -170,7 +174,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 			wallLayer: (color, glow, o) => wallLayer(m, T, dpr, color, { glow, ...o }),
 			fonts,
 			geo,
-			ghostLook: (g) => lookOf(g, p.left, cue),
+			ghostLook: (g) => lookOf(g, p.left, cue, reduce),
 			ghostPos: (g) => {
 				const i = f.ghosts.indexOf(g);
 				return px(wrapX(g.x), i >= 0 ? ghostY(g, i) : g.y);
@@ -294,7 +298,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 			// Eyes heading home are drawn last so they stay on top.
 			const order = f.ghosts.map((g, i) => i).sort((a, b) => +(f.ghosts[a].mode === 'returning') - +(f.ghosts[b].mode === 'returning'));
 			for (const i of order) {
-				const g = f.ghosts[i], look = lookOf(g, p.left, cue), y = ghostY(g, i);
+				const g = f.ghosts[i], look = lookOf(g, p.left, cue, reduce), y = ghostY(g, i);
 				eachWrap(g.x, (cx) => {
 					const cy = (y + 0.5) * T;
 					const def = () => k.drawGhost(g, i, look, cx, cy);

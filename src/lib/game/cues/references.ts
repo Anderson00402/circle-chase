@@ -21,7 +21,7 @@ export const classicBlink: Cue = {
 	name: 'Classic blink',
 	tagline: 'Scared ghosts blink white in the last 2 seconds.',
 	description:
-		'Nothing changes for most of the power-up. In the last 2 seconds the scared ghosts blink white five times, and the last blink ends as the power runs out. This is what maze-chase games usually do.',
+		'Nothing changes for most of the power-up. In the last 2 seconds the scared ghosts blink white five times, the first blink at 2 seconds left and the last one ending as the power runs out. With reduced motion they turn steadily white for the last 2 seconds instead. This is what maze-chase games usually do.',
 	channel: 'ghosts',
 	baseFlash: true
 };
