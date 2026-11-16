@@ -2,7 +2,7 @@
 // Records a deterministic GIF of a power-up countdown in Circle Chase.
 //
 //   node tools/record-gif.mjs [--html index.html] [--out media/countdown.gif]
-//                             [--difficulty normal] [--eat 1] [--fps 25] [--tail 1.6]
+//                             [--difficulty normal] [--eat 1] [--fps 50] [--tail 1.6]
 //                             [--width 760] [--scale 2]
 //
 // How it works
@@ -32,7 +32,7 @@ const html = resolve(args.html || join(root, 'index.html'));
 const out = resolve(args.out || join(root, 'media', 'countdown.gif'));
 const difficulty = args.difficulty || 'normal';
 const eatTarget = Number(args.eat ?? 1);
-const fps = Number(args.fps || 25);
+const fps = Number(args.fps || 50); // 50 = 2 cs per GIF frame, the smoothest rate browsers honour
 const tail = Number(args.tail || 1.6);
 const maxSeconds = Number(args.max || 16);
 // Resolution: CSS viewport width (sets the tile size) and device pixel ratio (sharpness).
@@ -173,10 +173,10 @@ try {
 }
 
 mkdirSync(dirname(out), { recursive: true });
-const palette = join(work, 'palette.png');
+// One palette per frame (stats_mode=single + new=1) so colour shifts, glows and gradients keep their
+// own 256 colours; light ordered dithering smooths gradients without noisy speckle.
 execFileSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(fps), '-i', join(framesDir, 'f%04d.png'),
-  '-vf', 'palettegen=max_colors=256:stats_mode=full', palette]);
-execFileSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(fps), '-i', join(framesDir, 'f%04d.png'), '-i', palette,
-  '-lavfi', 'paletteuse=dither=none:diff_mode=rectangle', '-loop', '0', out]);
+  '-lavfi', 'split[a][b];[a]palettegen=max_colors=256:stats_mode=single:reserve_transparent=0[p];[b][p]paletteuse=new=1:dither=bayer:bayer_scale=4',
+  '-loop', '0', out]);
 rmSync(work, { recursive: true, force: true });
 console.log('wrote', out);
