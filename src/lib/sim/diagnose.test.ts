@@ -1,12 +1,17 @@
-// Ad hoc diagnosis: outcome and turn-away time against the bot's own belief error. Run with DIAG=1.
+// Ad hoc diagnosis: outcome and turn-away time against the bot's own belief error. Run with DIAG=1
+// (DIAG_NOISE, DIAG_CAUTION, DIAG_N); the lines are also written to .logs/diagnose.txt.
 import { describe, it } from 'vitest';
+import { appendFileSync } from 'node:fs';
 import { simulateBlock, type SimTrial } from './block';
 
 declare const process: { env: Record<string, string | undefined> };
 
+const say = (line: string) => { console.log(line); appendFileSync('.logs/diagnose.txt', line + '\n'); };
+
 describe.runIf(process.env.DIAG)('diagnosis', () => {
 	it('outcome by belief error', () => {
 		const noise = +(process.env.DIAG_NOISE ?? 1.5), caution = +(process.env.DIAG_CAUTION ?? 0.3);
+		say(`\n== noise ${noise} caution ${caution}`);
 		const all: SimTrial[] = [];
 		for (let s = 1; s <= +(process.env.DIAG_N ?? 30); s++) {
 			let i = 0;
@@ -27,12 +32,12 @@ describe.runIf(process.env.DIAG)('diagnosis', () => {
 			const share = (k: number) => (d ? `${((k / d) * 100).toFixed(0)}%` : '-');
 			const late = (c['caught'] ?? 0) + (c['overstayed'] ?? 0);
 			const turns = g.filter((t) => DECISION.includes(t.measures.outcome)).map((t) => t.measures.turnLeft).filter((x): x is number => x !== null).sort((a, b) => a - b);
-			console.log(`error [${edges[b]}, ${edges[b + 1]}): n ${g.length} decisions ${d} in time ${share(c['timely-retreat'] ?? 0)} too late ${share(late)} (caught ${share(c['caught'] ?? 0)}) too early ${share(c['early-retreat'] ?? 0)} catches ${c['catch'] ?? 0} turn med ${turns[turns.length >> 1]?.toFixed(2)} ${JSON.stringify(c)}`);
+			say(`error [${edges[b]}, ${edges[b + 1]}): n ${g.length} decisions ${d} in time ${share(c['timely-retreat'] ?? 0)} too late ${share(late)} (caught ${share(c['caught'] ?? 0)}) too early ${share(c['early-retreat'] ?? 0)} catches ${c['catch'] ?? 0} turn med ${turns[turns.length >> 1]?.toFixed(2)} ${JSON.stringify(c)}`);
 		}
 		const pts = rated.filter((t) => t.measures.turnLeft !== null);
 		const mx = pts.reduce((a, t) => a + t.error!, 0) / pts.length, my = pts.reduce((a, t) => a + t.measures.turnLeft!, 0) / pts.length;
 		let sxy = 0, sxx = 0, syy = 0;
 		for (const t of pts) { const dx = t.error! - mx, dy = t.measures.turnLeft! - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy; }
-		console.log(`corr(error, turnLeft) = ${(sxy / Math.sqrt(sxx * syy)).toFixed(2)} over ${pts.length}; in rates ${rated.length} of ${all.length}`);
+		say(`corr(error, turnLeft) = ${(sxy / Math.sqrt(sxx * syy)).toFixed(2)} over ${pts.length}; in rates ${rated.length} of ${all.length}`);
 	}, 600_000);
 });

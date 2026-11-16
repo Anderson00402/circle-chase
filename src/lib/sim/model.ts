@@ -16,15 +16,25 @@
  * a share of power-ups they ignore, and a learning effect: noise is larger early in the session and
  * settles over the first 20 or so trials. Counterbalanced orders spread that learning over the cues.
  *
- * Measured with the real tracker under outcome rules version 2 (see diagnose.test.ts): rates are
- * over decision trials, catches are left out. "Too late" climbs steadily with the bot's belief
- * error, "too early" with a large negative one.
+ * Measured with the real tracker under outcome rules version 3 (see diagnose.test.ts and
+ * audit.test.ts): rates are over decision trials, catches are left out. "Too late" climbs steadily
+ * with the bot's belief error.
  *
- * The simulated player's safety margin (caution) averages 1.0 s: a player who knows the time left
- * is modelled as backing off with about a second to spare, the middle of the "in time" window
- * (0.2-2 s). An earlier version used 0.3 s, which put even an exact bot right on the 0.2 s line, so
- * half of its turns counted as too late and the planted levels could not show through. That was a
- * flaw in the simulated player, not in the measure; the measure's definitions were not touched.
+ * What the model does and does not show, now that a chase is the player's own run at a ghost
+ * (rules version 3). Nothing here was tuned to the new rules.
+ * - The simulated player gives a ghost up when (believed time left - caution) no longer covers the
+ *   run to it at 3.95 tiles/s. With the mean caution of 1.0 s that is at about 1 s + a quarter of a
+ *   second per tile: 1.5 s left for a ghost 2 tiles away, 2.5 s for one 6 tiles away. So even a
+ *   simulated player who knows the time exactly turns from far ghosts with more than 2 s left,
+ *   which the rules call "too early": about a quarter of its decisions (74% in time, none too
+ *   late). Against the belief error the classes behave as they should: underestimating the time by
+ *   more than a second gives about 90% "too early", overestimating by more than a second 60-90%
+ *   "too late". Per condition, though, "too early" does not rise with the planted noise the way
+ *   "in time" falls and "too late" rises, for the reason in the next point.
+ * - A simulated player who believes the power is already over never starts a chase, so its worst
+ *   underestimates show as "not chasing near the end", not as "too early": the noisier the
+ *   condition, the more of its early mistakes leave no chase to judge.
+ * - Most of its chases end in a catch: about one trial in six is a decision.
  *
  * Pure and deterministic for a seed.
  */
