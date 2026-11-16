@@ -20,6 +20,7 @@
   --rule: rgba(219, 231, 255, 0.22);
   --scrim: rgba(9, 24, 54, 0.66);
   --accent: #ff8a4c;
+  --warn: #ff3048;
   --on-accent: #1d0d03;
   --hunter: #ff6f91;
   --ambusher: #ff8a3d;
@@ -531,7 +532,7 @@ const Core = (() => {
   const rootStyle = getComputedStyle(document.documentElement);
   const C = {};
   ['paper', 'maze-bg', 'maze-wall', 'line', 'accent', 'hunter', 'ambusher', 'guard', 'drifter',
-    'scared', 'scared-fill', 'dot', 'player', 'you'].forEach(k => { C[k] = rootStyle.getPropertyValue('--' + k).trim(); });
+    'scared', 'scared-fill', 'dot', 'player', 'you', 'warn'].forEach(k => { C[k] = rootStyle.getPropertyValue('--' + k).trim(); });
 
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
@@ -722,8 +723,9 @@ const Core = (() => {
 
   // Walls are neon outlines on black: each wall block gets a rounded blue outline with a soft glow,
   // so the one-tile border reads as a double line and walls that reach the edge end in rounded caps.
-  function mazeLayer(flash) {
-    const m = game.maze, key = m.name + (flash ? ':flash' : '');
+  // tint 'clear' turns them orange when a maze is cleared; 'warn' turns them red as the power runs out.
+  function mazeLayer(tint) {
+    const m = game.maze, key = m.name + (tint ? ':' + tint : '');
     if (layers[key]) return layers[key];
     const W = m.W * T, H = m.H * T;
     const isWall = (x, y) => x >= 0 && y >= 0 && x < m.W && y < m.H && m.tiles[y * m.W + x] === Core.WALL;
@@ -753,7 +755,7 @@ const Core = (() => {
     ox.globalCompositeOperation = 'destination-out';
     ox.drawImage(inner, 0, 0);
     ox.globalCompositeOperation = 'source-in';
-    const wallColor = flash ? C.accent : C['maze-wall'];
+    const wallColor = tint === 'clear' ? C.accent : tint === 'warn' ? C.warn : C['maze-wall'];
     ox.fillStyle = wallColor;
     ox.fillRect(0, 0, outer.width, outer.height);
 
@@ -889,7 +891,11 @@ const Core = (() => {
     const g = game, m = g.maze, reduce = reduceMotion.matches, now = g.time;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const flash = g.state === 'clear' && !reduce && Math.floor(g.stateTime * 4) % 2 === 1;
-    ctx.drawImage(mazeLayer(flash), 0, 0);
+    // Power running low: the walls blink red with each of the ghosts' white flashes in the last
+    // FLASHES * FLASH_PERIOD seconds. With reduced motion they stay red for that time instead of blinking.
+    const low = g.state === 'playing' && g.fright > 0 && g.fright <= FLASHES * FLASH_PERIOD;
+    const warn = low && (reduce || powerFlash(g.fright));
+    ctx.drawImage(mazeLayer(flash ? 'clear' : warn ? 'warn' : null), 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // dots
