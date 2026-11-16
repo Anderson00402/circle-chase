@@ -56,9 +56,19 @@
 
 	// ---------- time range and markers ----------
 	const startT = $derived(trial?.startedAt ?? 0);
-	const lastSeen = $derived(scenes.length ? scenes[scenes.length - 1].frame.t : undefined);
+	/** The last moment anything was recorded (the clip, else the 10 Hz series): when a player who left was last seen. */
+	const lastSeen = $derived.by(() => {
+		if (scenes.length) return scenes[scenes.length - 1].frame.t;
+		const s = (current ? seriesQ.data : null) ?? trial?.series ?? null;
+		return s && s.t.length && trial ? trial.startedAt + s.t[s.t.length - 1] : undefined;
+	});
 	/** When the power ended; robust to old rows whose stored end time was wrong. */
 	const endT = $derived(trial ? endTimeOf(trial, lastSeen) : 0);
+	/**
+	 * Where the power clock would reach zero: the end itself when the power ran out, the start plus
+	 * the power length when it was cut short (so "power left" stays true up to the cut).
+	 */
+	const clockEnd = $derived(trial && trial.endReason !== 'expired' ? trial.startedAt + trial.total : endT);
 	const expired = $derived(trial?.endReason === 'expired');
 	const series = $derived.by(() => {
 		const s = (current ? seriesQ.data : null) ?? trial?.series ?? null;
@@ -120,8 +130,8 @@
 		written = location.hash;
 		const h = new URLSearchParams(location.hash.slice(1));
 		const at = h.get('left');
-		const fromHash = at !== null && Number.isFinite(+at) && t0 <= endT - +at + 0.05 && endT - +at <= t1 + 0.05;
-		time = fromHash ? clamp(endT - +at!) : t0;
+		const fromHash = at !== null && Number.isFinite(+at) && t0 <= clockEnd - +at + 0.05 && clockEnd - +at <= t1 + 0.05;
+		time = fromHash ? clamp(clockEnd - +at!) : t0;
 		vsCue = h.get('vs') ?? (trialCue === 'none' ? 'timer-bar' : 'none');
 		compare = h.has('vs');
 		const a = (h.get('aids') ?? '').split(',');
@@ -159,7 +169,7 @@
 	$effect(() => {
 		if (!trial || !current || readyFor !== id || trial._id !== id || playing) return;
 		const h = new URLSearchParams();
-		h.set('left', (endT - time).toFixed(2));
+		h.set('left', (clockEnd - time).toFixed(2));
 		if (compare) h.set('vs', vsCue);
 		const a = [aids.highlight && 'hl', aids.line && 'line', aids.tag && 'tag'].filter(Boolean);
 		if (a.length) h.set('aids', a.join(','));
@@ -182,7 +192,7 @@
 		return i + 1 < scenes.length && scenes[i + 1].frame.t - t < t - scenes[i].frame.t ? i + 1 : i;
 	};
 	const target = $derived(scenes.length ? targets(nearestIndex(time)) : { ghost: -1, dist: null, danger: false });
-	const left = $derived(endT - time);
+	const left = $derived(clockEnd - time);
 
 	const seriesAt = $derived.by(() => {
 		if (!series) return null;
@@ -343,7 +353,7 @@
 
 {#snippet timeline()}
 	<section class="tl" aria-label="Timeline">
-		<Timeline {t0} {t1} {startT} {endT} {expired} {markers} {series} {time} onseek={onscrub} />
+		<Timeline {t0} {t1} {startT} endT={clockEnd} {expired} {markers} {series} {time} onseek={onscrub} text={markerText} />
 		<div class="legend">
 			<span class="what">Line: tiles to the nearest scared ghost</span>
 			<span><i class="sw chase"></i>Closing in</span>
@@ -354,7 +364,7 @@
 		<div class="marks" role="group" aria-label="Jump to a moment">
 			{#each markers as m (m.kind + m.t)}
 				<button type="button" class="mk {m.kind}" class:at={Math.abs(clamp(m.t) - time) < 0.03} onclick={() => { playing = false; seek(m.t); }}>
-					{markerText(m)} <span class="num">{m.t < t0 - 0.06 ? 'before the clip' : leftWords(endT - m.t)}</span>
+					{markerText(m)} <span class="num">{m.t < t0 - 0.06 ? 'before the clip' : leftWords(clockEnd - m.t)}</span>
 				</button>
 			{/each}
 		</div>

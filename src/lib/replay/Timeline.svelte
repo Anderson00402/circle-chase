@@ -26,8 +26,10 @@
 		series: { t: number[]; dist: (number | null)[]; chasing: number[] } | null;
 		time: number;
 		onseek: (t: number, phase: 'start' | 'move' | 'end') => void;
+		/** The words for each marker, so the flags say the same as the page's buttons ("Died" vs "Caught", "Run ended"). */
+		text?: (m: Marker) => string;
 	}
-	let { t0, t1, startT, endT, expired, markers, series, time, onseek }: Props = $props();
+	let { t0, t1, startT, endT, expired, markers, series, time, onseek, text: say }: Props = $props();
 
 	let width = $state(0);
 	let holder: HTMLDivElement;
@@ -105,7 +107,9 @@
 		const ends = [-Infinity, -Infinity];
 		return markers.map((m) => {
 			const before = m.t < t0 - 0.06;
-			const text = m.kind === 'eat' ? `Ate ${ghostName(m.ghost) ?? 'ghost'}`
+			const text = m.kind === 'powerStart' && before ? `← Power on ${(t0 - m.t).toFixed(1)} s earlier`
+				: say ? say(m)
+				: m.kind === 'eat' ? `Ate ${ghostName(m.ghost) ?? 'ghost'}`
 				: m.kind === 'powerEnd' && !expired ? 'Power cut'
 				: m.kind === 'powerStart' && before ? `← Power on ${(t0 - m.t).toFixed(1)} s earlier`
 				: LABEL[m.kind];
