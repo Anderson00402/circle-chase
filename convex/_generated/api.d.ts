@@ -8,13 +8,51 @@
  * @module
  */
 
+import type * as admin from "../admin.js";
+import type * as blocks from "../blocks.js";
+import type * as clips from "../clips.js";
+import type * as crons from "../crons.js";
+import type * as exports from "../exports.js";
+import type * as http from "../http.js";
+import type * as lib_filters from "../lib/filters.js";
+import type * as lib_pack from "../lib/pack.js";
+import type * as lib_series from "../lib/series.js";
+import type * as lib_stats from "../lib/stats.js";
+import type * as live from "../live.js";
+import type * as participants from "../participants.js";
+import type * as presence from "../presence.js";
+import type * as ratings from "../ratings.js";
+import type * as sessions from "../sessions.js";
+import type * as summary from "../summary.js";
+import type * as trials from "../trials.js";
+import type * as validators from "../validators.js";
+
 import type {
   ApiFromModules,
   FilterApi,
   FunctionReference,
 } from "convex/server";
 
-declare const fullApi: ApiFromModules<{}>;
+declare const fullApi: ApiFromModules<{
+  admin: typeof admin;
+  blocks: typeof blocks;
+  clips: typeof clips;
+  crons: typeof crons;
+  exports: typeof exports;
+  http: typeof http;
+  "lib/filters": typeof lib_filters;
+  "lib/pack": typeof lib_pack;
+  "lib/series": typeof lib_series;
+  "lib/stats": typeof lib_stats;
+  live: typeof live;
+  participants: typeof participants;
+  presence: typeof presence;
+  ratings: typeof ratings;
+  sessions: typeof sessions;
+  summary: typeof summary;
+  trials: typeof trials;
+  validators: typeof validators;
+}>;
 
 /**
  * A utility for referencing Convex functions in your app's public API.
