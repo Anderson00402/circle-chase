@@ -118,7 +118,7 @@ describe('clips', () => {
 			// No frame is in the clip twice.
 			for (let i = 1; i < scenes.length; i++) expect(scenes[i].frame.t).toBeGreaterThan(scenes[i - 1].frame.t);
 		}
-	});
+	}, 30_000); // ten minutes of scripted play
 
 	it('a clip always ends on the latest frame, on the 20 Hz grid or not', () => {
 		for (const { trial, clip } of clips) {

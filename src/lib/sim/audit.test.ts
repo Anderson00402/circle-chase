@@ -65,7 +65,8 @@ describe('audit: an independent reading of the clip gives the stored outcome', (
 		];
 		for (const [seed, noise, caution] of players) {
 			const game = createGame({ ...STUDY_CONFIG, seed: seed * 101 + 7 });
-			const bot = createBot(game, { seed, skill: 0.9, awarenessNoise: noise, caution, reaction: 0.4 });
+			// Half of them chase the way the simulator's participants do (eager), half plan each chase.
+			const bot = createBot(game, { seed, skill: 0.9, awarenessNoise: noise, caution, reaction: 0.4, chase: seed % 2 ? 'eager' : 'planned' });
 			const tracker = createTracker();
 			const recorder = createRecorder();
 			const check = (t: TrialMeasures) => {

@@ -4,6 +4,7 @@ import {
 	type GhostId, type GhostMode, type Maze, type Popup, type PowerEndReason, type Scene
 } from '../types';
 import { flood, mazeForLevel } from './mazes';
+import { pathDistances } from './paths';
 import { DIFFICULTY, MIN_POWER_TIME, levelInfo, type LevelInfo } from './levels';
 
 /** Game rules. No page access here, so the same code runs in tests, bots and the browser. */
@@ -46,12 +47,21 @@ const CORNERS: Record<GhostId, [number, number]> = {
 
 export const DEFAULT_CONFIG: GameConfig = {
 	mode: 'arcade', difficulty: 'normal', seed: 1, startLevel: 1,
-	frightRange: null, powerRespawn: 0, infiniteLives: false
+	frightRange: null, powerRespawn: 0, infiniteLives: false, scaredFlee: null, scaredSpeedShare: null
 };
-/** Study mode: random power lengths, power dots that grow back, and no game over. */
+/**
+ * Study mode: random power lengths, power dots that grow back, and no game over. Scared ghosts close
+ * to the player run from it at three quarters of the player's power-up speed, so a chase gains about
+ * 1.5 tiles a second and is often still under way when the power runs out: that is what makes a
+ * power-up end in a timing decision (docs/STUDY.md "Study-rule levers" has the numbers). Neither the
+ * rule nor the speed changes during a power-up.
+ */
+export const STUDY_FLEE = { radius: 7, random: 0.25 } as const;
+export const STUDY_SCARED_SHARE = 0.75;
 export const STUDY_CONFIG: GameConfig = {
 	mode: 'study', difficulty: 'normal', seed: 1, startLevel: 1,
-	frightRange: [4, 8], powerRespawn: 12, infiniteLives: true, fixedLevel: true, powerLock: true
+	frightRange: [4, 8], powerRespawn: 12, infiniteLives: true, fixedLevel: true, powerLock: true,
+	scaredFlee: { ...STUDY_FLEE }, scaredSpeedShare: STUDY_SCARED_SHARE
 };
 
 /** Small seeded random number generator (mulberry32). */
@@ -125,6 +135,12 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 	let respawns: { i: number; at: number }[] = [];
 	let bonus: { kind: number; points: number; left: number } | null = null, bonusShown = 0;
 
+	/** The level table, with the study-rule overrides applied (so `info` tells bots the real speeds). */
+	function rulesFor(n: number): LevelInfo {
+		const base = levelInfo(n, config.difficulty);
+		const share = config.scaredSpeedShare;
+		return share ? { ...base, ghostScaredSpeed: share * base.playerPowerSpeed } : base;
+	}
 	const emit = (e: EventBody) => events.push({ t: time, ...e } as GameEvent);
 	const wrapX = (x: number) => ((x % m.W) + m.W) % m.W;
 	const tileAt = (x: number, y: number) => (y < 0 || y >= m.H ? WALL : m.tiles[y * m.W + wrapX(x)]);
@@ -138,7 +154,7 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 
 	function loadLevel() {
 		m = mazeForLevel(level);
-		lv = levelInfo(level, config.difficulty);
+		lv = rulesFor(level);
 		dots = m.dotsInit.slice();
 		dotsLeft = m.dotTotal;
 		smallTotal = 0;
@@ -149,6 +165,16 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 		distHome = flood(m, m.home);
 		tunnel = tunnelTiles(m);
 		respawns = [];
+		// Study rules: a maze cleared during a power-up comes back within the lock; its power dots
+		// wait until the lock lifts like any other.
+		if (config.powerLock && config.powerRespawn > 0 && powerEndedAt >= 0 && time < powerEndedAt + POWER_LOCK_AFTER) {
+			for (let i = 0; i < dots.length; i++) {
+				if (dots[i] !== 2) continue;
+				dots[i] = 0;
+				dotsLeft--;
+				respawns.push({ i, at: time });
+			}
+		}
 		bonus = null;
 		bonusShown = 0;
 		sharedCount = false;
@@ -472,8 +498,27 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 		}
 		let pool = choices.filter((d) => d !== rev(g.dir));
 		if (!pool.length) pool = choices;
-		// Scared ghosts turn at random, the same way for the whole power-up.
-		if (g.scared) return pool[Math.floor(rng() * pool.length)] as Dir;
+		// Scared ghosts turn at random, or (study rules) run from a player close by. Either way the
+		// same rule for the whole power-up: nothing here reads the time left.
+		if (g.scared) {
+			const flee = config.scaredFlee;
+			// (Arcade rules draw no extra random number here, so their games stay as they were.)
+			if (flee && rng() >= flee.random) {
+				const far = playerField();
+				const here = far[g.y * m.W + wrapX(g.x)];
+				if (here >= 0 && here <= flee.radius) {
+					let best: number[] = [], bestD = -Infinity;
+					for (const d of pool) {
+						const n = far[(g.y + DIRS[d].y) * m.W + wrapX(g.x + DIRS[d].x)];
+						const v = n < 0 ? here : n; // a door or pen tile: no gain
+						if (v > bestD) { bestD = v; best = [d]; }
+						else if (v === bestD) best.push(d);
+					}
+					return best[best.length > 1 ? Math.floor(rng() * best.length) : 0] as Dir;
+				}
+			}
+			return pool[Math.floor(rng() * pool.length)] as Dir;
+		}
 		const [tx, ty] = targetFor(g);
 		let best = pool[0], bestD = Infinity;
 		for (const d of pool) {
@@ -481,6 +526,16 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 			if (dd < bestD) { bestD = dd; best = d; }
 		}
 		return best as Dir;
+	}
+
+	/** Path distances from the player's tile, kept until the player stands on another tile. */
+	let fieldKey = '', field: Int16Array = new Int16Array(0);
+	function playerField(): Int16Array {
+		const [px, py] = pos(player);
+		const tx = wrapX(Math.round(px)), ty = Math.round(py);
+		const key = `${m.id}:${tx},${ty}`;
+		if (key !== fieldKey) { fieldKey = key; field = pathDistances(m, [tx, ty]); }
+		return field;
 	}
 
 	function flip(g: Ghost) {

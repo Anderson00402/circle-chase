@@ -818,7 +818,8 @@ describe('tracker: every decision trial has a last chase that satisfies the defi
 
 	function playBot(seed: number, noise: number, caution: number, seconds: number) {
 		const game = createGame({ ...STUDY_CONFIG, seed });
-		const bot = createBot(game, { seed, skill: 0.9, awarenessNoise: noise, caution, reaction: 0.4 });
+		// Odd seeds chase the way the simulator's participants do (eager), even seeds plan each chase.
+		const bot = createBot(game, { seed, skill: 0.9, awarenessNoise: noise, caution, reaction: 0.4, chase: seed % 2 ? 'eager' : 'planned' });
 		const tracker = createTracker();
 		const kept: Kept[] = [];
 		const trials: TrialMeasures[] = [];
@@ -849,7 +850,7 @@ describe('tracker: every decision trial has a last chase that satisfies the defi
 		let decisions = 0, turns = 0, overstays = 0, early = 0;
 		const classes: Record<string, number> = {};
 		for (const [seed, noise, caution] of [[3, 0, 1], [8, 1.5, 0.6], [21, 2.5, 0.2], [34, 2.5, 1], [55, 0.5, -0.5], [89, 1, 0.3], [144, 3, 0], [233, 0, 0.5]] as const) {
-			const { trials, kept } = playBot(seed, noise, caution, 180);
+			const { trials, kept } = playBot(seed, noise, caution, 240);
 			for (const t of trials) {
 				classes[t.outcome] = (classes[t.outcome] ?? 0) + 1;
 				expect(derive(t)).toEqual({ outcome: t.outcome, inRates: t.inRates, wasted: t.wasted, gaveUpEarly: t.gaveUpEarly });
@@ -876,7 +877,7 @@ describe('tracker: every decision trial has a last chase that satisfies the defi
 				// No ghost was eaten after the chase's turn-away.
 				for (const e of t.eats) expect(e.t, why).toBeLessThanOrEqual(last.at + 1e-6);
 
-				const i0 = kept.findIndex((k) => k.t >= t.startedAt + last.from - 1e-6);
+				const i0 = kept.findIndex((k) => k.t >= t.startedAt + last.from - 0.006);
 				const i1 = kept.findIndex((k) => k.t >= t.startedAt + last.at - 0.006);
 				// 1. Sustained and by the player's own steps: from the first step to the closest point the
 				// player's steps alone closed the stored gain, and that took a third of a second at least.

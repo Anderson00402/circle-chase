@@ -7,8 +7,9 @@
  * - at the end of the block `tracker.finish()` closes a running power-up as `quit`, like `endBlock`.
  * Pure: no DOM, no Convex. Deterministic for a seed.
  */
-import { createBot } from '../game/engine/bot';
+import { createBot, type BotOptions } from '../game/engine/bot';
 import { createGame, STUDY_CONFIG } from '../game/engine/game';
+import type { GameConfig } from '../game/types';
 import { createRecorder } from '../telemetry/recorder';
 import { createTracker } from '../telemetry/tracker';
 import type { TrialMeasures } from '../telemetry/types';
@@ -27,6 +28,10 @@ export interface BlockPlan {
 	skill: number;
 	/** Awareness for the k-th power-up of this block (0-based). */
 	awareness: (k: number) => TrialAwareness;
+	/** Engine settings on top of the study rules (diagnosis and tests; stored data uses the study rules). */
+	config?: Partial<GameConfig>;
+	/** Bot settings on top of skill and awareness (diagnosis: another way of chasing). */
+	bot?: Partial<BotOptions>;
 }
 
 export interface BlockKeys {
@@ -58,9 +63,9 @@ export interface BlockResult {
 }
 
 export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
-	const game = createGame({ ...STUDY_CONFIG, seed: plan.seed });
+	const game = createGame({ ...STUDY_CONFIG, ...plan.config, seed: plan.seed });
 	// Awareness is set at each power-up below; before the first one it does not matter.
-	const bot = createBot(game, { seed: plan.seed, skill: plan.skill });
+	const bot = createBot(game, { ...plan.bot, seed: plan.seed, skill: plan.skill });
 	const tracker = createTracker();
 	const recorder = createRecorder();
 	const out: SimTrial[] = [];

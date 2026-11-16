@@ -205,6 +205,19 @@ export interface GameConfig {
 	 * (needs `powerRespawn`). Study mode sets this so a second power dot never cuts a trial short.
 	 */
 	powerLock?: boolean;
+	/**
+	 * Scared ghosts run from the player instead of turning at random: at each junction a scared
+	 * ghost within `radius` tiles (path distance) of the player takes the exit that leads farthest
+	 * from the player, except for a share `random` of junctions where it turns at random (so it can
+	 * be cornered). Farther away it turns at random. The rule is the same for the whole power-up.
+	 * Study mode sets this so a chase lasts and is often still under way when the power runs out.
+	 */
+	scaredFlee?: { radius: number; random: number } | null;
+	/**
+	 * Speed of scared ghosts as a share of the player's power-up speed (instead of the level
+	 * table's). Constant for the whole power-up. Study mode sets it so a pursuit closes slowly.
+	 */
+	scaredSpeedShare?: number | null;
 }
 
 export interface Game {

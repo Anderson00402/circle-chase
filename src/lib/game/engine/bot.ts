@@ -32,6 +32,15 @@ export interface BotOptions {
 	caution: number;
 	/** Seconds it takes to notice that a ghost has turned dangerous again. */
 	reaction: number;
+	/**
+	 * How it decides whether a scared ghost is worth going after.
+	 * - `planned` (default): only while it believes it can reach the ghost before (believed time
+	 *   left - caution) runs out, at its expected closing speed.
+	 * - `eager`: any scared ghost it can reach safely, for as long as it believes (time left -
+	 *   caution) is above zero, however far: the way people tend to chase. It still turns away
+	 *   once it believes the power is about to end.
+	 */
+	chase?: 'planned' | 'eager';
 	/** Debug: called with every plan (tile, scores per direction, chosen direction). */
 	onPlan?: (p: { t: number; x: number; y: number; value: number[]; room: number[]; best: Dir; cornered: boolean }) => void;
 }
@@ -176,8 +185,12 @@ export function createBot(game: EngineGame, partial: Partial<BotOptions> = {}): 
 		const value = [-Infinity, -Infinity, -Infinity, -Infinity];
 		const room = [0, 0, 0, 0];
 		const powerUseful = f.power.left <= 0 && f.ghosts.some((g) => g.mode === 'active' && !g.scared);
-		// Scared ghosts are worth chasing only if the bot believes it can get there in time.
-		const chaseSpeed = Math.max(0.5, ps - info.ghostScaredSpeed * 0.5);
+		// Scared ghosts are worth chasing only if the bot believes it can get there in time. A ghost
+		// that turns at random gives way about half the time; one that runs from the player (study
+		// rules) gives way only at the player's speed advantage.
+		const fleeing = !!game.config.scaredFlee;
+		const chaseSpeed = Math.max(0.5, ps - info.ghostScaredSpeed * (fleeing ? 1 : 0.5));
+		const eager = options.chase === 'eager';
 		function score(): boolean {
 			value.fill(-Infinity);
 			room.fill(0);
@@ -195,7 +208,7 @@ export function createBot(game: EngineGame, partial: Partial<BotOptions> = {}): 
 				if (r > 0) take(d, r, dist[j]);
 			}
 			for (const { i } of prey)
-				if (dist[i] >= 0 && belief - options.caution > dist[i] / chaseSpeed) take(first[i], REWARD.ghost, dist[i]);
+				if (dist[i] >= 0 && (eager || belief - options.caution > dist[i] / chaseSpeed)) take(first[i], REWARD.ghost, dist[i]);
 			return any;
 		}
 		// Careful first; if that leaves nothing to eat, accept corridors that are only safe as long

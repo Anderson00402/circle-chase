@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-	CHAIN_POINTS, CLEAR_TIME, DEATH_TIME, EXTRA_LIFE_EVERY, POWER_LOCK_AFTER, READY_TIME, STUDY_CONFIG, TURN_MEMORY,
-	createGame, tunnelTiles, type EngineGame
+	CHAIN_POINTS, CLEAR_TIME, DEATH_TIME, EXTRA_LIFE_EVERY, POWER_LOCK_AFTER, READY_TIME, STUDY_CONFIG, STUDY_FLEE,
+	STUDY_SCARED_SHARE, TURN_MEMORY, createGame, tunnelTiles, type EngineGame
 } from './game';
+import { pathDistances, tileOf } from './paths';
 import { createBot, type BotOptions } from './bot';
 import { levelInfo } from './levels';
-import type { GameConfig, GameEvent } from '../types';
+import { DIRS, PATH, type GameConfig, type GameEvent } from '../types';
 
 const STEP = 1 / 120;
 
@@ -162,8 +163,11 @@ describe('power-ups', () => {
 		expect(game.frame().t).toBeGreaterThan(t0);
 	});
 
-	it('nothing in the rules hints at the time left: scared ghosts keep one speed and one way of moving', () => {
-		const { game, pilot } = botGame({ seed: 5, infiniteLives: true }, { skill: 0.7 });
+	it.each([
+		['arcade', { seed: 5, infiniteLives: true }],
+		['study', { ...STUDY_CONFIG, seed: 5 }]
+	] as const)('nothing in the rules hints at the time left (%s): scared ghosts keep one speed and one way of moving', (_, config) => {
+		const { game, pilot } = botGame(config, { skill: 0.7 });
 		const m = () => game.maze;
 		let checked = 0, prev = game.frame();
 		for (let i = 0; i < 400 / STEP && checked < 3000; i++) {
@@ -188,6 +192,82 @@ describe('power-ups', () => {
 			prev = f;
 		}
 		expect(checked).toBeGreaterThan(500);
+	});
+
+	it('study rules: scared ghosts move the same whatever the power length, up to the end', () => {
+		// Two games alike in everything but the power length. The pilot keeps away from scared ghosts
+		// and so never reads the time left; until the shorter power runs out, every ghost must be in
+		// the same place in both: neither the flee rule nor the speed reads the clock.
+		for (const seed of [2, 6, 13]) {
+			const a = botGame({ ...STUDY_CONFIG, seed, frightRange: [4, 4] }, { caution: 99 });
+			const b = botGame({ ...STUDY_CONFIG, seed, frightRange: [8, 8] }, { caution: 99 });
+			let compared = 0;
+			for (let i = 0; i < 200 / STEP; i++) {
+				a.pilot(); b.pilot();
+				a.game.update(STEP); b.game.update(STEP);
+				const fa = a.game.frame(), fb = b.game.frame();
+				if (fa.power.serial > 1 || fa.events.some((e) => e.type === 'powerEnd' && e.reason === 'expired')) break;
+				expect(fb.ghosts).toEqual(fa.ghosts);
+				expect(fb.player).toEqual(fa.player);
+				if (fa.power.left > 0) compared++;
+			}
+			expect(compared, `seed ${seed}`).toBeGreaterThan(3.5 * 120);
+		}
+	});
+
+	it('study rules: at a junction a scared ghost close to the player takes the exit farthest from it; under arcade rules one at random', () => {
+		// Ghosts never turn back, so the rule acts at junctions. Follow each scared ghost tile by tile;
+		// when it leaves a junction within the flee radius, check whether the exit it took leads
+		// farthest from the player (of the exits it had, not counting the way it came).
+		const share = (config: Partial<GameConfig>) => {
+			let far = 0, all = 0;
+			for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+				const { game, pilot } = botGame({ ...config, seed }, { chase: 'eager' });
+				const m = game.maze;
+				const trail = new Map<string, number[]>();
+				let field = new Int16Array(0);
+				for (let i = 0; i < 150 / STEP; i++) {
+					pilot();
+					game.update(STEP);
+					const f = game.frame();
+					if (f.phase !== 'playing') { trail.clear(); continue; }
+					for (const g of f.ghosts) {
+						if (!g.scared || g.mode !== 'active') { trail.delete(g.id); continue; }
+						const [x, y] = tileOf(m, g.x, g.y), here = y * m.W + x;
+						const tr = trail.get(g.id) ?? [];
+						if (tr.at(-1) === here) continue;
+						// A new tile: judge the junction the ghost just left, from where the player was then.
+						if (tr.length >= 2) {
+							const [came, at] = tr.slice(-2), ax = at % m.W, ay = (at / m.W) | 0;
+							const exits = DIRS.map((d) => ((ay + d.y) * m.W + ((ax + d.x + m.W) % m.W))).filter((j) => j !== came && m.tiles[j] === PATH);
+							const d = exits.map((j) => field[j]);
+							if (exits.length >= 2 && field[at] >= 0 && field[at] <= STUDY_FLEE.radius && d.every((v) => v >= 0) && new Set(d).size > 1) {
+								all++;
+								if (field[here] === Math.max(...d)) far++;
+							}
+						}
+						trail.set(g.id, [...tr.slice(-1), here]);
+					}
+					field = pathDistances(m, [f.player.x, f.player.y]);
+				}
+			}
+			return { share: far / all, all };
+		};
+		const study = share(STUDY_CONFIG), arcade = share({ ...STUDY_CONFIG, scaredFlee: null, scaredSpeedShare: null });
+		console.log('junctions where a scared ghost took the exit farthest from the player', { study, arcade });
+		expect(study.all).toBeGreaterThan(100);
+		expect(arcade.all).toBeGreaterThan(100);
+		// Study: 3 in 4 junctions flee, the rest are random (and may still pick the farthest exit).
+		expect(study.share).toBeGreaterThan(0.75);
+		expect(arcade.share).toBeLessThan(0.6);
+	}, 60_000);
+
+	it('study rules: scared ghosts run at three quarters of the player\'s power-up speed, still slower than the player', () => {
+		const game = createGame(STUDY_CONFIG);
+		expect(game.info.ghostScaredSpeed).toBeCloseTo(STUDY_SCARED_SHARE * game.info.playerPowerSpeed, 9);
+		expect(game.info.playerPowerSpeed - game.info.ghostScaredSpeed).toBeGreaterThan(1);
+		// Arcade rules keep the level table's speed.
+		expect(createGame({ seed: 1 }).info.ghostScaredSpeed).toBe(levelInfo(1).ghostScaredSpeed);
 	});
 });
 
