@@ -3,7 +3,7 @@
  * plays the real engine. Used by the telemetry tests only.
  */
 import { createGame } from '../game/engine/game';
-import { mazeForLevel } from '../game/engine/mazes';
+import { buildMaze } from '../game/engine/mazes';
 import { pathDistances } from '../game/engine/paths';
 import {
 	DIRS, GHOST_IDS, PATH,
@@ -11,19 +11,40 @@ import {
 	type Phase, type PowerEndReason, type PowerView, type Scene
 } from '../game/types';
 
+/**
+ * A fixed board for hand-made scenes, so tests do not depend on the game's level layouts: a long
+ * straight corridor on row 1 (x 1..39), a pen in the middle and a corridor on row 6.
+ */
+export const TEST_MAZE = buildMaze({
+	id: 'telemetry-test', name: 'Test', about: 'Telemetry tests',
+	theme: { bg: '#000', wall: '#33f', wallGlow: '#33f', dot: '#fff', power: '#fff' },
+	rows: [
+		'#'.repeat(41),
+		'#S' + '.'.repeat(18) + 'B' + '.'.repeat(19) + '#',
+		'#.' + '#'.repeat(18) + '-' + '#'.repeat(18) + '.#',
+		'#.' + '#'.repeat(17) + '___' + '#'.repeat(17) + '.#',
+		'#.' + '#'.repeat(15) + '_'.repeat(7) + '#'.repeat(15) + '.#',
+		'#.' + '#'.repeat(37) + '.#',
+		'#' + '.'.repeat(39) + '#',
+		'#'.repeat(41)
+	]
+});
+/** The corridor the hand-made scenes use. */
+export const ROW = 1;
+
 export interface SimGhost { id: GhostId; x: number; y: number; mode: GhostMode; scared: boolean; revertedAt: number; eatenAt: number }
 
 /** A board moved by hand. `mt` is time the board has been moving. */
 export class Sim {
-	maze: Maze = mazeForLevel(1);
+	maze: Maze = TEST_MAZE;
 	dots = this.maze.dotsInit.slice();
 	t = 0;
 	mt = 0;
 	phase: Phase = 'playing';
 	freeze = 0;
 	power: PowerView = { left: 0, total: 0, startedAt: -1, endedAt: -1, endReason: null, chain: 0, serial: 0 };
-	player = { x: 8, y: 4 };
-	ghosts: SimGhost[] = GHOST_IDS.map((id, i) => ({ id, x: 8 + i, y: 10, mode: 'waiting', scared: false, revertedAt: -1, eatenAt: -1 }));
+	player = { x: 8, y: ROW };
+	ghosts: SimGhost[] = GHOST_IDS.map((id, i) => ({ id, x: 18 + i, y: 4, mode: 'waiting', scared: false, revertedAt: -1, eatenAt: -1 }));
 	events: GameEvent[] = [];
 
 	ghost(i: number, x: number, y: number) {

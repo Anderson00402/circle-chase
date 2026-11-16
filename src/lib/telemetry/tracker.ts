@@ -6,9 +6,10 @@
  * Clocks
  * - `left`: the power's own clock (`Frame.power.left`) while the power is on, and minus the
  *   seconds since it ran out afterwards. Every "time left" in a trial uses it.
- * - `clock`: seconds of live, moving play. It stops during the short freeze after a ghost is
- *   eaten (game time keeps running there but nothing moves) and outside the `playing` phase, so
- *   "shrinking over the last 0.3 s" always compares two moments 0.3 s of movement apart.
+ * - `clock`: seconds of live, moving play. It stops outside the `playing` phase and during the
+ *   short freeze after a ghost is eaten, so "shrinking over the last 0.3 s" always compares two
+ *   moments 0.3 s of movement apart. (The engine stops game time during that freeze; should it ever
+ *   keep running, the tracker still notices the freeze because the power's clock stands still.)
  *
  * Interpretations of STUDY.md (also listed in convex/README.md)
  * - Distances are continuous path distances through the maze with tunnel wrap (`distance.ts`).
@@ -30,7 +31,9 @@
  *   never turned or turned with less than 0.2 s left. With the timely window starting at 0.2 s this
  *   leaves no gap between "timely retreat" and "overstayed".
  * - Early retreat "while a ghost was still reachable": at the turn moment some scared ghost was out
- *   and its current spot was within (time left x player speed) tiles.
+ *   and its current spot was within (time left x player speed on level 1) tiles.
+ * - An aftermath cut short is kept and classified with what was seen (`after.seen`, `after.cut`);
+ *   one cut by the player leaving (`cut: 'quit'`) does not count toward the rates.
  * - An eat in the warning window counts as chasing there (engaged).
  *
  * Edge cases
@@ -44,8 +47,8 @@
  * - All scared ghosts eaten: `allEatenLeft` is set; no target remains, so no chase afterwards; the
  *   final chase ended at the last eat.
  * - No ghost out of the pen at the start: `scaredAtStart: 0`, nothing to chase, `not-engaged`.
- * - Freeze after eating a ghost: `clock` stops (see above); series samples keep game time and
- *   simply repeat the frozen values.
+ * - Freeze after eating a ghost: `clock` stops (see above); frames that repeat the same moment are
+ *   ignored, so the series has no gap and no repeats there.
  * - Pause: the game sends no frames while paused and game time stops, so nothing changes.
  * - Game over / new game / page closed: `finish()` closes a running power-up as `quit`
  *   (`interrupted`) and an aftermath as cut short. A new game is detected when game time goes back.
@@ -168,7 +171,7 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 			serial: f.power.serial, startedAt: f.power.startedAt, total: f.power.total, level: f.level, mazeId: f.mazeId,
 			scaredAtStart: scared, state: 'power', endedAt: -1, endReason: null, leftAtEnd: 0, eats: [],
 			allEatenLeft: null, chases: [], chase: null, engaged: false, endDist: null,
-			after: { seen: 0, died: false, caught: false, timeToCaught: null, killer: null, minDangerDist: null, nearMiss: false },
+			after: { seen: 0, died: false, caught: false, timeToCaught: null, killer: null, minDangerDist: null, nearMiss: false, cut: null },
 			firstAway: null, diedDuring: false, frames: 0, lastT: f.t,
 			series: { t: [], left: [], dist: [], chasing: [], px: [], py: [] },
 			nextSample: f.power.startedAt, needReach: false, nearest: null, chasing: false
@@ -187,9 +190,12 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		r.chase = null;
 	}
 
-	function finalize(r: Run, f: Frame | null): TrialMeasures {
+	function finalize(r: Run, f: Frame | null, cut: Aftermath['cut'] = null): TrialMeasures {
 		if (r.chase) closeChase(r, 'open');
-		if (r.state === 'after' && f) r.after.seen = Math.min(AFTER, f.t - r.endedAt);
+		if (r.state === 'after' && !r.after.died) {
+			r.after.seen = Math.min(AFTER, (f?.t ?? r.lastT) - r.endedAt);
+			r.after.cut = r.after.seen < AFTER - 1e-6 ? cut ?? 'quit' : null;
+		}
 		const last = r.chases.length ? r.chases[r.chases.length - 1] : null;
 		let turnLeft: number | null = null, turnDist: number | null = null, turnReachable: boolean | null = null, turnAt: number | null = null;
 		if (last && last.endedBy !== 'open') {
@@ -229,13 +235,13 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		const outcome = classify(m);
 		return {
 			...m, outcome,
-			inRates: m.engaged && expired,
+			inRates: m.engaged && expired && m.after.cut !== 'quit',
 			wasted: outcome === 'early-retreat' ? m.turnLeft : null
 		};
 	}
 
-	function end(r: Run, f: Frame | null, out: TrialMeasures[]) {
-		const trial = finalize(r, f);
+	function end(r: Run, f: Frame | null, out: TrialMeasures[], cut: Aftermath['cut'] = null) {
+		const trial = finalize(r, f, cut);
 		run = null;
 		out.push(trial);
 		opts.onTrial?.(trial);
@@ -356,7 +362,7 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		if (p.serial > lastSerial) {
 			if (run) {
 				if (run.state === 'power') { run.endReason = 'refreshed'; run.endedAt = p.startedAt; run.leftAtEnd = prevLeft > 0 ? prevLeft : 0; }
-				end(run, f, out);
+				end(run, f, out, 'power');
 			}
 			lastSerial = p.serial;
 			run = newRun(f);
@@ -408,7 +414,7 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		if (cur) {
 			if (cur.state === 'after' && cur.after.died) end(cur, null, out);
 			else if (cur.state === 'after' && (f.t - cur.endedAt >= AFTER - 1e-9 || f.phase === 'clear' || f.phase === 'over')) {
-				end(cur, f, out);
+				end(cur, f, out, f.phase === 'clear' ? 'clear' : 'quit');
 			} else {
 				const frozen = cur.state === 'power' && prevSerial === p.serial && p.left === prevLeft && p.left > 0;
 				const moving = f.phase === 'playing' && dt > 0 && !frozen;

@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { STUDY_CONFIG } from '../game/engine/game';
 import { classify, createTracker } from './tracker';
-import { Sim, playScripted, type Policy } from './testing';
+import { ROW, Sim, playScripted, type Policy } from './testing';
 import { OUTCOMES, type TrialMeasures } from './types';
 
 const DT = 1 / 60;
 
 /**
- * Runs a hand-made power-up. The player walks along the open corridor on row 4; `gap(mt)` places
+ * Runs a hand-made power-up. The player walks along the open corridor of the test maze; `gap(mt)` places
  * the hunter (ghost 0) that many tiles to the player's right while the power is on. `after(s, dt)`
  * moves both once it has run out. `at(s)` runs once per frame before moving (to eat, die...).
  */
@@ -23,7 +23,7 @@ function scenario(opts: {
 	const s = new Sim();
 	const tracker = createTracker();
 	const trials: TrialMeasures[] = [];
-	s.ghost(0, s.player.x + opts.gap(0), 4);
+	s.ghost(0, s.player.x + opts.gap(0), ROW);
 	opts.setup?.(s);
 	trials.push(...tracker.onScene(s.scene()));
 	s.startPower(opts.total);
@@ -70,6 +70,7 @@ describe('tracker: outcome classes', () => {
 		expect(t.after.died).toBe(false);
 		expect(t.after.nearMiss).toBe(true);
 		expect(t.after.seen).toBeCloseTo(3, 1);
+		expect(t.after.cut).toBeNull();
 		// 10 Hz series from start to 3 s after the end.
 		expect(t.series.t.length).toBeGreaterThanOrEqual(79);
 		expect(t.series.t.length).toBeLessThanOrEqual(82);
@@ -151,7 +152,7 @@ describe('tracker: outcome classes', () => {
 	it('classify follows the order in STUDY.md', () => {
 		const base = {
 			endReason: 'expired' as const, eats: [], endClosing: false, endDist: null, turnLeft: null, turnReachable: null, engaged: true,
-			after: { seen: 3, died: false, caught: false, timeToCaught: null, killer: null, minDangerDist: null, nearMiss: false }
+			after: { seen: 3, died: false, caught: false, timeToCaught: null, killer: null, minDangerDist: null, nearMiss: false, cut: null }
 		};
 		expect(classify({ ...base, after: { ...base.after, died: true, caught: true }, eats: [{ t: 1, left: 1, ghost: 'hunter', points: 200 }] })).toBe('caught');
 		expect(classify({ ...base, eats: [{ t: 1, left: 1.5, ghost: 'hunter', points: 200 }], endClosing: true, endDist: 2 })).toBe('late-catch');
@@ -186,13 +187,14 @@ describe('tracker: edge cases', () => {
 		});
 		expect(trials[0].endReason).toBe('expired');
 		expect(trials[0].after.seen).toBeCloseTo(1, 1);
+		expect(trials[0].after.cut).toBe('power');
 		expect(trials[1].serial).toBe(2);
 	});
 
 	it('death during the power: interrupted, diedDuring', () => {
 		const { trials } = scenario({
 			total: 6, gap: () => 5,
-			setup: (s) => s.ghost(1, 15, 21), // out of the pen but not scared when the power starts
+			setup: (s) => s.ghost(1, 30, 6), // out of the pen but not scared when the power starts
 			at: (s) => { if (s.mt >= 2 && s.phase === 'playing') { s.ghosts[1].scared = false; s.die(1); } }
 		});
 		expect(trials).toHaveLength(1);
@@ -239,7 +241,7 @@ describe('tracker: edge cases', () => {
 	});
 
 	it('no ghost out of the pen: nothing scared, not engaged', () => {
-		const { trials } = scenario({ total: 5, gap: () => 4, setup: (s) => { s.ghosts[0].mode = 'waiting'; s.ghosts[0].x = 9; s.ghosts[0].y = 10; } });
+		const { trials } = scenario({ total: 5, gap: () => 4, setup: (s) => { s.ghosts[0].mode = 'waiting'; s.ghosts[0].x = 20; s.ghosts[0].y = 4; } });
 		expect(trials[0].scaredAtStart).toBe(0);
 		expect(trials[0].series.dist.every((d) => d === null)).toBe(true);
 		expect(trials[0].outcome).toBe('not-engaged');
@@ -250,7 +252,7 @@ describe('tracker: edge cases', () => {
 		const s = new Sim();
 		const tracker = createTracker();
 		const trials: TrialMeasures[] = [];
-		s.ghost(0, 14, 4); s.ghost(1, 15.5, 4);
+		s.ghost(0, 14, ROW); s.ghost(1, 15.5, ROW);
 		tracker.onScene(s.scene());
 		s.startPower(7);
 		const seen: { t: number; chasing: boolean }[] = [];
@@ -275,7 +277,7 @@ describe('tracker: edge cases', () => {
 	it('pause and repeated frames change nothing', () => {
 		const s = new Sim();
 		const tracker = createTracker();
-		s.ghost(0, 12, 4);
+		s.ghost(0, 12, ROW);
 		tracker.onScene(s.scene());
 		s.startPower(5);
 		tracker.onScene(s.scene());
@@ -289,10 +291,29 @@ describe('tracker: edge cases', () => {
 		expect(t.outcome).toBe('interrupted');
 	});
 
+	it('leaving during the aftermath: kept, classified, but not in the rates', () => {
+		const s = new Sim();
+		const tracker = createTracker();
+		s.ghost(0, 12, ROW);
+		tracker.onScene(s.scene());
+		s.startPower(4);
+		// Chase toward the ghost so the trial is engaged, then leave 1 s after the end.
+		while (!(s.power.endReason === 'expired' && s.t - s.power.endedAt >= 1)) {
+			s.step(DT, (sim, dt) => { if (sim.power.left > 0) sim.player.x = Math.min(sim.player.x + 0.8 * dt, 11); });
+			tracker.onScene(s.scene());
+		}
+		const [t] = tracker.finish();
+		expect(t.endReason).toBe('expired');
+		expect(t.engaged).toBe(true);
+		expect(t.after.cut).toBe('quit');
+		expect(t.after.seen).toBeCloseTo(1, 1);
+		expect(t.inRates).toBe(false);
+	});
+
 	it('game over or a new game closes a running power-up as quit', () => {
 		const s = new Sim();
 		const tracker = createTracker();
-		s.ghost(0, 12, 4);
+		s.ghost(0, 12, ROW);
 		tracker.onScene(s.scene());
 		s.startPower(5);
 		for (let i = 0; i < 60; i++) { s.step(DT); tracker.onScene(s.scene()); }
@@ -306,7 +327,7 @@ describe('tracker: edge cases', () => {
 	it('live readout follows the power-up', () => {
 		const s = new Sim();
 		const tracker = createTracker();
-		s.ghost(0, 14, 4);
+		s.ghost(0, 14, ROW);
 		tracker.onScene(s.scene());
 		s.startPower(5);
 		for (let i = 0; i < 60; i++) { s.step(DT, (sim, dt) => { sim.player.x += 2 * dt; }); tracker.onScene(s.scene()); }

@@ -78,6 +78,11 @@ export interface Aftermath {
 	minDangerDist: number | null;
 	/** Came within 1.5 tiles of a dangerous ghost and survived. */
 	nearMiss: boolean;
+	/**
+	 * Why the aftermath ended before 3 s, if it did: a new power-up, a level clear, or the player
+	 * left (block ended). A death is not a cut, it is the measure. `quit` keeps the trial out of the rates.
+	 */
+	cut: 'power' | 'clear' | 'quit' | null;
 }
 
 /** One power-up, measured. Context about who played and how is added by the client. */
@@ -100,7 +105,7 @@ export interface TrialMeasures {
 	outcome: Outcome;
 	/** Chasing at some point in the warning window (the last 3 s of the power). */
 	engaged: boolean;
-	/** Counts toward caught and well-timed rates: engaged and the power ran out by itself. */
+	/** Counts toward caught and well-timed rates: engaged, the power ran out by itself, and the player did not leave during the aftermath. */
 	inRates: boolean;
 
 	eats: EatRecord[];

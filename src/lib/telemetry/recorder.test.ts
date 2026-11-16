@@ -15,7 +15,10 @@ function record(seconds = 120) {
 	const clips: { trial: TrialMeasures; clip: EncodedClip }[] = [];
 	const trials: TrialMeasures[] = [];
 	playScripted({ ...STUDY_CONFIG, seed: 11 }, seconds, { retreatAt: 0.8 }, (scene: Scene) => {
-		originals.set(Math.round(scene.frame.t * 1000), { frame: scene.frame, dots: scene.dots.slice() });
+		// Game time stands still during the freeze after an eat, so several frames share one time;
+		// the recorder keeps the first of them, and so does this map.
+		const k = Math.round(scene.frame.t * 1000);
+		if (!originals.has(k)) originals.set(k, { frame: scene.frame, dots: scene.dots.slice() });
 		recorder.push(scene);
 		for (const trial of tracker.onScene(scene)) {
 			trials.push(trial);

@@ -60,7 +60,9 @@ export const aftermath = v.object({
 	timeToCaught: maybeNum,
 	killer: v.union(v.string(), v.null()),
 	minDangerDist: maybeNum,
-	nearMiss: v.boolean()
+	nearMiss: v.boolean(),
+	/** Why the aftermath ended early (power, clear, quit); null or absent when it ran its 3 s or ended in a death. */
+	cut: v.optional(v.union(v.literal('power'), v.literal('clear'), v.literal('quit'), v.null()))
 });
 
 /** What the tracker measures for one power-up. */
