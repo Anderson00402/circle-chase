@@ -120,7 +120,8 @@ On the dashboard "counted" means decision trials.
 - **Intervals**: 95%, clustered by participant: a seeded bootstrap over participants (2,000
   resamples; resample participants with replacement, pool their decision trials, take the 2.5th
   and 97.5th percentiles of the pooled rate), because the power-ups of one person are not
-  independent. A condition with fewer than 3 participants falls back to a 95% Wilson interval; the
+  independent. A condition with fewer than 3 participants, or a rate with no event at all (or only
+  events), where the bootstrap collapses to a point, falls back to a 95% Wilson interval; the
   dashboard says which was used. Learning curves and pooled channel views use Wilson.
 - **Turn-away time**: median and spread over decision trials. Close to 0.5-1 s is ideal; large
   values mean the player bailed out early because they could not tell how much time was left.

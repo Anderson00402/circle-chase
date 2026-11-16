@@ -126,6 +126,9 @@ export function clusteredRates(clusters: Cluster[], rates: number, seedKey: stri
 	return {
 		method: 'bootstrap',
 		rates: k.map((kj, j) => {
+			// No event at all (or only events): every resample gives the same rate and the percentile
+			// interval collapses to a point, which would look certain. Wilson is honest there.
+			if (kj === 0 || kj === n) return { ...wilson(kj, n), method: 'wilson' as const };
 			const s = Array.from(draws[j]).sort((x, y) => x - y);
 			return { k: kj, n, rate: kj / n, lo: quantile(s, 0.025), hi: quantile(s, 0.975), method: 'bootstrap' as const };
 		})

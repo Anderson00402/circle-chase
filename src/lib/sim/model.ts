@@ -16,14 +16,16 @@
  * a share of power-ups they ignore, and a learning effect: noise is larger early in the session and
  * settles over the first 20 or so trials. Counterbalanced orders spread that learning over the cues.
  *
- * Measured with the real tracker (see calibrate.test.ts and diagnose.test.ts), the bot's awareness
- * moves the headline numbers by a modest amount: with caution around 0.3 s, noise 0.3 s gives about
- * 70% well timed and almost no catches, noise 2.2 s about 50-60% well timed and 5-12% caught.
- * Reaction time hardly matters: once it notices, the bot is good at getting away.
- * Why "well timed" moves so little: a bot that believes it has 1-2 s more than it has keeps chasing
- * and often eats a ghost in the last 1.5 s, which counts as a late catch (well timed), and it is
- * rarely caught afterwards. The separate errors track the noise much better: the share of early
- * retreats, of overstays plus catches, and the 10-90% spread of turn-away times all grow with it.
+ * Measured with the real tracker under outcome rules version 2 (see diagnose.test.ts): rates are
+ * over decision trials, catches are left out. "Too late" climbs steadily with the bot's belief
+ * error (error 0-0.5 s: about half too late; +1 to +2 s: about 70%), "too early" with a negative
+ * error beyond about -2 s. But this bot turns away late: with a mean caution of 0.3 s it aims at
+ * about 0.3 s left and its actual turn (the closest moment) lands near the 0.2 s line, so an
+ * almost exact bot (noise 0.3 s) turns away in time only about 50% of the time, while a bot that
+ * believes it has 0.5-2 s less than it has does so about 90% of the time. The well-timed rate is
+ * therefore flat between noise 0.3 and 1.2 s and falls only beyond that, which caps how well a
+ * planted run can be recovered. Changing the bot's caution would change that; it is left as is so
+ * the validation does not tune the bot to the measure.
  *
  * Pure and deterministic for a seed.
  */

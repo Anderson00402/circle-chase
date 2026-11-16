@@ -115,7 +115,9 @@ decision trial".
 
 Intervals: `clusteredRates` resamples participants with replacement 2,000 times (seeded by the
 condition and its counts, so the same data gives the same interval), pools their decision trials
-and takes the 2.5th and 97.5th percentiles; with fewer than 3 participants it returns Wilson.
+and takes the 2.5th and 97.5th percentiles; with fewer than 3 participants it returns Wilson, and
+so does a rate with k = 0 or k = n (the bootstrap would collapse to a point). Each rate's `method`
+says which was used.
 `wilson` is kept for learning curves and small groups.
 
 ### Clips

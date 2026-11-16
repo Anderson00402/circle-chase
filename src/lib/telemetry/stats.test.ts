@@ -67,6 +67,13 @@ describe('participant-clustered intervals', () => {
 		expect(a.rates[0].hi! - a.rates[0].lo!).toBeGreaterThan(2 * (w.hi! - w.lo!));
 	});
 
+	it('uses Wilson for a rate with no events (a bootstrap would collapse to a point)', () => {
+		const clusters = Array.from({ length: 6 }, () => ({ n: 3, k: [0] }));
+		const r = clusteredRates(clusters, 1, 'zero');
+		expect(r.rates[0]).toMatchObject({ k: 0, n: 18, rate: 0, lo: 0, method: 'wilson' });
+		expect(r.rates[0].hi!).toBeCloseTo(wilson(0, 18).hi!, 6);
+	});
+
 	it('is close to Wilson when everyone behaves alike', () => {
 		const clusters = Array.from({ length: 30 }, () => ({ n: 10, k: [3] }));
 		const r = clusteredRates(clusters, 1, 'same');
