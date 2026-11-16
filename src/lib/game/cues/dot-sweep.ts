@@ -3,9 +3,9 @@ import { beatPeakCrossed, corridorPath, finalBeat, hotness } from './shared-maze
 
 /**
  * 10 · Dot sweep. Taking a power dot lights up the board: the corridors take on a warm glow and
- * every dot turns gold. A clock hand starts at 12 o'clock over the pen and sweeps once round the
- * board in the power's length; what it has passed goes back to normal. The lit wedge still ahead
- * of the hand, round to 12 o'clock, is the power left, like the face of a clock.
+ * every dot turns gold. A clock hand starts at 12 o'clock from the middle of the board and sweeps
+ * once round it in the power's length; what it has passed goes back to normal. The lit wedge still
+ * ahead of the hand, round to 12 o'clock, is the power left, like the face of a clock.
  *
  * The light is on the corridor floor, not only on the dots, so the wedge reads just as well on a
  * board the player has already emptied. The hand is drawn bright on the floor and only faintly
@@ -20,8 +20,12 @@ const LIT_DOT = '#ffe58a';
 const HAND = '#fff6dc';
 const HOT = '#ff4d3a';
 
-/** Pivot: the centre of the pen, the natural middle of every maze. */
-const pivot = (k: CueContext): [number, number] => [k.geo.pen.cx, k.geo.pen.cy];
+/**
+ * Pivot: the centre of the board. A clock face centred on the board keeps the lit share of the
+ * floor in step with the hand (a quarter turn lights off a quarter of the board) wherever the
+ * maze puts its pen; pivoting on an off-centre pen would make the area run ahead of the time.
+ */
+const pivot = (k: CueContext): [number, number] => [k.geo.board.w / 2, k.geo.board.h / 2];
 
 /** Angle of the hand, 0 at 12 o'clock, clockwise, in radians. */
 const handAngle = (k: CueContext) => (1 - k.power.frac) * Math.PI * 2;
@@ -114,7 +118,7 @@ function drawHand(k: CueContext) {
 		line();
 		ctx.stroke();
 	});
-	// Hub over the pen centre.
+	// Hub at the middle of the board.
 	k.glow(cx, cy, T * 0.8, k.mix(LIT, HOT, hot), 0.5 + 0.4 * beat);
 	ctx.fillStyle = color;
 	ctx.beginPath();
@@ -150,7 +154,7 @@ export const dotSweep: Cue = {
 	name: 'Dot sweep',
 	tagline: 'A clock hand sweeps the board; the part still lit is the time left.',
 	description:
-		'When you take a power dot the corridors glow and every dot turns gold. A clock hand starts at 12 o\'clock over the pen and sweeps round once, putting out the light as it passes, so the lit wedge left is the power left. In the last 2 seconds the hand turns red and the rest of the floor throbs red five times; at the end the 12 o\'clock line flashes.',
+		'When you take a power dot the corridors glow and every dot turns gold. A clock hand starts at 12 o\'clock from the middle of the board and sweeps round once, putting out the light as it passes, so the lit wedge left is the power left. In the last 2 seconds the hand turns red and the rest of the floor throbs red five times; at the end the 12 o\'clock line flashes.',
 	channel: 'maze',
 	baseFlash: false,
 
