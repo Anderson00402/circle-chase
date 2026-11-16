@@ -30,6 +30,7 @@
   --dot: #b9cdf6;
   --player: #ffffff;
   --you: #ffd84a;
+  --you2: #ffffff;
   --font-display: "Major Mono Display", "Courier New", monospace;
   --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -54,10 +55,17 @@ body {
 .titleblock > div:first-child { border-left: 0; }
 .label { display: block; font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
 .value { display: block; font-family: var(--font-mono); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lives { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-height: 30px; font-family: var(--font-mono); font-size: 13px; }
-.lives i { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--you); }
+/* Lives: one row of pips per player, in that player's color */
+.lives { display: grid; gap: 4px; align-content: center; min-height: 30px; font-family: var(--font-mono); font-size: 12px; line-height: 1; }
+.lives span { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: 10px; }
+.lives i { display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--you); }
+.lives .p2 i { background: var(--you2); }
+.label { white-space: nowrap; }
+.label .pip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 0; background: var(--you); }
+.label .pip.p2 { background: var(--you2); }
 @media (max-width: 520px) {
   .titleblock > div { padding: 5px 8px 6px; }
+  .label .wide { display: none; } /* "Player 1" becomes "P1" so it fits on one line */
   .value { font-size: 17px; }
 }
 
@@ -92,8 +100,8 @@ body {
     <div class="sheet-wrap" id="sheet-wrap">
       <div class="stack">
         <div class="titleblock" role="group" aria-label="Score">
-          <div><span class="label">Score</span><span class="value" id="hud-score">0</span></div>
-          <div><span class="label">Best</span><span class="value" id="hud-best">0</span></div>
+          <div><span class="label"><i class="pip"></i>P<span class="wide">layer </span>1</span><span class="value" id="hud-score1">0</span></div>
+          <div><span class="label"><i class="pip p2"></i>P<span class="wide">layer </span>2</span><span class="value" id="hud-score2">0</span></div>
           <div><span class="label">Level</span><span class="value" id="hud-level">1</span></div>
           <div><span class="label">Lives</span><span class="lives" id="hud-lives"></span></div>
         </div>
@@ -102,12 +110,12 @@ body {
           <div class="overlay" id="overlay">
             <div class="card">
               <h2 id="ov-title">circle chase</h2>
-              <p id="ov-text">Eat every dot. You can only catch the ghosts after a power dot.</p>
+              <p id="ov-text">Two players, one maze. Most points wins.</p>
               <div class="actions">
                 <button class="btn primary" id="ov-primary" type="button">Start game</button>
                 <button class="btn" id="ov-secondary" type="button" hidden>New game</button>
               </div>
-              <p class="hint" id="ov-hint">Arrow keys or WASD to move. P to pause.</p>
+              <p class="hint" id="ov-hint">Player 1: WASD. Player 2: arrow keys. P to pause.</p>
             </div>
           </div>
         </div>
@@ -263,12 +271,36 @@ const Core = (() => {
     return dist;
   }
 
+  // Two players race on the same maze. Each has their own score and lives; a player with no
+  // lives left is out (not drawn, moved or hit), and the game ends when both are out.
+  const PLAYERS = 2;
+  const RIGHT = 3;
+
+  // Start spots: one column either side of the maze's start tile, or the nearest other open tiles.
+  function startSpots(m) {
+    const [sx, sy] = m.start, open = (x, y) => m.tiles[y * m.W + x] === PATH;
+    const left = [sx - 1, sy], right = [sx + 1, sy];
+    if (open(...left) && open(...right)) return [left, right];
+    const seen = new Set([sx + ',' + sy]), queue = [[sx, sy]], found = [];
+    for (let q = 0; q < queue.length && found.length < PLAYERS; q++) {
+      for (const d of DIRS) {
+        const nx = queue[q][0] + d.x, ny = queue[q][1] + d.y;
+        if (nx < 0 || nx >= m.W || ny < 0 || ny >= m.H || seen.has(nx + ',' + ny) || !open(nx, ny)) continue;
+        seen.add(nx + ',' + ny);
+        queue.push([nx, ny]);
+        if (found.length < PLAYERS) found.push([nx, ny]);
+      }
+    }
+    return found;
+  }
+
   function createGame(diffKey = 'normal', emit = () => {}, rng = Math.random) {
     const diff = DIFFICULTY[diffKey] || DIFFICULTY.normal;
     const g = {
-      diffKey, diff, level: 1, score: 0, lives: diff.lives, extraGiven: false,
-      state: 'ready', stateTime: 0, time: 0, maze: null, player: null, enemies: [],
-      want: -1, wantAge: 0, fright: 0, frightTotal: 0, chain: 0,
+      diffKey, diff, level: 1,
+      state: 'ready', stateTime: 0, time: 0, maze: null, enemies: [], caught: -1,
+      players: Array.from({ length: PLAYERS }, (_, id) => ({ id, score: 0, lives: diff.lives, extraGiven: false, out: false })),
+      fright: 0, frightTotal: 0, chain: 0,
       hitStop: 0, lifeTime: 0, modeIndex: 0, modeTime: 0, popups: [],
     };
     let m;
@@ -291,7 +323,13 @@ const Core = (() => {
     }
 
     function resetActors() {
-      g.player = { x: m.start[0], y: m.start[1], dir: LEFT, face: LEFT, t: 0 };
+      const spots = startSpots(m);
+      g.players.forEach((p, i) => {
+        // Player 1 heads left and player 2 right, so they don't start on top of each other.
+        const dir = i === 0 ? LEFT : RIGHT;
+        Object.assign(p, { x: spots[i][0], y: spots[i][1], dir, face: dir, t: 0, want: -1, wantAge: 0, out: p.lives <= 0 });
+      });
+      g.caught = -1;
       g.enemies = GHOSTS.map((def, i) => {
         const [x, y] = i === 0 ? m.exit : m.penSlots[i - 1];
         return {
@@ -299,15 +337,18 @@ const Core = (() => {
           releaseAt: diff.release[i], scared: false, flip: false, drift: [0, 0], driftAt: -1,
         };
       });
-      Object.assign(g, { want: -1, wantAge: 0, fright: 0, chain: 0, hitStop: 0, lifeTime: 0, modeIndex: 0, modeTime: 0 });
+      Object.assign(g, { fright: 0, chain: 0, hitStop: 0, lifeTime: 0, modeIndex: 0, modeTime: 0 });
     }
 
-    function addScore(n) {
-      g.score += n;
-      if (!g.extraGiven && g.score >= 10000) { g.extraGiven = true; g.lives++; emit('extra'); }
+    const living = () => g.players.filter(p => !p.out);
+
+    function addScore(p, n) {
+      p.score += n;
+      if (!p.extraGiven && p.score >= 10000) { p.extraGiven = true; p.lives++; emit('extra', null, p.id); }
     }
 
-    function steer(d) { g.want = d; g.wantAge = 0; }
+    // steer(d) moves player 1; steer(d, 1) moves player 2.
+    function steer(d, who = 0) { const p = g.players[who]; if (p) { p.want = d; p.wantAge = 0; } }
 
     function update(dt) {
       g.time += dt;
@@ -317,7 +358,7 @@ const Core = (() => {
       if (g.state === 'ready') { if (g.stateTime >= READY_TIME) setState('playing'); return; }
       if (g.state === 'dying') {
         if (g.stateTime < DEATH_TIME) return;
-        if (g.lives <= 0) { setState('over'); emit('over'); } else { resetActors(); setState('ready'); }
+        if (g.players.every(p => p.lives <= 0)) { setState('over'); emit('over'); } else { resetActors(); setState('ready'); }
         return;
       }
       if (g.state === 'clear') {
@@ -331,7 +372,7 @@ const Core = (() => {
 
     function step(dt) {
       g.lifeTime += dt;
-      if (g.want >= 0 && (g.wantAge += dt) > TURN_MEMORY) g.want = -1;
+      for (const p of g.players) if (p.want >= 0 && (p.wantAge += dt) > TURN_MEMORY) p.want = -1;
       if (g.fright > 0) {
         g.fright -= dt;
         if (g.fright <= 0) { g.fright = 0; for (const e of g.enemies) e.scared = false; }
@@ -346,26 +387,27 @@ const Core = (() => {
       }
       for (const e of g.enemies) if (e.state === 'waiting' && g.lifeTime >= e.releaseAt) e.state = 'leaving';
 
-      movePlayer(dt);
-      if (g.state !== 'playing') return;
+      for (const p of living()) {
+        movePlayer(p, dt);
+        if (g.state !== 'playing') return;
+      }
       for (const e of g.enemies) moveEnemy(e, dt);
       checkHits();
     }
 
-    // ---- player ----
+    // ---- players ----
     const playerCan = (x, y, d) => tileAt(x + DIRS[d].x, y + DIRS[d].y) === PATH;
 
-    function movePlayer(dt) {
-      const p = g.player;
-      if (g.want >= 0 && p.dir >= 0 && g.want === rev(p.dir) && p.t > 0) {
+    function movePlayer(p, dt) {
+      if (p.want >= 0 && p.dir >= 0 && p.want === rev(p.dir) && p.t > 0) {
         const d = DIRS[p.dir];
         p.x = wrapX(p.x + d.x); p.y += d.y; p.t = 1 - p.t;
-        p.dir = p.face = g.want; g.want = -1;
+        p.dir = p.face = p.want; p.want = -1;
       }
       let dist = PLAYER_SPEED * dt;
       for (let n = 0; dist > 1e-9 && n < 8; n++) {
         if (p.t === 0) {
-          if (g.want >= 0 && playerCan(p.x, p.y, g.want)) { p.dir = g.want; g.want = -1; }
+          if (p.want >= 0 && playerCan(p.x, p.y, p.want)) { p.dir = p.want; p.want = -1; }
           else if (p.dir < 0 || !playerCan(p.x, p.y, p.dir)) { p.dir = -1; break; }
           p.face = p.dir;
         }
@@ -375,15 +417,15 @@ const Core = (() => {
       }
       // A dot is eaten once the circle is more than halfway onto its tile.
       const [px, py] = pos(p);
-      eatAt(wrapX(Math.round(px)), Math.round(py));
+      eatAt(p, wrapX(Math.round(px)), Math.round(py));
     }
 
-    function eatAt(x, y) {
+    function eatAt(p, x, y) {
       const i = y * m.W + x, d = m.dots[i];
       if (!d) return;
       m.dots[i] = 0;
       m.left--;
-      if (d === 2) { addScore(50); startFright(); emit('power', [x, y]); } else { addScore(10); emit('dot', [x, y]); }
+      if (d === 2) { addScore(p, 50); startFright(); emit('power', [x, y], p.id); } else { addScore(p, 10); emit('dot', [x, y], p.id); }
       if (m.left === 0) { setState('clear'); emit('clear'); }
     }
 
@@ -413,8 +455,20 @@ const Core = (() => {
       return true;
     }
 
+    // Each ghost hunts whichever living player is closest to it (measured across the tunnels too).
+    function nearestPlayer(e) {
+      let best = null, bestD = Infinity;
+      for (const p of living()) {
+        let dx = Math.abs(p.x - e.x);
+        dx = Math.min(dx, m.W - dx);
+        const dd = dx * dx + (p.y - e.y) ** 2;
+        if (dd < bestD) { bestD = dd; best = p; }
+      }
+      return best || g.players[0];
+    }
+
     function targetOf(e) {
-      const p = g.player, d = DIRS[p.face];
+      const p = nearestPlayer(e), d = DIRS[p.face];
       // Corners are set for a 21-row maze; keep them inside shorter ones.
       const corner = [e.def.corner[0], Math.min(e.def.corner[1], m.H - 2)];
       if (mode() === 'scatter') return corner;
@@ -484,37 +538,41 @@ const Core = (() => {
     }
 
     function checkHits() {
-      const [px, py] = pos(g.player);
-      for (const e of g.enemies) {
-        if (e.state === 'waiting' || e.state === 'returning') continue;
-        const [ex, ey] = pos(e);
-        let dx = Math.abs(px - ex);
-        dx = Math.min(dx, m.W - dx);
-        const dy = py - ey;
-        if (dx * dx + dy * dy > 0.36) continue;
-        if (e.scared) {
-          g.chain = Math.min(g.chain + 1, 4);
-          const pts = 100 * 2 ** g.chain;
-          addScore(pts);
-          e.scared = false;
-          e.state = 'returning';
-          g.hitStop = 0.35;
-          g.popups.push({ x: ex, y: ey, text: '+' + pts, age: 0 });
-          emit('eat', pts);
-          continue;
+      for (const p of living()) {
+        const [px, py] = pos(p);
+        for (const e of g.enemies) {
+          if (e.state === 'waiting' || e.state === 'returning') continue;
+          const [ex, ey] = pos(e);
+          let dx = Math.abs(px - ex);
+          dx = Math.min(dx, m.W - dx);
+          const dy = py - ey;
+          if (dx * dx + dy * dy > 0.36) continue;
+          if (e.scared) {
+            // The chain is shared, but the points go to whoever caught the ghost.
+            g.chain = Math.min(g.chain + 1, 4);
+            const pts = 100 * 2 ** g.chain;
+            addScore(p, pts);
+            e.scared = false;
+            e.state = 'returning';
+            g.hitStop = 0.35;
+            g.popups.push({ x: ex, y: ey, text: '+' + pts, age: 0, who: p.id });
+            emit('eat', pts, p.id);
+            continue;
+          }
+          p.lives--;
+          g.caught = p.id;
+          setState('dying');
+          emit('die', null, p.id);
+          return;
         }
-        g.lives--;
-        setState('dying');
-        emit('die');
-        return;
       }
     }
 
     loadLevel();
-    return Object.assign(g, { update, steer, pos, mode, targetOf, ghostPace });
+    return Object.assign(g, { update, steer, pos, mode, targetOf, ghostPace, living });
   }
 
-  return { createGame, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED };
+  return { createGame, buildMaze, startSpots, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED, PLAYERS };
 })();
 </script>
 
@@ -531,7 +589,8 @@ const Core = (() => {
   const rootStyle = getComputedStyle(document.documentElement);
   const C = {};
   ['paper', 'maze-bg', 'maze-wall', 'line', 'accent', 'hunter', 'ambusher', 'guard', 'drifter',
-    'scared', 'scared-fill', 'dot', 'player', 'you'].forEach(k => { C[k] = rootStyle.getPropertyValue('--' + k).trim(); });
+    'scared', 'scared-fill', 'dot', 'player', 'you', 'you2'].forEach(k => { C[k] = rootStyle.getPropertyValue('--' + k).trim(); });
+  const YOU = [C.you, C.you2]; // each player's color, by player number
 
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
@@ -540,21 +599,19 @@ const Core = (() => {
 
   const settings = { difficulty: 'normal', targets: false, sound: true, ...store.get('circle-chase:settings', {}) };
   if (!Core.DIFFICULTY[settings.difficulty]) settings.difficulty = 'normal';
-  const scores = { easy: [], normal: [], hard: [] };
-  const savedScores = store.get('circle-chase:scores', {});
-  for (const k of Object.keys(scores)) if (Array.isArray(savedScores[k])) scores[k] = savedScores[k].slice(0, 5);
 
   let game, running = false, paused = false, overlayMode = 'title';
   let T = 0, dpr = 1, layers = {}, lastHud = '', readyLabel = 'READY';
-  // Eating animation: dots being swallowed, and when the last one went down (game time).
-  let bites = [], lastBite = -1, biteBig = false;
+  // Eating animation, per player: dots being swallowed, and when that player's last one went down
+  // (game time).
+  let bites = [], lastBite = [-1, -1], biteBig = [false, false];
   const GULP = 0.16, SWALLOW = 0.12, BURST = 0.35;
 
-  function bite(tile, big) {
+  function bite(tile, big, who = 0) {
     if (!tile) return;
-    lastBite = game.time;
-    biteBig = big;
-    bites.push({ x: tile[0], y: tile[1], at: game.time, big });
+    lastBite[who] = game.time;
+    biteBig[who] = big;
+    bites.push({ x: tile[0], y: tile[1], at: game.time, big, who });
   }
 
   // ---------- sound ----------
@@ -652,12 +709,14 @@ const Core = (() => {
   })();
 
   // ---------- game flow ----------
-  function onEvent(type, arg) {
+  // who: the player the event happened to (0 or 1), when there is one.
+  function onEvent(type, arg, who) {
     switch (type) {
-      case 'dot': sfx.dot(); bite(arg, false); break;
-      case 'power': sfx.power(); bite(arg, true); break;
+      case 'dot': sfx.dot(); bite(arg, false, who); break;
+      case 'power': sfx.power(); bite(arg, true, who); break;
       case 'eat': sfx.eat(arg); break;
-      case 'die': sfx.die(); readyLabel = 'READY'; break;
+      // The banner before the next round says when that catch put a player out.
+      case 'die': sfx.die(); readyLabel = game.players[who].lives <= 0 ? `PLAYER ${who + 1} OUT` : 'READY'; break;
       case 'clear': sfx.clear(); break;
       case 'level': readyLabel = `LEVEL ${game.level}`; fit(); break; // mazes can differ in size
       case 'extra': sfx.extra(); break;
@@ -669,7 +728,7 @@ const Core = (() => {
     game = Core.createGame(settings.difficulty, onEvent);
     readyLabel = 'READY';
     bites = [];
-    lastBite = -1;
+    lastBite = [-1, -1];
     running = false;
     paused = false;
     lastHud = '';
@@ -700,22 +759,14 @@ const Core = (() => {
   function gameOver() {
     running = false;
     sfx.hush();
-    const g = game;
-    let rank = -1;
-    if (g.score > 0) {
-      const list = scores[g.diffKey];
-      const entry = { score: g.score, level: g.level, date: new Date().toISOString().slice(0, 10) };
-      list.push(entry);
-      list.sort((a, b) => b.score - a.score);
-      list.length = Math.min(list.length, 5);
-      rank = list.indexOf(entry);
-      store.set('circle-chase:scores', scores);
-    }
-    const label = g.diff.label;
-    let text = `You scored ${g.score.toLocaleString('en-US')} on ${label} and reached level ${g.level}.`;
-    if (rank === 0) text += ' That is your new best.';
-    else if (rank > 0) text += ` That is #${rank + 1} on your ${label} list.`;
-    showOverlay('over', text);
+    showOverlay('over', winnerText(game.players.map(p => p.score)));
+  }
+
+  // "Player 1 wins, 2,340 to 1,980." or a tie.
+  function winnerText([a, b]) {
+    const n = v => v.toLocaleString('en-US');
+    if (a === b) return `It's a tie at ${n(a)} each.`;
+    return a > b ? `Player 1 wins, ${n(a)} to ${n(b)}.` : `Player 2 wins, ${n(b)} to ${n(a)}.`;
   }
 
   // ---------- overlay ----------
@@ -723,7 +774,7 @@ const Core = (() => {
     overlayMode = mode;
     const touch = touchUI.matches;
     const copy = {
-      title: ['circle chase', 'Eat every dot. You can only catch the ghosts after a power dot.', 'Start game'],
+      title: ['circle chase', 'Two players, one maze. Most points wins.', 'Start game'],
       paused: ['paused', 'The game is on hold.', 'Resume'],
       over: ['game over', text, 'Play again'],
     }[mode];
@@ -731,7 +782,9 @@ const Core = (() => {
     $('ov-text').textContent = copy[1];
     $('ov-primary').textContent = copy[2];
     $('ov-secondary').hidden = mode !== 'paused';
-    $('ov-hint').textContent = touch ? 'Swipe on the board to move.' : 'Arrow keys or WASD to move. P to pause.';
+    $('ov-hint').textContent = touch
+      ? 'Swipe moves player 1. Player 2 needs a keyboard.'
+      : 'Player 1: WASD. Player 2: arrow keys. P to pause.';
     $('overlay').hidden = false;
     if (!touch) $('ov-primary').focus({ preventScroll: true });
   }
@@ -938,6 +991,93 @@ const Core = (() => {
     for (const off of [-W, 0, W]) { const px = x + off; if (px > -1 && px < W) fn((px + 0.5) * T); }
   }
 
+  // One player's circle: swallowed dots, the gulp, the mouth, the power-dot ring and the dying
+  // shrink, all in that player's color. A player who is out is not drawn.
+  function drawPlayer(g, p, now, reduce) {
+    const m = g.maze, color = YOU[p.id];
+    const dying = g.state === 'dying' && g.caught === p.id;
+    if (p.out) return;
+    const [px, py] = g.pos(p);
+    let pr = T * 0.4;
+
+    // Swallowed dots slide into the circle. They are drawn first so the circle covers them.
+    if (!reduce && g.state === 'playing') {
+      for (const b of bites) {
+        if (b.who !== p.id) continue;
+        const k = (now - b.at) / SWALLOW;
+        let bx = b.x;
+        if (bx - px > m.W / 2) bx -= m.W; else if (px - bx > m.W / 2) bx += m.W;
+        const x = (bx + (px - bx) * k + 0.5) * T, y = (b.y + (py - b.y) * k + 0.5) * T;
+        ctx.fillStyle = b.big ? C.player : C.dot;
+        ctx.beginPath();
+        ctx.arc(x, y, (b.big ? T * 0.2 : Math.max(1.4, T * 0.09)) * (1 - 0.5 * k), 0, TAU);
+        ctx.fill();
+      }
+    }
+
+    // Gulp: the circle reaches toward each dot it eats, then settles back.
+    const last = lastBite[p.id], big = biteBig[p.id];
+    const since = now - last;
+    const gulping = !reduce && last >= 0 && since >= 0 && since < GULP && g.state === 'playing';
+    let s = 0;
+    if (gulping) {
+      const amp = big ? 0.24 : 0.14;
+      s = since < 0.1 ? amp * Math.sin((Math.PI * since) / 0.1) : -0.45 * amp * Math.sin((Math.PI * (since - 0.1)) / (GULP - 0.1));
+    }
+    // The mouth snaps open and shut during the gulp (true = open).
+    const open = gulping && Math.floor(since / 0.06) % 2 === 0;
+
+    if (dying) {
+      const k = Math.min(1, g.stateTime / 1.1);
+      pr *= 1 - k;
+      if (!reduce) {
+        eachWrap(px, cx => {
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = 1 - k;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, (py + 0.5) * T, T * (0.4 + k * 1.2), 0, TAU);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        });
+      }
+    }
+    if (g.state === 'over' || pr <= 0.5) return;
+    const face = Core.DIRS[p.face];
+    eachWrap(px, cx => {
+      const cy = (py + 0.5) * T;
+      ctx.save();
+      ctx.translate(cx + face.x * s * pr * 0.5, cy + face.y * s * pr * 0.5);
+      ctx.rotate(Math.atan2(face.y, face.x));
+      ctx.scale(1 + s, 1 - s * 0.6);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      if (open) {
+        // Mouth open: cut a triangular wedge out of the front of the circle.
+        // After rotate(), angle 0 points the way the circle is facing.
+        const mouth = Math.PI / 5; // half the mouth opening (36°)
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, pr, mouth, TAU - mouth);
+        ctx.closePath();
+      } else {
+        ctx.arc(0, 0, pr, 0, TAU);
+      }
+      ctx.fill();
+      ctx.restore();
+      // a power dot sends a ring out from the circle
+      if (!reduce && big && since >= 0 && since < BURST && g.state === 'playing') {
+        const k = since / BURST;
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 1 - k;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, pr * (1 + k), 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    });
+  }
+
   function draw() {
     const g = game, m = g.maze, reduce = reduceMotion.matches, now = g.time;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -998,91 +1138,9 @@ const Core = (() => {
       });
     }
 
-    // player
-    const p = g.player;
-    const [px, py] = g.pos(p);
-    let pr = T * 0.4;
-
-    // Swallowed dots slide into the circle. They are drawn first so the circle covers them.
+    // players
     bites = bites.filter(b => now - b.at < SWALLOW && now >= b.at);
-    if (!reduce && g.state === 'playing') {
-      for (const b of bites) {
-        const k = (now - b.at) / SWALLOW;
-        let bx = b.x;
-        if (bx - px > m.W / 2) bx -= m.W; else if (px - bx > m.W / 2) bx += m.W;
-        const x = (bx + (px - bx) * k + 0.5) * T, y = (b.y + (py - b.y) * k + 0.5) * T;
-        ctx.fillStyle = b.big ? C.player : C.dot;
-        ctx.beginPath();
-        ctx.arc(x, y, (b.big ? T * 0.2 : Math.max(1.4, T * 0.09)) * (1 - 0.5 * k), 0, TAU);
-        ctx.fill();
-      }
-    }
-
-    // Gulp: the circle reaches toward each dot it eats, then settles back.
-    const since = now - lastBite;
-    let s = 0;
-    if (!reduce && lastBite >= 0 && since >= 0 && since < GULP && g.state === 'playing') {
-      const amp = biteBig ? 0.24 : 0.14;
-      s = since < 0.1 ? amp * Math.sin((Math.PI * since) / 0.1) : -0.45 * amp * Math.sin((Math.PI * (since - 0.1)) / (GULP - 0.1));
-    }
-
-    // Pac-Man's mouth snaps open and shut during the gulp animation (true = open)
-    let blink = false;
-
-    if (!reduce && lastBite >= 0 && since >= 0 && since < GULP && g.state === 'playing') {
-      blink = Math.floor(since / 0.06) % 2 === 0;
-    }
-    if (g.state === 'dying') {
-      const k = Math.min(1, g.stateTime / 1.1);
-      pr *= 1 - k;
-      if (!reduce) {
-        eachWrap(px, cx => {
-          ctx.strokeStyle = C.you;
-          ctx.globalAlpha = 1 - k;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(cx, (py + 0.5) * T, T * (0.4 + k * 1.2), 0, TAU);
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-        });
-      }
-    }
-    if (g.state !== 'over' && pr > 0.5) {
-      const face = Core.DIRS[p.face];
-      eachWrap(px, cx => {
-        const cy = (py + 0.5) * T;
-        ctx.save();
-        ctx.translate(cx + face.x * s * pr * 0.5, cy + face.y * s * pr * 0.5);
-        ctx.rotate(Math.atan2(face.y, face.x));
-        ctx.scale(1 + s, 1 - s * 0.6);
-        ctx.fillStyle = C.you;
-        ctx.beginPath();
-        if (blink) {
-          // Mouth open: cut a triangular wedge out of the front of the circle.
-          // After rotate(), angle 0 points the way Pac-Man is facing.
-          const mouth = Math.PI / 5; // half the mouth opening (36°)
-          ctx.moveTo(0, 0);
-          ctx.arc(0, 0, pr, mouth, TAU - mouth);
-          ctx.closePath();
-        } else {
-          // Mouth closed: full circle
-          ctx.arc(0, 0, pr, 0, TAU);
-        }
-        ctx.fill();
-        ctx.restore();
-        // a power dot sends a ring out from the circle
-        if (!reduce && biteBig && since >= 0 && since < BURST && g.state === 'playing') {
-          const k = since / BURST;
-          ctx.strokeStyle = C.you;
-          ctx.globalAlpha = 1 - k;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(cx, cy, pr * (1 + k), 0, TAU);
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-        }
-      });
-    }
+    for (const p of g.players) drawPlayer(g, p, now, reduce);
 
     // Power timer: a bar in the top wall that drains with the power and flashes with the ghosts.
     if (g.fright > 0 && g.frightTotal > 0 && g.state === 'playing') {
@@ -1116,7 +1174,7 @@ const Core = (() => {
       ctx.globalAlpha = 1 - pop.age;
       ctx.strokeStyle = C['maze-bg'];
       ctx.strokeText(pop.text, x, y);
-      ctx.fillStyle = C.player;
+      ctx.fillStyle = pop.who >= 0 ? YOU[pop.who] : C.player;
       ctx.fillText(pop.text, x, y);
     }
     ctx.globalAlpha = 1;
@@ -1142,20 +1200,23 @@ const Core = (() => {
 
   // ---------- HUD ----------
   function updateHud() {
-    const g = game;
-    const best = Math.max(g.score, scores[g.diffKey][0]?.score || 0);
-    const key = [g.score, best, g.level, g.lives].join('|');
+    const g = game, ps = g.players;
+    const key = [...ps.map(p => p.score + ':' + p.lives), g.level].join('|');
     if (key === lastHud) return;
     lastHud = key;
-    $('hud-score').textContent = g.score.toLocaleString('en-US');
-    $('hud-best').textContent = best.toLocaleString('en-US');
+    ps.forEach((p, i) => { $('hud-score' + (i + 1)).textContent = p.score.toLocaleString('en-US'); });
     $('hud-level').textContent = String(g.level);
     const lives = $('hud-lives');
-    lives.replaceChildren();
-    const shown = Math.min(g.lives, 5);
-    for (let i = 0; i < shown; i++) lives.appendChild(document.createElement('i'));
-    if (g.lives > shown) lives.append(`+${g.lives - shown}`);
-    lives.setAttribute('aria-label', `${g.lives} lives`);
+    lives.replaceChildren(...ps.map((p, i) => {
+      const row = document.createElement('span');
+      if (i) row.className = 'p2';
+      const shown = Math.min(p.lives, 5);
+      for (let k = 0; k < shown; k++) row.appendChild(document.createElement('i'));
+      if (p.lives > shown) row.append(`+${p.lives - shown}`);
+      if (!p.lives) row.append('out');
+      return row;
+    }));
+    lives.setAttribute('aria-label', ps.map((p, i) => `Player ${i + 1}: ${p.lives} lives`).join(', '));
   }
 
   // ---------- settings ----------
@@ -1168,7 +1229,11 @@ const Core = (() => {
   }
 
   // ---------- input ----------
-  const KEYS = { ArrowUp: 0, KeyW: 0, ArrowLeft: 1, KeyA: 1, ArrowDown: 2, KeyS: 2, ArrowRight: 3, KeyD: 3 };
+  // [direction, player]: WASD steers player 1, the arrow keys player 2.
+  const KEYS = {
+    KeyW: [0, 0], KeyA: [1, 0], KeyS: [2, 0], KeyD: [3, 0],
+    ArrowUp: [0, 1], ArrowLeft: [1, 1], ArrowDown: [2, 1], ArrowRight: [3, 1],
+  };
 
   function bindInput() {
     addEventListener('keydown', ev => {
@@ -1177,7 +1242,7 @@ const Core = (() => {
       if (ev.code in KEYS) {
         if (tag === 'INPUT' && !running) return;
         ev.preventDefault();
-        if (running && !paused) game.steer(KEYS[ev.code]);
+        if (running && !paused) game.steer(...KEYS[ev.code]);
         return;
       }
       switch (ev.code) {
@@ -1221,19 +1286,21 @@ const Core = (() => {
     if (window.ResizeObserver) new ResizeObserver(fit).observe($('sheet-wrap'));
   }
 
-  // How close the circle is to the nearest power dot: 0 at NEAR_RANGE tiles or more, 1 on top of it.
+  // How close the nearest living player is to a power dot: 0 at NEAR_RANGE tiles or more, 1 on top of it.
   // Squared so the sound swells mostly in the last few tiles.
   const NEAR_RANGE = 7;
   function powerNearness() {
     const g = game, m = g.maze;
     if (g.state !== 'playing') return 0;
-    const [px, py] = g.pos(g.player);
     let best = Infinity;
-    for (let i = 0; i < m.dots.length; i++) {
-      if (m.dots[i] !== 2) continue;
-      // Straight-line distance without wrapping round the edge: only the tunnel rows connect the
-      // two sides, so a power dot in the opposite corner must not sound close through the wall.
-      best = Math.min(best, Math.hypot((i % m.W) - px, Math.floor(i / m.W) - py));
+    for (const p of g.living()) {
+      const [px, py] = g.pos(p);
+      for (let i = 0; i < m.dots.length; i++) {
+        if (m.dots[i] !== 2) continue;
+        // Straight-line distance without wrapping round the edge: only the tunnel rows connect the
+        // two sides, so a power dot in the opposite corner must not sound close through the wall.
+        best = Math.min(best, Math.hypot((i % m.W) - px, Math.floor(i / m.W) - py));
+      }
     }
     const k = 1 - Math.min(1, best / NEAR_RANGE);
     return k * k;

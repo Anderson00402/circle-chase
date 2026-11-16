@@ -1,5 +1,7 @@
 # Circle Chase
 
+**This version: two players on one keyboard.** Player 1 is the yellow circle on WASD, player 2 the white circle on the arrow keys. You race for points on the same maze; when a ghost catches you, you lose a life, and the game ends when both players are out. Most points wins.
+
 A maze game made for a UX design class. Eat every dot and keep away from the ghosts. After a power dot the ghosts turn blue and can be caught for a few seconds; the bar in the top wall shows how long you have.
 
 **Play:** https://anderson00402.github.io/circle-chase/ (the main game, with a tab for every other version)
