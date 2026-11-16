@@ -12,11 +12,12 @@ export const WARN = 2;
 export const wispUnit = (T: number) => T * 1.13;
 
 /**
- * True when this wisp should carry the signal: scared and out in the maze. Eaten wisps (eyes) and
- * wisps still in the pen keep the default drawing.
+ * True when this wisp should carry the signal: any scared wisp, out in the maze or still in the
+ * pen (the more carriers on screen, the easier the signal is to find). Eaten wisps (eyes) keep the
+ * default drawing.
  */
 export function carries(k: CueContext, g: GhostView): boolean {
-	return k.power.active && g.mode === 'active' && k.ghostLook(g) === 'scared';
+	return k.power.active && g.mode !== 'returning' && k.ghostLook(g) === 'scared';
 }
 
 /**
@@ -32,7 +33,7 @@ export function scaredShiver(k: CueContext, index: number): number {
  * wisps drawn in their normal look (a new power-up or being eaten cancels it).
  */
 export function sinceWoke(k: CueContext, g: GhostView): number {
-	if (g.revertedAt < 0 || g.mode !== 'active' || k.ghostLook(g) !== 'normal') return Infinity;
+	if (g.revertedAt < 0 || g.mode === 'returning' || k.ghostLook(g) !== 'normal') return Infinity;
 	const age = k.now - g.revertedAt;
 	return age >= 0 ? age : Infinity;
 }

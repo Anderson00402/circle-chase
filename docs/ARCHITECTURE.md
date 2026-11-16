@@ -46,8 +46,16 @@ embers, sparkles and so on are computed from game time (for example hashed from 
 `createGame(config)` returns a `Game`: `steer(dir)`, `update(dt)` (call with a fixed 1/120 s step),
 `frame()` / `scene()`. All randomness comes from `config.seed`.
 
-- `mode: 'study'` plus `frightRange`, `powerRespawn`, `infiniteLives` (see `STUDY_CONFIG`) make the
-  game produce many comparable power-ups without ever ending.
+- `createGame` actually returns an `EngineGame` (`engine/game.ts`), a superset of `Game` with
+  `peek()` (a snapshot that leaves the events in place), `info` (the current level's settings) and
+  `goToLevel(n)`.
+- `engine/levels.ts` holds the level table (`levelInfo(level, difficulty)`: maze, speeds, power
+  length, waves, bonus item); `engine/mazes.ts` the five mazes and `engine/validate.ts` their rules;
+  `engine/bot.ts` an autopilot used for previews, tests and simulated data; `engine/paths.ts` path
+  distances through the maze.
+- `mode: 'study'` plus `frightRange`, `powerRespawn`, `infiniteLives`, `fixedLevel`, `powerLock` (see
+  `STUDY_CONFIG`) make the game produce many comparable power-ups without ever ending: random
+  power lengths, one power-up at a time, always the same maze and speeds.
 - `Frame.power` describes the power-up: `left`, `total`, `startedAt`, `endedAt`, `endReason`,
   `serial`. Each ghost carries `scared`, `revertedAt` (when the timer turned it dangerous again)
   and `eatenAt`.
