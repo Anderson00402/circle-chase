@@ -12,7 +12,7 @@ const NAMES: Record<string, Named> = {
 const ids = Object.keys(NAMES);
 const named = (id: string) => NAMES[id];
 const cond = (cue: string, well: number, caught: number, n: number): CondStats => ({
-	cue, inRates: n, wellTimed: wilson(well, n), caught: wilson(caught, n)
+	cue, decisions: n, wellTimed: wilson(well, n), tooLate: wilson(caught, n), tooEarly: wilson(n - well - caught, n), caught: wilson(caught, n)
 });
 
 describe('dashboard takeaway', () => {

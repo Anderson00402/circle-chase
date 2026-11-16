@@ -85,6 +85,6 @@ export const applyList = (rows: Moment[], s: ListState) => sortMoments(filterMom
  */
 export function keyTime(m: Pick<Moment, 'outcome' | 'startedAt' | 'endedAt' | 'turnAt' | 'lastEatAt'>): number {
 	if ((m.outcome === 'timely-retreat' || m.outcome === 'early-retreat') && m.turnAt !== null) return m.startedAt + m.turnAt;
-	if (m.outcome === 'late-catch' && m.lastEatAt !== null) return m.lastEatAt + 0.05;
+	if ((m.outcome === 'catch' || m.outcome === 'late-catch') && m.lastEatAt !== null) return m.lastEatAt + 0.05;
 	return m.endedAt + 0.15;
 }

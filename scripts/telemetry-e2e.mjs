@@ -114,7 +114,7 @@ if (clipSizes.length) console.log(`clips: ${clipSizes.length}, size min ${(Math.
 const sum = await http.query(api.summary.byCue, { source: 'bot', cue: 'timer-bar' });
 const c = sum.cues[0];
 console.log(`summary:byCue (bot, timer-bar): trials ${c.trials}, engaged ${c.engaged}, in rates ${c.inRates}, participants ${c.participants}, outcomes ${JSON.stringify(c.outcomes)}`);
-console.log(`  caught ${c.caught.k}/${c.caught.n} [${c.caught.lo?.toFixed(2)}-${c.caught.hi?.toFixed(2)}], well timed ${c.wellTimed.k}/${c.wellTimed.n} [${c.wellTimed.lo?.toFixed(2)}-${c.wellTimed.hi?.toFixed(2)}], turn-away median ${c.turnAway.median} (n ${c.turnAway.n}), wasted mean ${c.wasted.mean}, not enough data: ${c.notEnoughData}`);
+console.log(`  decisions ${c.decisions}, in time ${c.wellTimed.k}/${c.wellTimed.n} [${c.wellTimed.lo?.toFixed(2)}-${c.wellTimed.hi?.toFixed(2)}], too late ${c.tooLate.k} (caught ${c.caught.k}), too early ${c.tooEarly.k}, catches ${c.catches.n} (${c.interval}), turn-away median ${c.turnAway.median} (n ${c.turnAway.n}), wasted mean ${c.wasted.mean}, not enough data: ${c.notEnoughData}`);
 const counters = await http.query(api.live.counters, { source: 'bot' });
 console.log(`live:counters (bot): ${JSON.stringify({ ...counters, playing: counters.playing.length })}`);
 const moments = await http.query(api.clips.moments, { source: 'bot', paginationOpts: { numItems: 5, cursor: null } });

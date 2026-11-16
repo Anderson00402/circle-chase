@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import { inputType, mode, source, sourceFilter, viewport } from './validators';
 import { simInfo } from './sim';
+import { bump } from './counters';
 
 /** Open a session (idempotent by `key`). The participant must exist (`participants:ensure`). */
 export const start = mutation({
@@ -20,6 +21,7 @@ export const start = mutation({
 		const sessionId = await ctx.db.insert('sessions', {
 			...a, participantId: p._id, startedAt: now, lastActiveAt: now, blocks: 0, trials: 0
 		});
+		await bump(ctx, a.source, { sessions: 1 });
 		return { sessionId };
 	}
 });

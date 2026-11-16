@@ -15,15 +15,19 @@ describe.runIf(process.env.DIAG)('diagnosis', () => {
 			all.push(...r.trials);
 		}
 		const rated = all.filter((t) => t.measures.inRates && t.error !== null);
+		const DECISION = ['caught', 'overstayed', 'timely-retreat', 'early-retreat'];
 		const edges = [-Infinity, -2, -1, -0.5, 0, 0.5, 1, 2, Infinity];
 		for (let b = 0; b + 1 < edges.length; b++) {
 			const g = rated.filter((t) => t.error! >= edges[b] && t.error! < edges[b + 1]);
 			if (!g.length) continue;
 			const c: Record<string, number> = {};
 			for (const t of g) c[t.measures.outcome] = (c[t.measures.outcome] ?? 0) + 1;
-			const well = ((c['late-catch'] ?? 0) + (c['timely-retreat'] ?? 0)) / g.length;
-			const turns = g.map((t) => t.measures.turnLeft).filter((x): x is number => x !== null).sort((a, b) => a - b);
-			console.log(`error [${edges[b]}, ${edges[b + 1]}): n ${g.length} well ${(well * 100).toFixed(0)}% turn med ${turns[turns.length >> 1]?.toFixed(2)} ${JSON.stringify(c)}`);
+			// Rates over decision trials (convex/lib/rules.ts); catches are counted apart.
+			const d = g.filter((t) => DECISION.includes(t.measures.outcome)).length;
+			const share = (k: number) => (d ? `${((k / d) * 100).toFixed(0)}%` : '-');
+			const late = (c['caught'] ?? 0) + (c['overstayed'] ?? 0);
+			const turns = g.filter((t) => DECISION.includes(t.measures.outcome)).map((t) => t.measures.turnLeft).filter((x): x is number => x !== null).sort((a, b) => a - b);
+			console.log(`error [${edges[b]}, ${edges[b + 1]}): n ${g.length} decisions ${d} in time ${share(c['timely-retreat'] ?? 0)} too late ${share(late)} (caught ${share(c['caught'] ?? 0)}) too early ${share(c['early-retreat'] ?? 0)} catches ${c['catch'] ?? 0} turn med ${turns[turns.length >> 1]?.toFixed(2)} ${JSON.stringify(c)}`);
 		}
 		const pts = rated.filter((t) => t.measures.turnLeft !== null);
 		const mx = pts.reduce((a, t) => a + t.error!, 0) / pts.length, my = pts.reduce((a, t) => a + t.measures.turnLeft!, 0) / pts.length;

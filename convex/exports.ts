@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 import { query } from './_generated/server';
 import { filterArgs, scanTrials } from './lib/filters';
+import { isDecision, isLateCatch } from './lib/rules';
 import { unpackSeries } from './lib/series';
 
 /** Flat columns for the CSV, in order. Nested values are spelled out (after.caught...). */
@@ -13,10 +14,12 @@ const COLUMNS: [string, (t: Doc<'trials'>) => unknown][] = [
 	['powerTotal', (t) => t.total], ['sound', (t) => t.sound], ['reducedMotion', (t) => t.reducedMotion],
 	['inputType', (t) => t.inputType], ['fps', (t) => t.fps], ['appVersion', (t) => t.appVersion],
 	['endReason', (t) => t.endReason], ['leftAtEnd', (t) => t.leftAtEnd], ['scaredAtStart', (t) => t.scaredAtStart],
-	['outcome', (t) => t.outcome], ['engaged', (t) => t.engaged], ['inRates', (t) => t.inRates],
+	['outcome', (t) => t.outcome], ['rulesVersion', (t) => t.rulesVersion ?? 1], ['engaged', (t) => t.engaged], ['inRates', (t) => t.inRates],
+	['decision', (t) => isDecision(t)], ['catchLate', (t) => (t.outcome === 'catch' ? isLateCatch(t) : '')],
 	['eats', (t) => t.eats.length], ['eatLefts', (t) => t.eats.map((e) => e.left).join(' ')], ['lateCatch', (t) => t.lateCatch],
 	['allEatenLeft', (t) => t.allEatenLeft], ['turnLeft', (t) => t.turnLeft], ['turnDist', (t) => t.turnDist],
 	['turnAt', (t) => t.turnAt], ['turnReachable', (t) => t.turnReachable], ['chases', (t) => t.chases],
+	['lastChaseEnd', (t) => t.lastChaseEnd],
 	['endDist', (t) => t.endDist], ['endClosing', (t) => t.endClosing],
 	['afterSeen', (t) => t.after.seen], ['afterDied', (t) => t.after.died], ['caught', (t) => t.after.caught],
 	['timeToCaught', (t) => t.after.timeToCaught], ['killer', (t) => t.after.killer],
@@ -46,7 +49,7 @@ export const trials = query({
 			for (const t of rows) lines.push(COLUMNS.map(([, get]) => cell(get(t))).join(','));
 			return { filename: `${name}.csv`, contentType: 'text/csv', rows: rows.length, body: lines.join('\n') + '\n' };
 		}
-		const out = rows.map((t) => ({ ...t, series: unpackSeries(t.series) }));
+		const out = rows.map((t) => ({ ...t, decision: isDecision(t), series: unpackSeries(t.series) }));
 		return { filename: `${name}.json`, contentType: 'application/json', rows: rows.length, body: JSON.stringify(out) };
 	}
 });

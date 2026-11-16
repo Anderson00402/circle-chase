@@ -2,10 +2,11 @@
  * Plain-words captions for a replay: what each outcome means, and one sentence telling what the
  * player did around the end of this power-up. Definitions follow docs/STUDY.md.
  */
-import type { Outcome } from '../telemetry/types';
-import { OUTCOME_LABEL } from '../telemetry/types';
+import type { LegacyOutcome, Outcome } from '../telemetry/types';
+import { OUTCOME_LABEL, outcomeLabel } from '../telemetry/types';
 
-export { OUTCOME_LABEL };
+export { OUTCOME_LABEL, outcomeLabel };
+type Any = Outcome | LegacyOutcome;
 
 export const GHOST_NAME: Record<string, string> = {
 	hunter: 'Hunter',
@@ -15,32 +16,34 @@ export const GHOST_NAME: Record<string, string> = {
 };
 export const ghostName = (id: string | null | undefined) => (id ? (GHOST_NAME[id] ?? id) : null);
 
-/** What each outcome class means, in one short sentence. */
-export const OUTCOME_MEANING: Record<Outcome, string> = {
-	caught: 'Caught by a ghost within 3 s after the power ran out: the cue did not warn in time.',
-	'late-catch': 'Ate a ghost in the last 1.5 s: used the power right to the limit.',
-	overstayed: 'Still closing in when the power ran out, within 5 tiles, and survived.',
-	'timely-retreat': 'Turned away with 0.2 to 2 s left: the ideal timing.',
-	'early-retreat': 'Turned away with more than 2 s left while a ghost was still in reach.',
+/** What each outcome class means, in one short sentence (rules: convex/lib/rules.ts). */
+export const OUTCOME_MEANING: Record<Any, string> = {
+	caught: 'Was within 5 tiles of a ghost that had just turned dangerous when the power ran out, and was caught within 3 s: the cue did not warn in time.',
+	overstayed: 'Was still chasing when the power ran out (turned with less than 0.2 s left, after the end, or never), and was not caught.',
+	'timely-retreat': 'Turned away from the last chase with 0.2 to 2 s left: well timed.',
+	'early-retreat': 'Turned away with more than 2 s left while a ghost was still in reach: power wasted.',
+	catch: 'The last chase ended by eating the ghost and no chase followed. A catch shows no decision about the end, so it is in no rate.',
 	'not-engaged': 'Was not chasing in the last 3 s of the power.',
-	other: 'Was chasing near the end, but none of the five patterns fits.',
-	interrupted: 'The power did not run out by itself, so there is no end to judge.'
+	other: 'Was chasing near the end, but none of the classes fits.',
+	interrupted: 'The power did not run out by itself, so there is no end to judge.',
+	'late-catch': 'Classified by older rules that lacked a measure the current rules need. Left out of every rate.'
 };
 
 export type Tone = 'good' | 'bad' | 'warn' | 'neutral';
-export const OUTCOME_TONE: Record<Outcome, Tone> = {
+export const OUTCOME_TONE: Record<Any, Tone> = {
 	caught: 'bad',
-	'late-catch': 'good',
 	overstayed: 'warn',
 	'timely-retreat': 'good',
 	'early-retreat': 'warn',
+	catch: 'neutral',
 	'not-engaged': 'neutral',
 	other: 'neutral',
-	interrupted: 'neutral'
+	interrupted: 'neutral',
+	'late-catch': 'neutral'
 };
 
 /** Outcomes in the order the list shows them. */
-export const OUTCOME_ORDER: Outcome[] = ['caught', 'overstayed', 'late-catch', 'timely-retreat', 'early-retreat', 'other', 'not-engaged', 'interrupted'];
+export const OUTCOME_ORDER: Outcome[] = ['caught', 'overstayed', 'timely-retreat', 'early-retreat', 'catch', 'other', 'not-engaged', 'interrupted'];
 
 const s1 = (x: number) => (Math.round(x * 10) / 10).toFixed(1);
 const s2 = (x: number) => x.toFixed(2);
@@ -58,6 +61,8 @@ export const signed = (left: number, digits = 2) => (left < 0 ? '−' : '') + Ma
 /** The trial fields the story needs (a `trials.get` row has all of them). */
 export interface StoryTrial {
 	outcome: Outcome | string;
+	/** Rules version the outcome was computed with; below 2 the sentence says so. */
+	rulesVersion?: number;
 	total: number;
 	endReason: string;
 	turnLeft: number | null;
@@ -85,6 +90,21 @@ export function describe(t: StoryTrial, opts: { turnGhost?: string | null; endGh
 	const tiles = (d: number | null) => (d === null ? '' : `, ${s1(d)} tiles away`);
 	const caughtTail = a.timeToCaught !== null ? `${s1(a.timeToCaught)} s after the power ended` : 'after the power ended';
 
+	const old = t.rulesVersion !== undefined && t.rulesVersion < 2 ? ' (Scored by older rules; not in the rates.)' : '';
+	return said(t, a, { killer, lastEat, turnG, endG, tiles, caughtTail }) + old;
+}
+
+function said(
+	t: StoryTrial, a: StoryTrial['after'],
+	w: { killer: string | null; lastEat: StoryTrial['eats'][number] | null; turnG: string; endG: string; tiles: (d: number | null) => string; caughtTail: string }
+): string {
+	const { killer, lastEat, turnG, endG, tiles, caughtTail } = w;
+	// A death after the end that does not count as "caught" (too far away when the power ended, or a
+	// ghost that had not been scared) leaves the class as it is; say what happened anyway.
+	const afterDeath = !a.died ? ''
+		: a.caught
+			? `; was caught${killer ? ` by the ${killer}` : ''} ${caughtTail}, but was ${t.endDist !== null ? `${s1(t.endDist)} tiles` : 'too far'} away when the power ran out, too far for that to count as caught`
+			: '; later died to a ghost that had not been scared';
 	switch (t.outcome) {
 		case 'caught': {
 			const by = killer ? ` by the ${killer}` : '';
@@ -96,33 +116,33 @@ export function describe(t: StoryTrial, opts: { turnGhost?: string | null; endGh
 				return `Was still closing in on ${turnG} when the power ran out${tiles(t.endDist)}, and was caught${by} ${caughtTail}.`;
 			}
 			if (t.turnLeft !== null) {
-				return `Turned away from ${turnG} with ${s1(t.turnLeft)} s left${tiles(t.turnDist)}, but was caught${by} ${caughtTail}.`;
+				return `Turned away from ${turnG} with ${s1(t.turnLeft)} s left, but was still ${t.endDist !== null ? `${s1(t.endDist)} tiles` : 'close'} from a ghost when the power ran out, and was caught${by} ${caughtTail}.`;
 			}
 			return `Was ${t.endDist !== null ? s1(t.endDist) + ' tiles' : 'close'} from ${endG} when the power ran out, and was caught${by} ${caughtTail}.`;
 		}
+		case 'catch':
 		case 'late-catch': {
-			const late = [...t.eats].reverse().find((e) => e.left <= 1.5) ?? lastEat;
-			const ate = late ? `Ate the ${ghostName(late.ghost)} with ${s1(late.left)} s left` : 'Ate a ghost in the last 1.5 s';
+			const ate = lastEat ? `Caught the ${ghostName(lastEat.ghost)} with ${s1(lastEat.left)} s left${lastEat.left <= 1.5 ? ' (a late catch)' : ''}` : 'Caught the ghost';
 			const tail = a.died ? `, then was caught ${caughtTail}` : a.nearMiss ? ', then got away with a near miss' : ', then got away';
-			return `${ate}, using the power to the limit${tail}.`;
+			return `${ate} and chased nothing after it${tail}. A catch shows no decision about the end, so it is in no rate.`;
 		}
 		case 'overstayed': {
 			const near = a.nearMiss && a.minDangerDist !== null ? ` with a near miss (${s1(a.minDangerDist)} tiles)` : '';
 			const react = t.reaction === null ? '' : t.reaction < 0.05 ? ', moved away right as it ran out' : `, moved away ${s1(t.reaction)} s after it ran out`;
-			return `Was still closing in on ${endG} when the power ran out${tiles(t.endDist)}${react}, and got away${near}.`;
+			const when = t.turnLeft === null ? '' : t.turnLeft < 0 ? ` (turned ${s1(-t.turnLeft)} s after the end)` : t.turnLeft > 0.005 ? ` (turned with only ${s1(t.turnLeft)} s left)` : '';
+			const tail = a.died ? afterDeath : `, and got away${near}`;
+			return `Stayed too long: was still chasing ${endG} when the power ran out${tiles(t.endDist)}${when}${react}${tail}.`;
 		}
 		case 'timely-retreat':
-			return `Turned away from ${turnG} with ${s1(t.turnLeft ?? 0)} s left${tiles(t.turnDist)}, and was clear when the ghosts turned dangerous.`;
+			return `Turned away from ${turnG} in time, with ${s1(t.turnLeft ?? 0)} s left${tiles(t.turnDist)}${a.died ? afterDeath : ', and was clear when the ghosts turned dangerous'}.`;
 		case 'early-retreat': {
 			const waste = t.wasted !== null ? `, leaving ${s1(t.wasted)} s of power unused` : '';
-			return `Gave up chasing ${turnG} with ${s1(t.turnLeft ?? 0)} s left${tiles(t.turnDist)} while a ghost was still in reach${waste}.`;
+			return `Turned away too early: gave up chasing ${turnG} with ${s1(t.turnLeft ?? 0)} s left${tiles(t.turnDist)} while a ghost was still in reach${waste}${afterDeath}.`;
 		}
 		case 'not-engaged':
 			return `Was not chasing in the last 3 s of the ${s1(t.total)} s power, so there is no ending to judge.`;
 		case 'other':
-			return t.allEatenLeft !== null
-				? `Ate the last scared ghost with ${s1(t.allEatenLeft)} s left, so there was nothing left to chase or to flee from.`
-				: 'Was chasing near the end, but none of the five patterns fits.';
+			return 'Was chasing near the end, but none of the classes fits.';
 		case 'interrupted': {
 			const why: Record<string, string> = {
 				died: 'The player was caught while the power was still on',

@@ -4,6 +4,8 @@ import { mutation, query } from './_generated/server';
 import { filterArgs, light } from './lib/filters';
 import { unpackSeries } from './lib/series';
 import { clipFields, measures, outcome, trialContext } from './validators';
+import { bump, trialCounts } from './counters';
+import { rescore } from './lib/rules';
 
 /**
  * Store one finished trial, and its clip when there is one (idempotent by `key`). Context (cue,
@@ -18,7 +20,10 @@ export const save = mutation({
 		...measures,
 		clip: v.optional(v.object(clipFields))
 	},
-	handler: async (ctx, { key, sessionKey, blockKey, clip, ...trial }) => {
+	handler: async (ctx, { key, sessionKey, blockKey, clip, ...sent }) => {
+		// The outcome is recomputed from the raw measures with the current rules (convex/lib/rules.ts),
+		// so a page running older code cannot store a class the rules would not give.
+		const trial = { ...sent, ...rescore(sent) };
 		const old = await ctx.db.query('trials').withIndex('by_key', (i) => i.eq('key', key)).unique();
 		if (old) return { trialId: old._id, clipId: old.clipId ?? null };
 		const s = await ctx.db.query('sessions').withIndex('by_key', (i) => i.eq('key', sessionKey)).unique();
@@ -34,10 +39,12 @@ export const save = mutation({
 		if (clip) {
 			clipId = await ctx.db.insert('clips', {
 				...clip, trialId, sessionId: s._id, participantId: s.participantId, mode: s.mode, source: s.source,
-				outcome: trial.outcome, createdAt: now, size: clip.data.byteLength, ...(b.practice ? { practice: true } : {})
+				outcome: trial.outcome, createdAt: now, size: clip.data.byteLength, ...(b.practice ? { practice: true } : {}),
+				numbers: { ...clip.numbers, outcome: trial.outcome }
 			});
 			await ctx.db.patch(trialId, { clipId });
 		}
+		if (!b.practice) await bump(ctx, s.source, trialCounts({ ...trial, createdAt: now }, !!clip));
 		await ctx.db.patch(b._id, { trialCount: b.trialCount + 1, engagedCount: b.engagedCount + (trial.engaged ? 1 : 0) });
 		await ctx.db.patch(s._id, { trials: s.trials + 1, lastActiveAt: now });
 		return { trialId, clipId };

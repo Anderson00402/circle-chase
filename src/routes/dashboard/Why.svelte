@@ -21,7 +21,7 @@
 	import StackedBars from '#lib/charts/StackedBars.svelte';
 	import StripPlot, { type StripRow } from '#lib/charts/StripPlot.svelte';
 	import {
-		CAUGHT_COLOR, CHANNEL_LABEL, CONDITIONS, condition, OUTCOMES, outcomeStyle, pct, pctRange, plural, ROLE_COLOR,
+		CHANNEL_LABEL, EARLY_COLOR, LATE_COLOR, CONDITIONS, condition, OUTCOMES, outcomeStyle, pct, pctRange, plural, ROLE_COLOR,
 		secs, WELL_COLOR, YARDSTICKS, type Condition
 	} from '#lib/charts/encoding.ts';
 	import { DEFS, OUTCOME_ORDER_NOTE } from './defs';
@@ -44,8 +44,9 @@
 	// Outcome mix ---------------------------------------------------------------------------------
 	let includeExcluded = $state(false);
 	const segs = $derived(OUTCOMES.filter((o) => includeExcluded || o.inRates));
-	// Counted power-ups only by default, so the red share is the caught rate and the green share
-	// the well-timed rate; the switch shows every power-up, including those outside the rates.
+	// Counted (decision) power-ups only by default, so the green share is the well-timed rate, amber
+	// plus red the too-late rate (red alone: caught) and violet the too-early rate; the switch shows
+	// every power-up, including catches and the others outside the rates.
 	const stackRows = $derived(rows.map((r) => ({
 		id: r.cond.id,
 		counts: (includeExcluded ? r.s?.outcomes : r.s?.countedOutcomes) ?? {},
@@ -140,15 +141,21 @@
 	function learningSeries(b: Main['learning']['byTrial']): LineSeries[] {
 		return [
 			{
-				id: 'well', label: 'Well timed', name: 'Well-timed rate', color: WELL_COLOR, dots: true,
+				id: 'well', label: 'In time', name: 'Turned away in time', color: WELL_COLOR, dots: true,
 				values: b.map((x) => (x.n ? x.wellTimed.rate! * 100 : null)),
 				lo: b.map((x) => (x.n ? x.wellTimed.lo! * 100 : null)), hi: b.map((x) => (x.n ? x.wellTimed.hi! * 100 : null)),
 				n: b.map((x) => x.n)
 			},
 			{
-				id: 'caught', label: 'Caught', name: 'Caught rate', color: CAUGHT_COLOR, dots: true,
-				values: b.map((x) => (x.n ? x.caught.rate! * 100 : null)),
-				lo: b.map((x) => (x.n ? x.caught.lo! * 100 : null)), hi: b.map((x) => (x.n ? x.caught.hi! * 100 : null)),
+				id: 'late', label: 'Too late', name: 'Too-late rate', color: LATE_COLOR, dots: true,
+				values: b.map((x) => (x.n ? x.tooLate.rate! * 100 : null)),
+				lo: b.map((x) => (x.n ? x.tooLate.lo! * 100 : null)), hi: b.map((x) => (x.n ? x.tooLate.hi! * 100 : null)),
+				n: b.map((x) => x.n)
+			},
+			{
+				id: 'early', label: 'Too early', name: 'Too-early rate', color: EARLY_COLOR, dots: true,
+				values: b.map((x) => (x.n ? x.tooEarly.rate! * 100 : null)),
+				lo: b.map((x) => (x.n ? x.tooEarly.lo! * 100 : null)), hi: b.map((x) => (x.n ? x.tooEarly.hi! * 100 : null)),
 				n: b.map((x) => x.n)
 			}
 		];
@@ -166,10 +173,10 @@
 				return {
 					id: c.cue, label: cond.code, name: cond.name, x: r.mean!, y: c.wellTimed.rate! * 100,
 					xlo: r.lo, xhi: r.hi, ylo: c.wellTimed.lo! * 100, yhi: c.wellTimed.hi! * 100,
-					color: cond.color, shape: cond.shape, thin: c.inRates < ENOUGH,
+					color: cond.color, shape: cond.shape, thin: c.decisions < ENOUGH,
 					info: [
 						[key === 'clarityCI' ? 'Clarity' : 'Distraction', `${r.mean!.toFixed(1)} of 7 (${plural(r.n, 'answer')})`],
-						['Well timed', `${pct(c.wellTimed.rate)} of ${c.wellTimed.n}`],
+						['Turned away in time', `${pct(c.wellTimed.rate)} of ${c.wellTimed.n}`],
 						['95% interval', pctRange(c.wellTimed.lo, c.wellTimed.hi)]
 					] as [string, string][]
 				};
@@ -186,26 +193,25 @@
 			const ss = members.map((m) => main.cues.find((c) => c.cue === m.id)).filter((s) => !!s);
 			const n = ss.reduce((a, s) => a + s.wellTimed.n, 0);
 			const well = ss.reduce((a, s) => a + s.wellTimed.k, 0);
-			const caught = ss.reduce((a, s) => a + s.caught.k, 0);
+			const late = ss.reduce((a, s) => a + s.tooLate.k, 0);
+			const early = ss.reduce((a, s) => a + s.tooEarly.k, 0);
 			const pseudo: Condition = {
 				id: ch, code: '', name: CHANNEL_LABEL[ch], role: 'idea', channel: ch, order: 0,
 				color: 'var(--ink-dim)', shape: 'circle', dash: undefined
 			};
 			return {
 				id: ch, cond: pseudo, thin: n < ENOUGH,
-				values: { wellTimed: wilson(well, n), caught: wilson(caught, n) },
+				values: { wellTimed: wilson(well, n), tooLate: wilson(late, n), tooEarly: wilson(early, n) },
 				note: `Conditions: ${members.map((m) => `${m.code} ${m.name}`).join(', ')}`
 			};
 		});
 	});
 	const noneRef = $derived.by(() => {
 		const s = main.cues.find((c) => c.cue === 'none');
-		if (!s || s.inRates < ENOUGH) return { wellTimed: [], caught: [] };
+		if (!s || s.decisions < ENOUGH) return { wellTimed: [], tooLate: [], tooEarly: [] };
 		const c = condition('none');
-		return {
-			wellTimed: [{ id: 'none', code: c.code, name: c.name, value: s.wellTimed.rate!, color: c.color, dash: c.dash }],
-			caught: [{ id: 'none', code: c.code, name: c.name, value: s.caught.rate!, color: c.color, dash: c.dash }]
-		};
+		const ref = (v: number | null) => (v === null ? [] : [{ id: 'none', code: c.code, name: c.name, value: v, color: c.color, dash: c.dash }]);
+		return { wellTimed: ref(s.wellTimed.rate), tooLate: ref(s.tooLate.rate), tooEarly: ref(s.tooEarly.rate) };
 	});
 </script>
 
@@ -229,8 +235,8 @@
 	<Panel
 		title="How power-ups end"
 		sub={includeExcluded
-			? 'Every power-up, including those outside the rates (grey).'
-			: 'Counted power-ups, left to right from quitting too early to being caught. The green share is the well-timed rate, the red share the caught rate.'}
+			? 'Every power-up, including those outside the rates (grey): catches, other, not engaged, interrupted.'
+			: 'Counted power-ups (decisions), left to right from turning away too early to being caught. Green is the well-timed rate, amber and red together the too-late rate, violet the too-early rate.'}
 	>
 		{#snippet actions()}
 			<label class="check"><input type="checkbox" bind:checked={includeExcluded} /> Show power-ups outside the rates</label>
@@ -277,9 +283,7 @@
 				<div class="legend-row">
 					<Legend
 						label="Outcomes"
-						items={OUTCOMES.filter((o) => o.inRates && o.id !== 'late-catch').map((o) => ({
-							label: o.id === 'timely-retreat' ? 'Well timed (timely retreat or late catch)' : o.label, color: o.color, kind: 'swatch'
-						}))}
+						items={OUTCOMES.filter((o) => o.inRates).map((o) => ({ label: o.label, color: o.color, kind: 'swatch' }))}
 					/>
 				</div>
 				{#if stripView === 'turn'}
@@ -378,9 +382,9 @@
 					xTitle={(v) => `Power-up ${v}${v === main.learning.maxTrialBucket ? ' and later' : ''}`}
 					xTicks={byTrial.map((b) => b.x)}
 					height={240}
-					caption="Well-timed and caught rate by power-up number within a block"
+					caption="Turned away in time, too late and too early by power-up number within a block"
 				/>
-				<p class="foot">Bands: 95% intervals. n per point in the tooltip.</p>
+				<p class="foot">Bands: 95% Wilson intervals (pooled over people). n per point in the tooltip.</p>
 			{:else}
 				<EmptyState compact icon="chart" title="No counted power-ups yet" />
 			{/if}
@@ -399,7 +403,7 @@
 					xTitle={(v) => `Block ${v}`}
 					xTicks={byBlock.map((b) => b.x)}
 					height={240}
-					caption="Well-timed and caught rate by block position in the session"
+					caption="Turned away in time, too late and too early by block position in the session"
 				/>
 				<p class="foot">The counterbalanced order spreads practice evenly over the conditions.</p>
 			{:else}
@@ -449,15 +453,16 @@
 		</Panel>
 	</div>
 
-	<Panel title="Where the signal lives" sub="Conditions pooled by where the signal is shown. No signal (A) is the yardstick line.">
+	<Panel title="Where the signal lives" sub="Conditions pooled by where the signal is shown, with Wilson intervals. No signal (A) is the yardstick line.">
 		{#snippet actions()}<InfoTip term="Channel" align="end">{DEFS.channel}</InfoTip>{/snippet}
 		<ForestChart
 			rows={channelRows}
 			columns={[
-				{ key: 'wellTimed', title: 'Well-timed rate', better: 'higher', refs: noneRef.wellTimed },
-				{ key: 'caught', title: 'Caught rate', better: 'lower', refs: noneRef.caught }
+				{ key: 'wellTimed', title: 'Turned away in time', better: 'higher', refs: noneRef.wellTimed },
+				{ key: 'tooLate', title: 'Too late', better: 'lower', refs: noneRef.tooLate },
+				{ key: 'tooEarly', title: 'Too early', better: 'lower', refs: noneRef.tooEarly }
 			]}
-			caption="Well-timed and caught rate pooled by where the signal is shown"
+			caption="Turned away in time, too late and too early pooled by where the signal is shown"
 		>
 			{#snippet label(row)}
 				<span class="ch">

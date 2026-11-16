@@ -9,20 +9,24 @@ export const mode = v.union(v.literal('study'), v.literal('arcade'));
 /** Filters accept 'all' as well. */
 export const sourceFilter = v.union(v.literal('human'), v.literal('bot'), v.literal('all'));
 
+/** Outcome classes (convex/lib/rules.ts). `late-catch` exists only on rows classified by rules version 1. */
 export const outcome = v.union(
 	v.literal('caught'),
-	v.literal('late-catch'),
 	v.literal('overstayed'),
 	v.literal('timely-retreat'),
 	v.literal('early-retreat'),
+	v.literal('catch'),
 	v.literal('not-engaged'),
 	v.literal('other'),
-	v.literal('interrupted')
+	v.literal('interrupted'),
+	v.literal('late-catch')
 );
 export type OutcomeV = Infer<typeof outcome>;
 export const OUTCOME_LIST: OutcomeV[] = [
-	'caught', 'late-catch', 'overstayed', 'timely-retreat', 'early-retreat', 'not-engaged', 'other', 'interrupted'
+	'caught', 'overstayed', 'timely-retreat', 'early-retreat', 'catch', 'not-engaged', 'other', 'interrupted', 'late-catch'
 ];
+
+export const chaseEnd = v.union(v.literal('turn'), v.literal('eat'), v.literal('open'), v.null());
 
 export const endReason = v.union(
 	v.literal('expired'),
@@ -77,6 +81,8 @@ export const measures = {
 	leftAtEnd: num,
 	scaredAtStart: num,
 	outcome,
+	/** Rules version the outcome was computed with (convex/lib/rules.ts). Absent on the oldest rows (= 1). */
+	rulesVersion: v.optional(v.number()),
 	engaged: v.boolean(),
 	inRates: v.boolean(),
 	eats: v.array(eat),
@@ -87,6 +93,8 @@ export const measures = {
 	turnAt: maybeNum,
 	turnReachable: maybeBool,
 	chases: num,
+	/** How the last chase ended (turn, eat, open) or null without a chase. Absent before rules version 2. */
+	lastChaseEnd: v.optional(chaseEnd),
 	endDist: maybeNum,
 	endClosing: maybeBool,
 	after: aftermath,

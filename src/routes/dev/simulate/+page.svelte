@@ -96,6 +96,7 @@
 			deleteBots: () => client.mutation(api.admin.deleteBotData, { confirm: 'delete bot data' }),
 			summary: () => client.query(api.summary.byCue, { source: 'bot', mode: 'study' }),
 			counters: () => client.query(api.live.counters, { source: 'bot' }),
+			check: (run?: string) => client.query(api.dashboard.simCheck, run ? { run } : {}),
 			runs: () => client.query(api.sim.runs, {}),
 			get progress() { return progress; }
 		};
@@ -106,9 +107,9 @@
 	const secs = (ms: number) => (ms / 1000).toFixed(1);
 	const outcomeTotal = $derived(progress ? Object.values(progress.outcomes).reduce((a, b) => a + b, 0) : 0);
 	const OUTCOME_TONE: Record<string, string> = {
-		'caught': 'var(--bad)', 'late-catch': 'var(--good)', 'timely-retreat': 'color-mix(in srgb, var(--good) 65%, var(--surface))',
+		'caught': 'var(--bad)', 'catch': 'var(--ink-faint)', 'timely-retreat': 'var(--good)',
 		'overstayed': 'var(--warn)', 'early-retreat': 'color-mix(in srgb, var(--warn) 55%, var(--surface))',
-		'not-engaged': 'var(--rule-strong)', 'other': 'var(--ink-faint)', 'interrupted': 'var(--surface-3)'
+		'not-engaged': 'var(--rule-strong)', 'other': 'var(--rule)', 'interrupted': 'var(--surface-3)'
 	};
 	const listing = (id: string) => listings.find((l) => l.id === id)!;
 	const toggle = (id: string) => { chosen = chosen.includes(id) ? chosen.filter((c) => c !== id) : [...chosen, id]; };
@@ -214,7 +215,7 @@
 	</div>
 
 	<div class="grid">
-		<Panel title="What the {preset} preset plants" sub={preset === 'planted' ? 'Invented for validation, not a prediction. More noise should mean more early retreats, more overstays and catches, and a wider spread of turn-away times. The well-timed rate moves less: a bot that overstays often still eats a ghost late.' : `Every condition gets the same noise (${FLAT_NOISE} s), so the dashboard should show no real differences.`} flush>
+		<Panel title="What the {preset} preset plants" sub={preset === 'planted' ? 'Invented for validation, not a prediction. More noise should mean fewer turn-aways in time, more turned away too early, more stayed too long or caught, and a wider spread of turn-away times. Catches are left out of the rates: a bot that overstays often still eats a ghost late.' : `Every condition gets the same noise (${FLAT_NOISE} s), so the dashboard should show no real differences.`} flush>
 			<DataTable
 				caption="Planted awareness per condition"
 				dense
@@ -237,7 +238,7 @@
 				<div class="stats">
 					<Stat label="Participants" value={counters.data ? fmt(counters.data.participants) : null} tone="sim" />
 					<Stat label="Sessions" value={counters.data ? fmt(counters.data.sessions) : null} />
-					<Stat label="Trials" value={counters.data ? fmt(counters.data.trials) : null} sub={counters.data ? `${fmt(counters.data.inRates)} count in rates` : undefined} />
+					<Stat label="Trials" value={counters.data ? fmt(counters.data.trials) : null} sub={counters.data ? `${fmt(counters.data.decisions)} count in rates` : undefined} />
 					<Stat label="Replay clips" value={counters.data ? fmt(counters.data.clips) : null} />
 				</div>
 				{#if runs.data?.length}

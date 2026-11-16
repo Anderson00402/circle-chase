@@ -192,7 +192,7 @@
 	.chip[aria-pressed='true'] { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
 	.chip.caught[aria-pressed='true'] { border-color: var(--bad); background: var(--bad-soft); }
 	.chip.overstayed[aria-pressed='true'], .chip.early-retreat[aria-pressed='true'] { border-color: var(--warn); background: var(--warn-soft); }
-	.chip.late-catch[aria-pressed='true'], .chip.timely-retreat[aria-pressed='true'] { border-color: var(--good); background: var(--good-soft); }
+	.chip.timely-retreat[aria-pressed='true'] { border-color: var(--good); background: var(--good-soft); }
 	.n { color: var(--ink-faint); font-weight: 400; }
 	.simnote { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--text-sm); color: var(--ink-dim); }
 	.status { color: var(--ink-dim); font-size: var(--text-sm); margin: 0 0 var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); align-items: center; }

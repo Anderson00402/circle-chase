@@ -22,14 +22,17 @@
  *   0.3 s of how much each of the player's steps changed the distance to that ghost must be below
  *   -0.05 tiles. Only a chase that was running at the end can continue after it; a new one never
  *   starts once the power is over.
- * - Turn-away: the last chase of the trial. Its turn moment is when the player was closest to the
- *   target (latest moment within 0.05 tiles of the minimum). If that chase ran past the end, the
- *   turn moment is the last step that still brought the player closer. A chase that ends by eating
- *   a ghost turns at the eat (distance 0). A chase still running when the trial closes never turned:
- *   turnLeft is null.
+ * - Turn-away: the last chase of the trial (the final decision). Its turn moment is when the player
+ *   was closest to the target (latest moment within 0.05 tiles of the minimum). If that chase ran
+ *   past the end, the turn moment is the last step after the end that still brought the player
+ *   closer, or the end itself if no step did. A chase that ends by eating a ghost turns at the eat
+ *   (distance 0). A chase still running when the trial closes never turned: turnLeft is null.
+ *   `lastChaseEnd` stores how that chase ended (turn, eat, open).
+ * - The outcome comes from the shared rules in convex/lib/rules.ts (`classify`), fed with the
+ *   measures stored here, so Convex can recompute it from a stored trial.
  * - "Still closing in at the end" (overstayed, exposure): the last chase is not an eat and either
- *   never turned or turned with less than 0.2 s left. With the timely window starting at 0.2 s this
- *   leaves no gap between "timely retreat" and "overstayed".
+ *   never turned, turned after the end, or turned with less than 0.2 s left. With the timely window
+ *   starting at 0.2 s this leaves no gap between "timely retreat" and "overstayed".
  * - Early retreat "while a ghost was still reachable": at the turn moment some scared ghost was out
  *   and its current spot was within (time left x player speed on level 1) tiles.
  * - An aftermath cut short is kept and classified with what was seen (`after.seen`, `after.cut`);
@@ -53,19 +56,17 @@
  * - Game over / new game / page closed: `finish()` closes a running power-up as `quit`
  *   (`interrupted`) and an aftermath as cut short. A new game is detected when game time goes back.
  */
+import { CAUGHT_DIST, LATE, RULES_VERSION, TIMELY, WARN, classify } from '#convex/lib/rules.ts';
 import { PLAYER_SPEED } from '../game/engine/game';
 import type { Frame, GhostId, Scene } from '../game/types';
 import { distanceField, type DistanceField } from './distance';
 import type { Aftermath, EatRecord, LiveReadout, Outcome, TrialEndReason, TrialMeasures, TrialSeries } from './types';
 
+export { CAUGHT_DIST, LATE, TIMELY, WARN, classify };
 export const CHASE_RANGE = 8; // tiles
 export const TREND = 0.3; // seconds of movement compared for "shrinking"
 export const SHRINK = 0.05; // tiles the distance must drop over TREND
 export const NEAR = 1; // tiles: always chasing this close
-export const WARN = 3; // seconds: the warning window and the aftermath
-export const LATE = 1.5; // seconds: late catch
-export const OVERSTAY_DIST = 5;
-export const TIMELY: [number, number] = [0.2, 2];
 export const NEAR_MISS = 1.5;
 export const AFTER = 3;
 export const SERIES_STEP = 0.1;
@@ -199,10 +200,12 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		const last = r.chases.length ? r.chases[r.chases.length - 1] : null;
 		let turnLeft: number | null = null, turnDist: number | null = null, turnReachable: boolean | null = null, turnAt: number | null = null;
 		if (last && last.endedBy !== 'open') {
-			if (last.endedBy === 'turn' && last.crossedEnd && last.afterLeft !== null) {
-				turnLeft = last.afterLeft;
-				turnDist = last.afterDist;
-				turnAt = last.afterAt;
+			if (last.endedBy === 'turn' && last.crossedEnd) {
+				// Still closing in when the power ran out: the turn is the last step after the end that
+				// still closed in, or the end itself when no step did.
+				turnLeft = last.afterLeft ?? 0;
+				turnDist = last.afterLeft !== null ? last.afterDist : r.endDist;
+				turnAt = last.afterLeft !== null ? last.afterAt : r.endedAt;
 				turnReachable = false; // the power was over
 			} else {
 				turnLeft = last.minLeft;
@@ -212,20 +215,22 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 			}
 		}
 		const expired = r.endReason === 'expired';
+		const lastChaseEnd = last ? last.endedBy : null;
 		let endClosing: boolean | null = null;
 		if (expired) {
-			endClosing = !!last && last.endedBy !== 'eat' && (turnLeft === null ? last.crossedEnd : turnLeft < TIMELY[0]);
+			endClosing = lastChaseEnd === 'open' || (lastChaseEnd === 'turn' && turnLeft !== null && turnLeft < TIMELY[0]);
 		}
 		r.after.nearMiss = !r.after.died && r.after.minDangerDist !== null && r.after.minDangerDist <= NEAR_MISS;
 		const reaction = endClosing && r.firstAway !== null ? r2(r.firstAway) : null;
 		const lateCatch = r.eats.some((e) => e.left <= LATE);
 		const m: Omit<TrialMeasures, 'outcome' | 'inRates' | 'wasted'> = {
+			rulesVersion: RULES_VERSION,
 			serial: r.serial, startedAt: r3(r.startedAt), endedAt: r3(r.endedAt), total: r3(r.total), level: r.level,
 			mazeId: r.mazeId, endReason: r.endReason ?? 'quit', leftAtEnd: r2(r.leftAtEnd), scaredAtStart: r.scaredAtStart,
 			engaged: r.engaged, eats: r.eats, lateCatch, allEatenLeft: r.allEatenLeft,
 			turnLeft: turnLeft === null ? null : r2(turnLeft), turnDist: turnDist === null ? null : r2(turnDist),
 			turnAt: turnAt === null ? null : r2(turnAt - r.startedAt),
-			turnReachable, chases: r.chases.length,
+			turnReachable, chases: r.chases.length, lastChaseEnd,
 			endDist: expired && r.endDist !== null ? r2(r.endDist) : null, endClosing,
 			after: { ...r.after, seen: r2(r.after.seen), minDangerDist: r.after.minDangerDist === null ? null : r2(r.after.minDangerDist) },
 			reaction, diedDuring: r.diedDuring, frames: r.frames,
@@ -442,13 +447,13 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 
 	/** Outcome so far, for the live panel: classify a copy as if the trial ended now. */
 	function guess(r: Run, left: number): Outcome | null {
-		if (r.eats.some((e) => e.left <= LATE)) return 'late-catch';
 		if (r.state === 'power') {
 			if (left > WARN) return null;
 			if (r.chasing && left < TIMELY[0]) return 'overstayed';
 			if (r.chasing) return null;
 			const last = r.chases[r.chases.length - 1];
-			if (last) {
+			if (last && r.engaged) {
+				if (last.endedBy === 'eat') return 'catch';
 				const t = last.minLeft;
 				if (t >= TIMELY[0] && t <= TIMELY[1]) return 'timely-retreat';
 				if (t > TIMELY[1] && last.reachable) return 'early-retreat';
@@ -471,19 +476,4 @@ export function createTracker(opts: TrackerOptions = {}): Tracker {
 		reset,
 		get live() { return live; }
 	};
-}
-
-/**
- * Outcome of a trial, first that applies (STUDY.md). Exported for tests and for re-scoring stored
- * trials if a threshold changes.
- */
-export function classify(m: Pick<TrialMeasures, 'endReason' | 'after' | 'eats' | 'endClosing' | 'endDist' | 'turnLeft' | 'turnReachable' | 'engaged'>): Outcome {
-	if (m.endReason !== 'expired') return 'interrupted';
-	if (m.after.caught) return 'caught';
-	if (m.eats.some((e) => e.left <= LATE)) return 'late-catch';
-	if (m.endClosing && m.endDist !== null && m.endDist <= OVERSTAY_DIST && !m.after.died) return 'overstayed';
-	if (m.turnLeft !== null && m.turnLeft >= TIMELY[0] && m.turnLeft <= TIMELY[1]) return 'timely-retreat';
-	if (m.turnLeft !== null && m.turnLeft > TIMELY[1] && m.turnReachable) return 'early-retreat';
-	if (!m.engaged) return 'not-engaged';
-	return 'other';
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STUDY_CONFIG } from '../game/engine/game';
+import { isLateCatch } from '#convex/lib/rules.ts';
 import { classify, createTracker } from './tracker';
 import { ROW, Sim, playScripted, type Policy } from './testing';
 import { OUTCOMES, type TrialMeasures } from './types';
@@ -88,6 +89,8 @@ describe('tracker: outcome classes', () => {
 		});
 		const t = trials[0];
 		expect(t.outcome).toBe('caught');
+		expect(t.endDist!).toBeLessThanOrEqual(5);
+		expect(t.lastChaseEnd).toBe('open');
 		expect(t.after.caught).toBe(true);
 		expect(t.after.killer).toBe('hunter');
 		expect(t.after.timeToCaught!).toBeCloseTo(1, 1);
@@ -96,14 +99,19 @@ describe('tracker: outcome classes', () => {
 		expect(t.inRates).toBe(true);
 	});
 
-	it('late catch: eats a ghost with 1.5 s or less left', () => {
+	it('catch, then nothing: a late catch reveals no decision', () => {
 		const { trials } = scenario({
 			total: 5,
 			gap: (mt) => Math.max(0, 6 - 1.5 * mt),
 			at: (s) => { if (s.ghosts[0].scared && s.ghosts[0].x - s.player.x <= 0.5) s.eat(0); }
 		});
 		const t = trials[0];
-		expect(t.outcome).toBe('late-catch');
+		expect(t.outcome).toBe('catch');
+		expect(t.lastChaseEnd).toBe('eat');
+		expect(isLateCatch(t)).toBe(true);
+		expect(t.inRates).toBe(true); // eligible, but a catch is not a decision trial
+		expect(t.endClosing).toBe(false);
+		expect(t.rulesVersion).toBe(2);
 		expect(t.lateCatch).toBe(true);
 		expect(t.eats).toHaveLength(1);
 		expect(t.eats[0].left).toBeLessThanOrEqual(1.5);
@@ -151,17 +159,126 @@ describe('tracker: outcome classes', () => {
 
 	it('classify follows the order in STUDY.md', () => {
 		const base = {
-			endReason: 'expired' as const, eats: [], endClosing: false, endDist: null, turnLeft: null, turnReachable: null, engaged: true,
-			after: { seen: 3, died: false, caught: false, timeToCaught: null, killer: null, minDangerDist: null, nearMiss: false, cut: null }
+			endReason: 'expired', endDist: 8 as number | null, turnLeft: 1 as number | null, turnReachable: true as boolean | null, engaged: true,
+			lastChaseEnd: 'turn' as const, after: { caught: false }
 		};
-		expect(classify({ ...base, after: { ...base.after, died: true, caught: true }, eats: [{ t: 1, left: 1, ghost: 'hunter', points: 200 }] })).toBe('caught');
-		expect(classify({ ...base, eats: [{ t: 1, left: 1.5, ghost: 'hunter', points: 200 }], endClosing: true, endDist: 2 })).toBe('late-catch');
-		expect(classify({ ...base, endClosing: true, endDist: 5, turnLeft: 1 })).toBe('overstayed');
-		expect(classify({ ...base, endClosing: true, endDist: 5.1, turnLeft: 1 })).toBe('timely-retreat');
-		expect(classify({ ...base, turnLeft: 2.1, turnReachable: true })).toBe('early-retreat');
-		expect(classify({ ...base, turnLeft: 2.1, turnReachable: false })).toBe('other');
-		expect(classify({ ...base, engaged: false })).toBe('not-engaged');
+		const caught = { caught: true };
+		// Caught needs the death and being within 5 tiles of a ghost that just turned dangerous.
+		expect(classify({ ...base, after: caught, endDist: 5 })).toBe('caught');
+		expect(classify({ ...base, after: caught, endDist: 5.1 })).toBe('timely-retreat');
+		expect(classify({ ...base, after: caught, endDist: 2, lastChaseEnd: 'eat' })).toBe('caught');
+		// The last chase ended in an eat: a catch, whatever the time left.
+		expect(classify({ ...base, lastChaseEnd: 'eat', turnLeft: 2.06, turnReachable: false })).toBe('catch');
+		expect(classify({ ...base, lastChaseEnd: 'eat', turnLeft: 0.4 })).toBe('catch');
+		// Still running at the end: never turned, turned after the end, or with less than 0.2 s left.
+		expect(classify({ ...base, lastChaseEnd: 'open', turnLeft: null })).toBe('overstayed');
+		expect(classify({ ...base, turnLeft: -0.4, turnReachable: false })).toBe('overstayed');
+		expect(classify({ ...base, turnLeft: 0.19 })).toBe('overstayed');
+		expect(classify({ ...base, lastChaseEnd: 'open', turnLeft: null, endDist: 12, after: caught })).toBe('overstayed');
+		// Turned in the window, or earlier.
+		expect(classify({ ...base, turnLeft: 0.2 })).toBe('timely-retreat');
+		expect(classify({ ...base, turnLeft: 2 })).toBe('timely-retreat');
+		expect(classify({ ...base, turnLeft: 2.01 })).toBe('early-retreat');
+		expect(classify({ ...base, turnLeft: 2.06, turnReachable: false })).toBe('other');
+		// Not engaged: an early retreat before the window is kept as such, the rest is not engaged.
+		expect(classify({ ...base, engaged: false, turnLeft: 4 })).toBe('early-retreat');
+		expect(classify({ ...base, engaged: false, lastChaseEnd: 'eat', turnLeft: 5 })).toBe('not-engaged');
+		expect(classify({ ...base, engaged: false, lastChaseEnd: null, turnLeft: null })).toBe('not-engaged');
 		expect(classify({ ...base, endReason: 'refreshed' })).toBe('interrupted');
+		expect(classify({ ...base, endReason: 'died', after: caught, endDist: 1 })).toBe('interrupted');
+	});
+
+	it('catch, then a second chase that stays too long: overstayed', () => {
+		// Ghost 0 sits just ahead and is eaten; ghost 1 walks away slower than the player, who closes
+		// in on it through the end, walks on for 0.3 s and then runs.
+		const s = new Sim();
+		const tracker = createTracker();
+		const trials: TrialMeasures[] = [];
+		s.ghost(0, 11, ROW); s.ghost(1, 16, ROW);
+		tracker.onScene(s.scene());
+		s.startPower(6);
+		let after = 0;
+		while (s.t < 12) {
+			if (s.ghosts[0].scared && s.ghosts[0].x - s.player.x <= 0.5) s.eat(0);
+			s.step(DT, (sim, dt) => {
+				if (sim.power.left > 0) { sim.player.x += 2 * dt; sim.ghosts[1].x += 1.4 * dt; return; }
+				after += dt;
+				if (after < 0.3) { sim.player.x += 2 * dt; sim.ghosts[1].x += 1.4 * dt; }
+				else { sim.player.x -= 2 * dt; sim.ghosts[1].x -= 2.1 * dt; }
+			});
+			trials.push(...tracker.onScene(s.scene()));
+		}
+		trials.push(...tracker.finish());
+		const t = trials[0];
+		expect(t.eats).toHaveLength(1);
+		expect(t.chases).toBe(2);
+		expect(t.lastChaseEnd).toBe('turn');
+		expect(t.turnLeft!).toBeLessThan(0);
+		expect(t.endClosing).toBe(true);
+		expect(t.outcome).toBe('overstayed');
+	});
+
+	it('stays too long far from the ghost (over 5 tiles): still overstayed', () => {
+		const { trials } = scenario({
+			total: 5,
+			gap: (mt) => 7.9 - 0.3 * mt,
+			after: (s, dt) => { s.player.x -= 2 * dt; s.ghosts[0].x -= 2 * dt; }
+		});
+		const t = trials[0];
+		expect(t.endDist!).toBeGreaterThan(5);
+		expect(t.engaged).toBe(true);
+		expect(t.outcome).toBe('overstayed');
+	});
+
+	it('turned away in time, then an unrelated death 2.5 s later far from any ghost: stays timely', () => {
+		const { trials } = scenario({
+			total: 5,
+			gap: (mt) => (mt < 3.8 ? 6 - 1.2 * mt : 1.44 + 4 * (mt - 3.8)),
+			after: (s, dt) => { s.player.x -= 1 * dt; },
+			at: (s) => { if (s.power.endReason === 'expired' && s.phase === 'playing' && s.t - s.power.endedAt >= 2.5) s.die(0); }
+		});
+		const t = trials[0];
+		expect(t.endDist!).toBeGreaterThan(5);
+		expect(t.after.died).toBe(true);
+		expect(t.after.caught).toBe(true); // died to a ghost that had been scared...
+		expect(t.after.timeToCaught!).toBeCloseTo(2.5, 1);
+		expect(t.outcome).toBe('timely-retreat'); // ...but was far away when the power ended
+		expect(t.turnLeft!).toBeCloseTo(1.2, 1);
+	});
+
+	it('turned away with 0.3 s left but 1 tile away, caught 0.4 s after the end: caught', () => {
+		const { trials } = scenario({
+			total: 5,
+			gap: (mt) => (mt < 4.7 ? 6 - (4.9 / 4.7) * mt : 1.1 + 1.2 * (mt - 4.7)),
+			after: (s, dt) => { s.ghosts[0].x -= 2 * dt; },
+			at: (s) => { if (s.power.endReason === 'expired' && s.phase === 'playing' && s.t - s.power.endedAt >= 0.4) s.die(0); }
+		});
+		const t = trials[0];
+		expect(t.lastChaseEnd).toBe('turn');
+		expect(t.turnLeft!).toBeCloseTo(0.3, 1);
+		expect(t.endDist!).toBeLessThan(1.5);
+		expect(t.after.timeToCaught!).toBeCloseTo(0.4, 1);
+		expect(t.outcome).toBe('caught');
+	});
+
+	it('the 2.06 s boundary: an eat just over 2 s left is a catch; a turn there is an early retreat', () => {
+		// Eat the only ghost with about 2.06 s left: before rules version 2 this was "other".
+		const eat = scenario({
+			total: 6,
+			gap: (mt) => Math.max(0, 6 - (5.5 / 3.94) * mt),
+			at: (s) => { if (s.ghosts[0].scared && s.ghosts[0].x - s.player.x <= 0.5) s.eat(0); }
+		}).trials[0];
+		expect(eat.eats[0].left).toBeGreaterThan(2);
+		expect(eat.eats[0].left).toBeLessThan(2.12);
+		expect(eat.turnReachable).toBe(false);
+		expect(eat.outcome).toBe('catch');
+		expect(isLateCatch(eat)).toBe(false);
+		// Turn away from it at the same moment instead.
+		const turn = scenario({ total: 6, gap: (mt) => (mt < 3.94 ? 6 - 1.2 * mt : 1.27 + 1.5 * (mt - 3.94)) }).trials[0];
+		expect(turn.turnLeft!).toBeGreaterThan(2);
+		expect(turn.turnLeft!).toBeLessThan(2.12);
+		expect(turn.turnReachable).toBe(true);
+		expect(turn.outcome).toBe('early-retreat');
 	});
 });
 
@@ -227,7 +344,7 @@ describe('tracker: edge cases', () => {
 		expect(t.outcome).toBe('not-engaged');
 	});
 
-	it('eating the last ghost inside the warning window, not late: engaged, other', () => {
+	it('eating the last ghost inside the warning window, not late: engaged, a catch', () => {
 		const { trials } = scenario({
 			total: 6,
 			gap: (mt) => Math.max(0, 6 - 1.75 * mt),
@@ -237,7 +354,8 @@ describe('tracker: edge cases', () => {
 		expect(t.eats[0].left).toBeGreaterThan(1.5);
 		expect(t.eats[0].left).toBeLessThan(3);
 		expect(t.engaged).toBe(true);
-		expect(t.outcome).toBe('other');
+		expect(t.outcome).toBe('catch');
+		expect(isLateCatch(t)).toBe(false);
 	});
 
 	it('no ghost out of the pen: nothing scared, not engaged', () => {
@@ -364,14 +482,19 @@ describe('tracker: scripted games on the real engine', () => {
 				expect(t.series.t.length).toBeGreaterThan((t.total + t.after.seen) * 10 - 3);
 				expect(t.series.t.length).toBeLessThan((t.total + 3) * 10 + 8);
 			}
-			if (t.outcome === 'caught') expect(t.after.caught).toBe(true);
+			if (t.outcome === 'caught') expect(t.after.caught && t.endDist! <= 5).toBe(true);
 			if (t.inRates) expect(t.engaged && t.endReason === 'expired').toBe(true);
+			// The final decision: a last chase that did not end in an eat lands in exactly one class.
+			if (t.engaged && t.endReason === 'expired' && t.outcome !== 'caught' && t.lastChaseEnd !== 'eat') {
+				expect(['timely-retreat', 'early-retreat', 'overstayed'], JSON.stringify({ turnLeft: t.turnLeft, end: t.lastChaseEnd, reach: t.turnReachable })).toContain(t.outcome);
+			}
+			if (t.lastChaseEnd === 'eat' && t.engaged && t.endReason === 'expired' && t.outcome !== 'caught') expect(t.outcome).toBe('catch');
 			for (let i = 1; i < t.series.t.length; i++) expect(t.series.t[i]).toBeGreaterThan(t.series.t[i - 1]);
 		}
 		const counts: Record<string, number> = {};
 		for (const t of all) counts[t.outcome] = (counts[t.outcome] ?? 0) + 1;
 		// The chasers produce catches; the ignorer produces unengaged trials.
-		expect((counts['late-catch'] ?? 0) + (counts['caught'] ?? 0) + (counts['overstayed'] ?? 0)).toBeGreaterThan(0);
+		expect((counts['catch'] ?? 0) + (counts['caught'] ?? 0) + (counts['overstayed'] ?? 0)).toBeGreaterThan(0);
 		expect(counts['not-engaged'] ?? 0).toBeGreaterThan(0);
 		const reasons: Record<string, number> = {};
 		for (const t of all) reasons[t.endReason] = (reasons[t.endReason] ?? 0) + 1;

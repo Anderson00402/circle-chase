@@ -24,7 +24,7 @@ describe.runIf(process.env.CAL)('calibration', () => {
 			}
 			const ms = performance.now() - t0;
 			const sm = summarize('x', rows, []);
-			console.log(`noise ${noise} caution ${caution} reaction ${reaction}: trials ${sm.trials} inRates ${sm.inRates} caught ${((sm.caught.rate ?? 0) * 100).toFixed(0)}% well ${((sm.wellTimed.rate ?? 0) * 100).toFixed(0)}% turn med ${sm.turnAway.median} ${JSON.stringify(sm.outcomes)} ${(ms / n).toFixed(0)} ms/block`);
+			console.log(`noise ${noise} caution ${caution} reaction ${reaction}: trials ${sm.trials} decisions ${sm.decisions} in time ${((sm.wellTimed.rate ?? 0) * 100).toFixed(0)}% too late ${((sm.tooLate.rate ?? 0) * 100).toFixed(0)}% (caught ${((sm.caught.rate ?? 0) * 100).toFixed(0)}%) too early ${((sm.tooEarly.rate ?? 0) * 100).toFixed(0)}% catches ${sm.catches.n} turn med ${sm.turnAway.median} ${JSON.stringify(sm.outcomes)} ${(ms / n).toFixed(0)} ms/block`);
 		}
 	}, 600_000);
 });

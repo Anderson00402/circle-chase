@@ -12,23 +12,24 @@ import type { Doc, Id } from './_generated/dataModel';
 import { query, type QueryCtx } from './_generated/server';
 import { filterArgs, matches, scanTrials, type Filter } from './lib/filters';
 import { unpackSeries } from './lib/series';
-import { summarize, wilson, type CueSummary, type Rate } from './lib/stats';
+import { isDecision } from './lib/rules';
+import { decisionRates, summarize, type CueSummary, type Rate } from './lib/stats';
 import { blockRatings } from './summary';
 import { mode, sourceFilter } from './validators';
 
-/** A rate over a group of trials that count toward the rates. */
+/** Rates over a group of decision trials (learning curves; Wilson intervals, all conditions pooled). */
 export interface Bucket {
 	x: number;
 	n: number;
 	wellTimed: Rate;
+	tooLate: Rate;
+	tooEarly: Rate;
 	caught: Rate;
 }
 
 function bucket(x: number, rows: Doc<'trials'>[]): Bucket {
-	const counted = rows.filter((t) => t.inRates);
-	const caught = counted.filter((t) => t.outcome === 'caught').length;
-	const well = counted.filter((t) => t.outcome === 'late-catch' || t.outcome === 'timely-retreat').length;
-	return { x, n: counted.length, wellTimed: wilson(well, counted.length), caught: wilson(caught, counted.length) };
+	const r = decisionRates(rows, '', true);
+	return { x, n: r.wellTimed.n, wellTimed: r.wellTimed, tooLate: r.tooLate, tooEarly: r.tooEarly, caught: r.caught };
 }
 
 /** Mean and 95% interval (normal approximation) of 1-7 ratings. */
@@ -52,8 +53,9 @@ const MAX_TRIAL_BUCKET = 8;
 
 /**
  * Everything the top of the dashboard needs for one filter: totals, per-condition headline numbers
- * (rates with Wilson intervals, outcome counts, turn-away spread, wasted power, ratings with their
- * intervals), learning over trial number within a block and over block position in the session.
+ * (rates over decision trials with participant-clustered intervals, outcome counts, catches,
+ * turn-away spread, wasted power, ratings with their intervals), learning over trial number within
+ * a block and over block position in the session.
  */
 export const main = query({
 	args: filterArgs,
@@ -65,9 +67,9 @@ export const main = query({
 			const rs = ratings.filter((r) => r.cue === c);
 			const mine = trials.filter((t) => t.cue === c);
 			const s = summarize(c, mine, rs);
-			// Outcomes of the counted trials only: their shares are exactly the rates.
+			// Outcomes of the decision trials only: their shares are exactly the rates.
 			const countedOutcomes: Record<string, number> = {};
-			for (const t of mine) if (t.inRates) countedOutcomes[t.outcome] = (countedOutcomes[t.outcome] ?? 0) + 1;
+			for (const t of mine) if (isDecision(t)) countedOutcomes[t.outcome] = (countedOutcomes[t.outcome] ?? 0) + 1;
 			return {
 				...lite(s),
 				countedOutcomes,
@@ -93,6 +95,7 @@ export const main = query({
 				trials: trials.length,
 				engaged: trials.filter((t) => t.engaged).length,
 				inRates: trials.filter((t) => t.inRates).length,
+				decisions: trials.filter(isDecision).length,
 				participants: new Set(trials.map((t) => t.participantId)).size,
 				sessions: sessions.size,
 				ratings: ratings.length,
@@ -116,20 +119,20 @@ async function participantNumbers(ctx: QueryCtx, ids: Iterable<Id<'participants'
 }
 
 /**
- * One small row per trial that has a turn-away time or wasted power, for strip plots where every
- * trial is a point you can hover and open as a replay.
+ * One small row per trial that has a turn-away time (decision trials) or wasted power, for strip
+ * plots where every trial is a point you can hover and open as a replay.
  */
 export const points = query({
 	args: filterArgs,
 	handler: async (ctx, f) => {
-		const trials = (await scanTrials(ctx, f)).filter((t) => (t.inRates && t.turnLeft !== null) || t.wasted !== null);
+		const trials = (await scanTrials(ctx, f)).filter((t) => (isDecision(t) && t.turnLeft !== null) || t.wasted !== null);
 		const people = await participantNumbers(ctx, trials.map((t) => t.participantId));
 		return trials.map((t) => ({
 			id: t._id,
 			cue: t.cue,
 			outcome: t.outcome,
-			inRates: t.inRates,
-			turnLeft: t.inRates ? t.turnLeft : null,
+			inRates: isDecision(t),
+			turnLeft: isDecision(t) ? t.turnLeft : null,
 			wasted: t.wasted,
 			total: t.total,
 			p: people.get(t.participantId)?.number ?? null,
@@ -146,12 +149,12 @@ const GRID_FROM = 6, GRID_TO = -3, GRID_STEP = 0.25;
 /**
  * Approach curves (STUDY.md "Series"): for each condition, the mean path distance to the nearest
  * scared ghost (after the end: to the ghosts that were scared when it ran out) and the share of
- * trials still chasing, against time left on the power. Only trials that count toward the rates.
+ * trials still chasing, against time left on the power. Only decision trials (the ones in the rates).
  */
 export const approach = query({
 	args: filterArgs,
 	handler: async (ctx, f) => {
-		const trials = (await scanTrials(ctx, f)).filter((t) => t.inRates);
+		const trials = (await scanTrials(ctx, f)).filter(isDecision);
 		const bins: number[] = [];
 		for (let x = GRID_FROM; x >= GRID_TO - 1e-9; x -= GRID_STEP) bins.push(Math.round(x * 100) / 100);
 		const idx = (left: number) => Math.round((GRID_FROM - left) / GRID_STEP);
@@ -221,7 +224,7 @@ export const recent = query({
 			source: r.source,
 			outcome: r.outcome,
 			engaged: r.engaged,
-			inRates: r.inRates,
+			inRates: isDecision(r),
 			total: r.total,
 			turnLeft: r.turnLeft,
 			wasted: r.wasted,
@@ -276,7 +279,7 @@ export const sessions = query({
 				blocksPlayed: blocks.filter((b) => b.trialCount > 0).length,
 				trials: trials.length,
 				engaged: trials.filter((t) => t.engaged).length,
-				inRates: trials.filter((t) => t.inRates).length,
+				inRates: trials.filter(isDecision).length,
 				fpsMean: fps.length ? Math.round(fps.reduce((a, b) => a + b, 0) / fps.length) : null,
 				fpsMin: fps.length ? Math.round(Math.min(...fps)) : null,
 				lowFps: fps.filter((x) => x < 50).length,
@@ -350,8 +353,9 @@ function spearman(xs: number[], ys: number[]): number | null {
 /**
  * Planted vs recovered, for one simulator run (default: the newest). For every condition: the
  * awareness noise and distraction the simulator planted (convex/sim.ts), and what the real pipeline
- * measured from the bots' play. If the instrument works, well-timed rate falls as planted noise
- * rises (a negative rank correlation) and the flat preset shows no clear differences.
+ * measured from the bots' play. If the instrument works, the well-timed rate falls as planted noise
+ * rises (a negative rank correlation), the too-late and too-early rates rise with it, and the flat
+ * preset shows no clear differences.
  */
 export const simCheck = query({
 	args: { run: v.optional(v.string()) },
@@ -382,17 +386,27 @@ export const simCheck = query({
 			const sm = summarize(cue, trials.filter((t) => t.cue === cue), rs);
 			return {
 				cue, plantedNoise: p.noise, plantedDistraction: p.distraction,
-				inRates: sm.inRates, trials: sm.trials, wellTimed: sm.wellTimed, caught: sm.caught,
-				turnMedian: sm.turnAway.median, distraction: sm.distraction
+				inRates: sm.decisions, trials: sm.trials, participants: sm.decisionParticipants, interval: sm.interval,
+				wellTimed: sm.wellTimed, tooLate: sm.tooLate, tooEarly: sm.tooEarly, caught: sm.caught, catches: sm.catches,
+				turnMedian: sm.turnAway.median, distraction: sm.distraction, clarity: sm.clarity
 			};
 		}).sort((x, y) => x.plantedNoise - y.plantedNoise || x.cue.localeCompare(y.cue));
 		const ok = cues.filter((c) => c.wellTimed.rate !== null);
+		const rhoOf = (get: (c: (typeof ok)[number]) => number | null) => spearman(ok.map((c) => c.plantedNoise), ok.map((c) => get(c) ?? 0));
 		return {
 			runs: runList,
 			run,
 			preset: runs.get(run)!.preset,
 			cues,
-			rho: spearman(ok.map((c) => c.plantedNoise), ok.map((c) => c.wellTimed.rate!)),
+			rho: rhoOf((c) => c.wellTimed.rate),
+			rhos: {
+				wellTimed: rhoOf((c) => c.wellTimed.rate),
+				tooLate: rhoOf((c) => c.tooLate.rate),
+				tooEarly: rhoOf((c) => c.tooEarly.rate),
+				caught: rhoOf((c) => c.caught.rate),
+				turnMedian: rhoOf((c) => c.turnMedian),
+				clarity: rhoOf((c) => c.clarity.mean)
+			},
 			trials: trials.length,
 			participants: new Set(trials.map((t) => t.participantId)).size
 		};

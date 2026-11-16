@@ -33,10 +33,10 @@
 	const cond = $derived(condition(cue));
 	const info = $derived(CUES.find((c) => c.id === cue));
 	const s = $derived(main.cues.find((c) => c.cue === cue) ?? null);
-	const thin = $derived((s?.inRates ?? 0) < ENOUGH);
-	const yard = (id: string) => main.cues.find((c) => c.cue === id && c.inRates >= ENOUGH) ?? null;
+	const thin = $derived((s?.decisions ?? 0) < ENOUGH);
+	const yard = (id: string) => main.cues.find((c) => c.cue === id && c.decisions >= ENOUGH) ?? null;
 
-	function vs(key: 'wellTimed' | 'caught'): string | undefined {
+	function vs(key: 'wellTimed' | 'tooLate' | 'tooEarly'): string | undefined {
 		if (!s || s[key].rate === null) return undefined;
 		const parts = YARDSTICKS.filter((y) => y !== cue).map((y) => {
 			const r = yard(y);
@@ -99,10 +99,13 @@
 		<EmptyState compact icon="chart" title="No power-ups for {cond.name} in this filter yet" />
 	{:else}
 		<div class="stats">
-			<Stat label="Well-timed rate" value={pct(s.wellTimed.rate)} interval="95% {pctRange(s.wellTimed.lo, s.wellTimed.hi)}"
-				sub="{s.wellTimed.k} of {s.wellTimed.n} counted" delta={vs('wellTimed')} info={DEFS.wellTimed} tone={thin ? 'ink' : 'good'} />
-			<Stat label="Caught rate" value={pct(s.caught.rate)} interval="95% {pctRange(s.caught.lo, s.caught.hi)}"
-				sub="{s.caught.k} of {s.caught.n} counted" delta={vs('caught')} info={DEFS.caught} tone={thin ? 'ink' : 'bad'} />
+			<Stat label="Turned away in time" value={pct(s.wellTimed.rate)} interval="95% {pctRange(s.wellTimed.lo, s.wellTimed.hi)}"
+				sub="{s.wellTimed.k} of {s.wellTimed.n} counted" delta={vs('wellTimed')} info="{DEFS.wellTimed} {DEFS.interval}" tone={thin ? 'ink' : 'good'} />
+			<Stat label="Too late" value={pct(s.tooLate.rate)} interval="95% {pctRange(s.tooLate.lo, s.tooLate.hi)}"
+				sub="{s.tooLate.k} of {s.tooLate.n}; caught {s.caught.k} ({pct(s.caught.rate)}, 95% {pctRange(s.caught.lo, s.caught.hi)})" delta={vs('tooLate')} info="{DEFS.tooLate} {DEFS.caught}" tone={thin ? 'ink' : 'bad'} />
+			<Stat label="Too early" value={pct(s.tooEarly.rate)} interval="95% {pctRange(s.tooEarly.lo, s.tooEarly.hi)}"
+				sub="{s.tooEarly.k} of {s.tooEarly.n} counted" delta={vs('tooEarly')} info={DEFS.tooEarly} tone={thin ? 'ink' : 'warn'} />
+			<Stat label="Caught the ghost" value={pct(s.catches.share)} sub="{plural(s.catches.n, 'catch', 'catches')} of {s.inRates} engaged, {s.catches.late} late; in no rate" info={DEFS.catches} />
 			<Stat label="Turn-away, median" value={s.turnAway.median === null ? null : s.turnAway.median.toFixed(2)} unit="s left"
 				sub={s.turnAway.n ? `middle half ${s.turnAway.q25?.toFixed(1)} to ${s.turnAway.q75?.toFixed(1)} s, n ${s.turnAway.n}` : 'no turn-aways'} info={DEFS.turnAway} />
 			<Stat label="Wasted power, mean" value={s.wasted.mean === null ? null : s.wasted.mean.toFixed(1)} unit="s"
@@ -113,8 +116,10 @@
 				sub={s.distractionCI.n ? `${plural(s.distractionCI.n, 'answer')}, 95% ${s.distractionCI.lo?.toFixed(1)}-${s.distractionCI.hi?.toFixed(1)}` : 'no answers yet'} info={DEFS.distraction} />
 		</div>
 		<p class="basis">
-			{plural(s.trials, 'power-up')} from {plural(s.participants, 'participant')}: {s.engaged} engaged, {s.inRates} counted,
-			{plural(s.lateCatches, 'late catch', 'late catches')}, {plural(s.nearMisses, 'near miss', 'near misses')}.
+			{plural(s.trials, 'power-up')} from {plural(s.participants, 'participant')}: {s.engaged} engaged, {s.decisions} counted
+			(decisions, from {plural(s.decisionParticipants, 'participant')}), {plural(s.catches.n, 'catch', 'catches')} ({s.catches.late} late),
+			{plural(s.nearMisses, 'near miss', 'near misses')}. Intervals: {s.interval === 'bootstrap' ? 'clustered by participant' : 'Wilson (under 3 people)'}.{#if s.oldRules}
+				{plural(s.oldRules, 'power-up')} scored by older rules {s.oldRules === 1 ? 'is' : 'are'} left out.{/if}
 		</p>
 
 		<h3>How its power-ups end</h3>
@@ -203,7 +208,7 @@
 	}
 	.stats {
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-columns: repeat(4, minmax(0, 1fr));
 		gap: var(--space-4) var(--space-5);
 		margin-top: var(--space-2);
 	}

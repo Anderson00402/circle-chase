@@ -10,8 +10,11 @@
 		['Chasing', DEFS.chasing],
 		['Engaged', DEFS.engaged],
 		['Counted', DEFS.counted],
-		['Well-timed rate', DEFS.wellTimed],
-		['Caught rate', DEFS.caught],
+		['Turned away in time (well-timed rate)', DEFS.wellTimed],
+		['Too late', DEFS.tooLate],
+		['Caught', DEFS.caught],
+		['Too early', DEFS.tooEarly],
+		['Caught the ghost', DEFS.catches],
 		['95% interval', DEFS.interval],
 		['Not enough data', DEFS.notEnough],
 		['Turn-away time', DEFS.turnAway],
@@ -55,8 +58,11 @@
 			{/each}
 		</dl>
 		<p class="note">
-			Distances are path distances through the maze in tiles. Rates treat power-ups as independent; several come from the same
-			person, so the true uncertainty is somewhat wider than the intervals shown. Full definitions: docs/STUDY.md in the repository.
+			Distances are path distances through the maze in tiles. The headline intervals resample people, not single power-ups,
+			because one person's power-ups are alike; learning curves and the pooled channel view use Wilson intervals and are a little
+			too narrow. Why catches are left out: eating a ghost shows the player was chasing, not whether they knew the time left, and a
+			lucky late catch looks the same as a well-judged one. Why "caught" needs the 5 tiles: a player who turned away in time and
+			was caught later from far away did not misjudge the end. Full definitions: docs/STUDY.md in the repository.
 		</p>
 	</Panel>
 </section>

@@ -1,14 +1,15 @@
 <script lang="ts">
 	/**
 	 * The answer first: the takeaway in words (only as strong as the intervals allow), what it rests
-	 * on, and the ranking of all thirteen conditions on well-timed rate next to caught rate, with the
-	 * references and the timer bar drawn as yardstick lines.
+	 * on, and the ranking of all thirteen conditions on the well-timed rate, with the two ways to
+	 * misjudge the end beside it (too late, of which caught is the worst part, and too early), with
+	 * the references and the timer bar drawn as yardstick lines. Every rate is over decision trials.
 	 */
 	import { CueChip, InfoTip, Panel, Stat } from '#lib/ui/index.ts';
 	import ForestChart, { type ForestColumn, type ForestRef, type ForestRow } from '#lib/charts/ForestChart.svelte';
 	import Legend from '#lib/charts/Legend.svelte';
 	import RoleMark from '#lib/charts/RoleMark.svelte';
-	import { CONDITIONS, condition, plural, ROLE_COLOR, YARDSTICKS } from '#lib/charts/encoding.ts';
+	import { CONDITIONS, condition, pct, plural, ROLE_COLOR, YARDSTICKS } from '#lib/charts/encoding.ts';
 	import { DEFS } from './defs';
 	import { ENOUGH, insight } from './insight';
 	import { orderedRows } from './rows';
@@ -27,25 +28,28 @@
 	const ranked = $derived(rows.filter((r) => !r.thin).length);
 
 	/** Yardstick lines: only for references with enough data, so a thin yardstick never misleads. */
-	function refs(key: 'wellTimed' | 'caught'): ForestRef[] {
+	function refs(key: 'wellTimed' | 'tooLate' | 'tooEarly'): ForestRef[] {
 		return YARDSTICKS.flatMap((id) => {
 			const s = main.cues.find((c) => c.cue === id);
-			if (!s || s.inRates < ENOUGH || s[key].rate === null) return [];
+			if (!s || s.decisions < ENOUGH || s[key].rate === null) return [];
 			const c = condition(id);
 			return [{ id, code: c.code, name: c.name, value: s[key].rate!, color: c.color, dash: c.dash }];
 		});
 	}
 	const columns = $derived<ForestColumn[]>([
-		{ key: 'wellTimed', title: 'Well-timed rate', better: 'higher', refs: refs('wellTimed') },
-		{ key: 'caught', title: 'Caught rate', better: 'lower', refs: refs('caught') }
+		{ key: 'wellTimed', title: 'Turned away in time', better: 'higher', refs: refs('wellTimed') },
+		{ key: 'tooLate', title: 'Too late', better: 'lower', refs: refs('tooLate') },
+		{ key: 'tooEarly', title: 'Too early', better: 'lower', refs: refs('tooEarly') }
 	]);
 	const forestRows = $derived<ForestRow[]>(rows.map((r) => ({
 		id: r.cond.id,
 		cond: r.cond,
 		thin: r.thin,
 		group: r.group,
-		values: { wellTimed: r.s?.wellTimed ?? null, caught: r.s?.caught ?? null },
-		note: r.s ? `${plural(r.s.trials, 'power-up')} in total, ${plural(r.s.participants, 'participant')}` : undefined
+		values: { wellTimed: r.s?.wellTimed ?? null, tooLate: r.s?.tooLate ?? null, tooEarly: r.s?.tooEarly ?? null },
+		note: r.s
+			? `${plural(r.s.decisions, 'counted power-up')} from ${plural(r.s.decisionParticipants, 'participant')}; caught ${pct(r.s.caught.rate)} (part of too late); ${plural(r.s.catches.n, 'catch', 'catches')} not counted; ${r.s.interval === 'bootstrap' ? 'intervals clustered by participant' : 'Wilson intervals (under 3 people)'}`
+			: undefined
 	})));
 	const yardsticksDrawn = $derived(columns[0].refs.length > 0);
 </script>
@@ -71,7 +75,7 @@
 	<div class="basis">
 		<Stat label="Participants" value={main.totals.participants} info={DEFS.participants} sub={plural(main.totals.sessions, 'session')} />
 		<Stat label="Power-ups" value={main.totals.trials} info={DEFS.trial} sub="{main.totals.engaged} engaged" />
-		<Stat label="Counted" value={main.totals.inRates} info={DEFS.counted} sub="behind every rate" />
+		<Stat label="Counted" value={main.totals.decisions} info={DEFS.counted} sub="decisions behind every rate" />
 		<Stat
 			label="Ranked conditions"
 			value={ranked}
@@ -82,10 +86,12 @@
 		/>
 	</div>
 
-	<Panel title="Which signal tells players best" sub="Every condition on the two headline rates, with 95% intervals. Click a row for its details.">
+	<Panel title="Which signal tells players best" sub="Every condition ranked on turning away in time, with the two ways to get the end wrong beside it. 95% intervals clustered by participant. Click a row for its details.">
 		{#snippet actions()}
-			<InfoTip term="Well-timed rate" align="end">{DEFS.wellTimed} {DEFS.interval}</InfoTip>
-			<InfoTip term="Caught rate" align="end">{DEFS.caught}</InfoTip>
+			<InfoTip term="Turned away in time" align="end">{DEFS.wellTimed} {DEFS.interval}</InfoTip>
+			<InfoTip term="Too late" align="end">{DEFS.tooLate} {DEFS.caught}</InfoTip>
+			<InfoTip term="Too early" align="end">{DEFS.tooEarly}</InfoTip>
+			<InfoTip term="Caught the ghost" align="end">{DEFS.catches}</InfoTip>
 		{/snippet}
 		<div class="legend-row">
 			<Legend
@@ -103,7 +109,7 @@
 					{#each columns[0].refs as r, i (r.id)}
 						<span class="yard"><RoleMark shape={condition(r.id).shape} color={r.color} size={10} /> {r.code} {r.name}</span>{i < columns[0].refs.length - 1 ? ', ' : '.'}
 					{/each}
-					A point right of a line beats it on well-timed rate (left of it, on caught rate); the interval says whether that is clear.
+					A point right of a line beats it on turning away in time (left of it, on too late or too early); the interval says whether that is clear.
 				</p>
 			{:else}
 				<p class="yard-note">Yardstick lines appear once no signal, classic blink or the timer bar has {ENOUGH} counted power-ups.</p>
@@ -114,7 +120,7 @@
 			{columns}
 			{selected}
 			{onselect}
-			caption="Well-timed rate and caught rate per condition with 95% Wilson intervals"
+			caption="Turned away in time, too late and too early per condition, with 95% intervals clustered by participant"
 		>
 			{#snippet label(row)}
 				<span class="lab">

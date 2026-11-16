@@ -11,11 +11,13 @@
 import type * as admin from "../admin.js";
 import type * as blocks from "../blocks.js";
 import type * as clips from "../clips.js";
+import type * as counters from "../counters.js";
 import type * as crons from "../crons.js";
 import type * as exports from "../exports.js";
 import type * as http from "../http.js";
 import type * as lib_filters from "../lib/filters.js";
 import type * as lib_pack from "../lib/pack.js";
+import type * as lib_rules from "../lib/rules.js";
 import type * as lib_series from "../lib/series.js";
 import type * as lib_stats from "../lib/stats.js";
 import type * as live from "../live.js";
@@ -39,11 +41,13 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   blocks: typeof blocks;
   clips: typeof clips;
+  counters: typeof counters;
   crons: typeof crons;
   exports: typeof exports;
   http: typeof http;
   "lib/filters": typeof lib_filters;
   "lib/pack": typeof lib_pack;
+  "lib/rules": typeof lib_rules;
   "lib/series": typeof lib_series;
   "lib/stats": typeof lib_stats;
   live: typeof live;

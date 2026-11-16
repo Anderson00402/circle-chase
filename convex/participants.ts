@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import { device, source, sourceFilter } from './validators';
+import { bump } from './counters';
 
 /** Create the participant for this browser (or bot) or refresh it. Returns its id and number. */
 export const ensure = mutation({
@@ -18,6 +19,7 @@ export const ensure = mutation({
 			pid: a.pid, number, source: a.source, firstSeen: now, lastSeen: now, device: a.device,
 			...(a.nickname ? { nickname: a.nickname } : {})
 		});
+		await bump(ctx, a.source, { participants: 1 });
 		return { participantId, number };
 	}
 });

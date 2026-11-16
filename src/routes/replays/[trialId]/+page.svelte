@@ -23,7 +23,8 @@
 	import { indexAt, sceneAt, stepTime } from '#lib/replay/interp.ts';
 	import { targetCache } from '#lib/replay/target.ts';
 	import { applyList, readState, toSearch } from '#lib/replay/list.ts';
-	import { OUTCOME_LABEL, OUTCOME_MEANING, OUTCOME_TONE, describe, ghostName, leftWords, signed, ago } from '#lib/replay/story.ts';
+	import { OUTCOME_MEANING, OUTCOME_TONE, describe, ghostName, leftWords, outcomeLabel, signed, ago } from '#lib/replay/story.ts';
+	import { isDecision, isLateCatch } from '#convex/lib/rules.ts';
 
 	const id = $derived(page.params.trialId ?? '');
 	const trialQ = useQuery(api.trials.get, () => ({ id: id as Id<'trials'> }));
@@ -245,15 +246,15 @@
 	const fmt = (x: number | null | undefined, d = 1) => (x === null || x === undefined ? null : x.toFixed(d));
 	const W = $derived(scene?.maze.W ?? 28);
 	const H = $derived(scene?.maze.H ?? 31);
-	const outcome = $derived((trial?.outcome ?? 'other') as keyof typeof OUTCOME_LABEL);
+	const outcome = $derived((trial?.outcome ?? 'other') as keyof typeof OUTCOME_MEANING);
 	const noClipReason = $derived(
 		!trial ? '' : !trial.engaged && trial.outcome !== 'caught'
-			? `Only power-ups where the player was chasing in the last 3 s, or was caught, are recorded. This one was "${OUTCOME_LABEL[outcome].toLowerCase()}", so only its numbers and distance series were kept.`
+			? `Only power-ups where the player was chasing in the last 3 s, or was caught, are recorded. This one was "${outcomeLabel(outcome).toLowerCase()}", so only its numbers and distance series were kept.`
 			: 'This power-up qualified for a recording, but none was stored (the recording buffer did not reach back far enough, or the save failed). Its numbers and distance series are below.'
 	);
 </script>
 
-<svelte:head><title>Replay{trial ? ` · ${OUTCOME_LABEL[outcome]} · ${cue.name}` : ''} · Circle Chase</title></svelte:head>
+<svelte:head><title>Replay{trial ? ` · ${outcomeLabel(outcome)} · ${cue.name}` : ''} · Circle Chase</title></svelte:head>
 <svelte:window onkeydown={onkey} onhashchange={onhash} />
 
 {#snippet timeline()}
@@ -286,7 +287,7 @@
 		{#if trial}
 			<div class="headline">
 				<h1>
-					<span class="o {OUTCOME_TONE[outcome]}">{OUTCOME_LABEL[outcome]}</span>
+					<span class="o {OUTCOME_TONE[outcome]}">{outcomeLabel(outcome)}</span>
 					<span class="with">with</span>
 					<CueChip cue={cue} size="md" />
 				</h1>
@@ -425,11 +426,11 @@
 						<div><dt>Distance at the turn</dt><dd class="num">{fmt(trial.turnDist) ?? '-'} {trial.turnDist !== null ? 'tiles' : ''}</dd></div>
 						<div><dt>Distance at the end</dt><dd class="num">{fmt(trial.endDist) ?? '-'} {trial.endDist !== null ? 'tiles' : ''}</dd></div>
 						<div><dt>Caught after the end</dt><dd class="num" class:bad={trial.after.caught}>{trial.after.timeToCaught !== null ? fmt(trial.after.timeToCaught) + ' s' : 'no'}</dd></div>
-						<div><dt>Ghosts eaten</dt><dd class="num">{trial.eats.length}{trial.lateCatch ? ' (late catch)' : ''}</dd></div>
+						<div><dt>Ghosts eaten</dt><dd class="num">{trial.eats.length}{isLateCatch(trial) ? ' (late catch)' : ''}</dd></div>
 						<div><dt>Closest danger after</dt><dd class="num">{fmt(trial.after.minDangerDist) ?? '-'} {trial.after.minDangerDist !== null ? 'tiles' : ''}{trial.after.nearMiss ? ' (near miss)' : ''}</dd></div>
 						<div><dt>Reaction <InfoTip term="Reaction">For players still closing in at the end: time from the end until they first moved away.</InfoTip></dt><dd class="num">{trial.reaction !== null ? fmt(trial.reaction, 2) + ' s' : '-'}</dd></div>
 						{#if trial.wasted !== null}<div><dt>Power left unused</dt><dd class="num">{fmt(trial.wasted)} s</dd></div>{/if}
-						<div><dt>Counts in the rates</dt><dd>{trial.inRates ? 'yes' : 'no'}</dd></div>
+						<div><dt>Counts in the rates</dt><dd>{isDecision(trial) ? 'yes' : trial.outcome === 'catch' ? 'no: a catch shows no decision' : (trial.rulesVersion ?? 1) < 2 ? 'no: scored by older rules' : 'no'}</dd></div>
 					</dl>
 				</section>
 

@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // Fill the database with simulated (bot) study sessions by driving /dev/simulate in a headless
-// Chrome, then print the per-condition summary of all bot data next to what was planted.
+// Chrome, then print planted vs recovered for the run (dashboard.simCheck): the headline rates over
+// decision trials with participant-clustered intervals, and their rank correlations with the plant.
 //
 //   node scripts/simulate.mjs --preset planted --participants 24
 //   node scripts/simulate.mjs --preset flat --participants 10 --cues none,timer-bar,heartbeat --seed 7
 //   node scripts/simulate.mjs --fresh ...     delete all bot data first
-//   node scripts/simulate.mjs --summary       only print the summary
+//   node scripts/simulate.mjs --summary       only print the summary (newest run, or --run <id>)
 //
 // Simulated data is recorded as source: bot and never mixed with human data. A bot cannot see a
 // cue: the planted preset only checks that the pipeline can recover a difference we put in.
@@ -78,10 +79,9 @@ try {
 		}
 	}
 
-	// ----- summary: all bot study data, next to the planted table of the newest run -----
-	const [summary, runs] = await page.evaluate(() => Promise.all([window.__simulate.summary(), window.__simulate.runs()]));
-	const run = result ? runs.find((r) => r.run === result.run) : runs[0];
-	printSummary(summary, run, runs);
+	// ----- summary: planted vs recovered for this run (or the newest), as the dashboard computes it -----
+	const check = await page.evaluate((run) => window.__simulate.check(run), result?.run ?? opt('run', undefined));
+	printCheck(check);
 } catch (err) {
 	console.error('simulate:', err instanceof Error ? err.message : err);
 	code = 1;
@@ -90,35 +90,30 @@ try {
 }
 process.exit(code);
 
-function printSummary(summary, run, runs) {
-	const presets = [...new Set(runs.map((r) => r.preset))];
-	console.log(`\nSummary of ALL simulated (bot) study data: ${summary.scanned} trials, runs: ${runs.length} (${presets.join(', ')}).`);
-	if (presets.length > 1) console.log('Note: more than one preset is mixed in this summary; use --fresh for a clean comparison.');
-	const planted = new Map((run?.planted ?? []).map((p) => [p.cue, p]));
+function printCheck(d) {
+	if (!d || !d.run) { console.log('\nNo simulator run found.'); return; }
+	console.log(`\nRun ${d.run} (${d.preset}): ${d.trials} trials from ${d.participants} simulated participants. Other runs: ${d.runs.filter((r) => r.run !== d.run).map((r) => `${r.run} (${r.preset})`).join(', ') || 'none'}.`);
+	console.log('Rates over decision trials (turned away in time, too early, stayed too long, caught); intervals clustered by participant.');
 	const pct = (r) => (r.rate === null ? '  -  ' : `${(r.rate * 100).toFixed(0).padStart(3)}% [${(r.lo * 100).toFixed(0)}-${(r.hi * 100).toFixed(0)}]`);
-	const rows = summary.cues.map((c) => ({ c, p: planted.get(c.cue) }));
-	rows.sort((a, b) => (a.p?.noise ?? 99) - (b.p?.noise ?? 99));
-	const head = ['condition', 'planted noise', 'people', 'in rates', 'well timed [95% CI]', 'caught [95% CI]', 'turn med', 'clarity', 'distr.'];
-	const lines = rows.map(({ c, p }) => [
-		c.cue, p ? p.noise.toFixed(2) : '-', String(c.participants), String(c.inRates), pct(c.wellTimed), pct(c.caught),
-		c.turnAway.median === null ? '-' : c.turnAway.median.toFixed(2), c.clarity.mean === null ? '-' : c.clarity.mean.toFixed(1),
-		c.distraction.mean === null ? '-' : c.distraction.mean.toFixed(1)
+	const head = ['condition', 'planted noise', 'people', 'counted', 'in time [95% CI]', 'too late [95% CI]', 'caught', 'too early [95% CI]', 'catches (late)', 'turn med'];
+	const lines = d.cues.map((c) => [
+		c.cue, c.plantedNoise.toFixed(2), String(c.participants), String(c.inRates), pct(c.wellTimed), pct(c.tooLate),
+		c.caught.rate === null ? '-' : `${(c.caught.rate * 100).toFixed(0)}%`, pct(c.tooEarly), `${c.catches.n} (${c.catches.late})`,
+		c.turnMedian === null ? '-' : c.turnMedian.toFixed(2)
 	]);
 	const w = head.map((h, i) => Math.max(h.length, ...lines.map((l) => l[i].length)));
 	const fmt = (l) => l.map((x, i) => (i === 0 ? x.padEnd(w[i]) : x.padStart(w[i]))).join('  ');
 	console.log(fmt(head));
 	console.log(w.map((n) => '-'.repeat(n)).join('  '));
 	for (const l of lines) console.log(fmt(l));
-	const a = summary.all;
-	console.log(fmt(['all', '', String(a.participants), String(a.inRates), pct(a.wellTimed), pct(a.caught), a.turnAway.median?.toFixed(2) ?? '-', a.clarity.mean?.toFixed(1) ?? '-', a.distraction.mean?.toFixed(1) ?? '-']));
-
-	// Does the recovered order follow the planted one? Spearman rank correlation over conditions.
-	const both = rows.filter((r) => r.p && r.c.wellTimed.rate !== null);
-	if (both.length >= 3 && run?.preset === 'planted') {
-		const noise = both.map((r) => r.p.noise);
-		console.log(`\nSpearman rank correlation with planted noise (planted ranking recovered if strongly negative for well timed and clarity, positive for caught):`);
-		console.log(`  well timed ${spearman(noise, both.map((r) => r.c.wellTimed.rate)).toFixed(2)}, caught ${spearman(noise, both.map((r) => r.c.caught.rate)).toFixed(2)}, clarity ${spearman(noise, both.map((r) => r.c.clarity.mean ?? 0)).toFixed(2)}`);
-	}
+	const r = (x) => (x === null ? '-' : x.toFixed(2));
+	console.log(`\nSpearman rank correlation with planted noise (recovered if in time is strongly negative, too late and too early positive):`);
+	console.log(`  in time ${r(d.rhos.wellTimed)}, too late ${r(d.rhos.tooLate)}, too early ${r(d.rhos.tooEarly)}, caught ${r(d.rhos.caught)}, turn-away median ${r(d.rhos.turnMedian)}, clarity ${r(d.rhos.clarity)}`);
+	// Pairs whose intervals do not overlap on the headline rate (the dashboard's "clear" test).
+	const ok = d.cues.filter((c) => c.inRates >= 10 && c.wellTimed.rate !== null);
+	let clear = 0;
+	for (const a of ok) for (const b of ok) if (a !== b && a.wellTimed.lo > b.wellTimed.hi) clear++;
+	console.log(`  ${clear} of ${(ok.length * (ok.length - 1)) / 2} pairs of conditions differ clearly on the in-time rate.`);
 	console.log('\nSimulated data: bots cannot see a cue. This checks the pipeline, not the cues.');
 }
 

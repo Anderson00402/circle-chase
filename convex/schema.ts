@@ -11,6 +11,7 @@ import { v } from 'convex/values';
 import { clipFields, device, inputType, measures, mode, source, trialContext, viewport } from './validators';
 import { studyInfo } from './study';
 import { simInfo } from './sim';
+import { counterFields } from './counters';
 
 export default defineSchema({
 	/** One per browser (anonymous id kept in localStorage) or per bot. */
@@ -173,5 +174,8 @@ export default defineSchema({
 		updatedAt: v.number()
 	})
 		.index('by_session', ['sessionKey'])
-		.index('by_updated', ['updatedAt'])
+		.index('by_updated', ['updatedAt']),
+
+	/** Running totals per source for the live header, kept by the write mutations (convex/counters.ts). */
+	counters: defineTable(counterFields).index('by_source', ['source'])
 });

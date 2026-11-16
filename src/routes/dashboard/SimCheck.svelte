@@ -44,18 +44,19 @@
 			return clearPairs.k === 0
 				? 'Flat run: every condition was given the same awareness, and no two conditions differ clearly. The pipeline does not invent differences.'
 				: `Flat run: every condition was given the same awareness, yet ${clearPairs.k} of ${clearPairs.of} pairs differ clearly. Some is chance; many would mean the measure is biased by something other than awareness.`;
-		const rho = d.rho;
+		const rho = d.rhos.wellTimed;
 		if (rho === null) return '';
 		const strength = rho <= -0.8 ? 'closely' : rho <= -0.5 ? 'roughly' : rho < 0 ? 'only weakly' : 'not';
-		return `Planted run: the measured well-timed rate follows the planted awareness ${strength} (rank correlation ${rho.toFixed(2)}; -1 would be a perfect recovery). ${clearPairs.k} of ${clearPairs.of} pairs of conditions differ clearly.`;
+		const r = (x: number | null) => (x === null ? '–' : x.toFixed(2));
+		return `Planted run: the measured well-timed rate follows the planted awareness ${strength} (rank correlation ${rho.toFixed(2)}; -1 would be a perfect recovery). Too late ${r(d.rhos.tooLate)}, too early ${r(d.rhos.tooEarly)} (+1 would be perfect for these). ${clearPairs.k} of ${clearPairs.of} pairs of conditions differ clearly on the well-timed rate.`;
 	});
 
 	const rows = $derived<ForestRow[]>((d?.cues ?? []).map((c) => ({
 		id: c.cue,
 		cond: condition(c.cue),
 		thin: c.inRates < ENOUGH,
-		values: { wellTimed: c.wellTimed, caught: c.caught },
-		note: `Planted noise ${c.plantedNoise} s, distraction ${c.plantedDistraction}; measured distraction ${c.distraction.mean ?? '–'} (${c.distraction.n} answers)`
+		values: { wellTimed: c.wellTimed, tooLate: c.tooLate, tooEarly: c.tooEarly },
+		note: `Planted noise ${c.plantedNoise} s, distraction ${c.plantedDistraction}; ${c.inRates} counted from ${plural(c.participants, 'participant')}, caught ${pct(c.caught.rate)}, ${plural(c.catches.n, 'catch', 'catches')} not counted; measured distraction ${c.distraction.mean ?? '–'} (${c.distraction.n} answers)`
 	})));
 	const points = $derived<ScatterPoint[]>((d?.cues ?? []).filter((c) => c.wellTimed.rate !== null).map((c) => {
 		const k = condition(c.cue);
@@ -64,9 +65,10 @@
 			ylo: c.wellTimed.lo! * 100, yhi: c.wellTimed.hi! * 100, color: k.color, shape: k.shape, thin: c.inRates < ENOUGH,
 			info: [
 				['Planted noise', `${c.plantedNoise} s`],
-				['Measured well timed', `${pct(c.wellTimed.rate)} of ${c.wellTimed.n}`],
+				['Turned away in time', `${pct(c.wellTimed.rate)} of ${c.wellTimed.n}`],
 				['95% interval', pctRange(c.wellTimed.lo, c.wellTimed.hi)],
-				['Caught', pct(c.caught.rate)]
+				['Too late', `${pct(c.tooLate.rate)} (caught ${pct(c.caught.rate)})`],
+				['Too early', pct(c.tooEarly.rate)]
 			] as [string, string][]
 		};
 	}));
@@ -102,14 +104,14 @@
 			<div class="two" class:single={flat}>
 				{#if !flat}
 					<div>
-						<h3>Planted noise against measured well-timed rate</h3>
+						<h3>Planted noise against turning away in time</h3>
 						<ScatterPlot
 							{points}
 							xDomain={[0, Math.ceil(maxNoise * 2) / 2]}
 							yDomain={[0, 100]}
 							xLabel="Planted awareness noise (s)"
 							xEnds={['aware', 'guessing']}
-							yLabel="% well timed"
+							yLabel="% turned away in time"
 							xFormat={(v) => v.toFixed(1)}
 							yFormat={(v) => `${v.toFixed(0)}%`}
 							height={300}
@@ -123,10 +125,11 @@
 					<ForestChart
 						{rows}
 						columns={[
-							{ key: 'wellTimed', title: 'Well timed', better: 'higher', refs: [] },
-							{ key: 'caught', title: 'Caught', better: 'lower', refs: [] }
+							{ key: 'wellTimed', title: 'In time', better: 'higher', refs: [] },
+							{ key: 'tooLate', title: 'Too late', better: 'lower', refs: [] },
+							{ key: 'tooEarly', title: 'Too early', better: 'lower', refs: [] }
 						]}
-						caption="Measured well-timed and caught rate per condition, in planted order"
+						caption="Measured turned away in time, too late and too early per condition, in planted order"
 					>
 						{#snippet label(row)}
 							{@const c = d.cues.find((x) => x.cue === row.id)}

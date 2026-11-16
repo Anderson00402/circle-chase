@@ -12,7 +12,7 @@
 	import { Badge, CueChip } from '#lib/ui/index.ts';
 	import { sceneAt } from './interp';
 	import { keyTime, type Moment } from './list';
-	import { OUTCOME_LABEL, OUTCOME_TONE, ago, leftWords } from './story';
+	import { OUTCOME_TONE, ago, leftWords, outcomeLabel } from './story';
 
 	interface Props {
 		m: Moment;
@@ -38,16 +38,16 @@
 		} catch { return null; }
 	});
 	const cue = $derived(cueById(m.cue));
-	const outcome = $derived(m.outcome as keyof typeof OUTCOME_LABEL);
+	const outcome = $derived(m.outcome as keyof typeof OUTCOME_TONE);
 	const stillLabel = $derived(
 		(m.outcome === 'timely-retreat' || m.outcome === 'early-retreat') && m.turnAt !== null ? 'At the turn-away'
-		: m.outcome === 'late-catch' && m.lastEatAt !== null ? 'At the late catch'
+		: (m.outcome === 'catch' || m.outcome === 'late-catch') && m.lastEatAt !== null ? 'At the catch'
 		: 'Just after the switch'
 	);
 	const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 </script>
 
-<a class="card" {href} bind:this={el} aria-label="{OUTCOME_LABEL[outcome]} with {cue.name}, participant {m.participant ?? 'unknown'}{m.source === 'bot' ? ', simulated' : ''}">
+<a class="card" {href} bind:this={el} aria-label="{outcomeLabel(outcome)} with {cue.name}, participant {m.participant ?? 'unknown'}{m.source === 'bot' ? ', simulated' : ''}">
 	<div class="thumb">
 		{#if still}
 			<SceneView scene={still} {cue} fit banners={false} reduceMotion={reduce} label="Still of the moment" />
@@ -58,7 +58,7 @@
 	</div>
 	<div class="body">
 		<div class="row1">
-			<span class="outcome {OUTCOME_TONE[outcome]}">{OUTCOME_LABEL[outcome]}</span>
+			<span class="outcome {OUTCOME_TONE[outcome]}">{outcomeLabel(outcome)}</span>
 			{#if m.source === 'bot'}<Badge tone="sim">Simulated</Badge>{/if}
 		</div>
 		<CueChip {cue} size="sm" />

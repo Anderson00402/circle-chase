@@ -5,38 +5,33 @@
 import type { GhostId, PowerEndReason } from '../game/types';
 
 /**
- * Outcome of one power-up, first that applies (STUDY.md "Outcome of a trial"), plus two classes
- * the study text does not name:
- * - `other`: engaged, but none of the five behaviour classes fits (for example the player ate the
- *   last scared ghost with 2.5 s left, so nothing was left to chase or to flee from).
+ * Outcome of one power-up (STUDY.md "Outcome of a trial"). The rules live in
+ * convex/lib/rules.ts, shared by the tracker and Convex. Two classes the study text adds:
+ * - `other`: engaged, but none of the classes fits.
  * - `interrupted`: the power-up did not run out by itself (death, level clear, a second power dot,
  *   or the player left). There is no end to judge, so it never counts toward the rates.
  */
-export type Outcome =
-	| 'caught'
-	| 'late-catch'
-	| 'overstayed'
-	| 'timely-retreat'
-	| 'early-retreat'
-	| 'not-engaged'
-	| 'other'
-	| 'interrupted';
-
-export const OUTCOMES: readonly Outcome[] = [
-	'caught', 'late-catch', 'overstayed', 'timely-retreat', 'early-retreat', 'not-engaged', 'other', 'interrupted'
-];
+export type { Outcome, ChaseEnd, LegacyOutcome } from '#convex/lib/rules.ts';
+export { OUTCOMES, DECISIONS, RULES_VERSION } from '#convex/lib/rules.ts';
+import type { ChaseEnd, LegacyOutcome, Outcome } from '#convex/lib/rules.ts';
 
 /** Plain words for each outcome, for panels and dashboards. */
 export const OUTCOME_LABEL: Record<Outcome, string> = {
 	caught: 'Caught',
-	'late-catch': 'Late catch',
-	overstayed: 'Overstayed',
-	'timely-retreat': 'Timely retreat',
-	'early-retreat': 'Early retreat',
+	overstayed: 'Stayed too long',
+	'timely-retreat': 'Turned away in time',
+	'early-retreat': 'Turned away too early',
+	catch: 'Caught the ghost',
 	'not-engaged': 'Not engaged',
 	other: 'Other',
 	interrupted: 'Interrupted'
 };
+
+/** Label for any stored outcome, including classes of older rules. */
+export function outcomeLabel(o: Outcome | LegacyOutcome | string): string {
+	if (o === 'late-catch') return 'Late catch (old rules)';
+	return OUTCOME_LABEL[o as Outcome] ?? o;
+}
 
 /** `quit`: the block ended (page closed, game restarted) while the power-up was still on. */
 export type TrialEndReason = PowerEndReason | 'quit';
@@ -103,9 +98,14 @@ export interface TrialMeasures {
 	scaredAtStart: number;
 
 	outcome: Outcome;
+	/** Rules version the outcome was computed with (convex/lib/rules.ts). */
+	rulesVersion: number;
 	/** Chasing at some point in the warning window (the last 3 s of the power). */
 	engaged: boolean;
-	/** Counts toward caught and well-timed rates: engaged, the power ran out by itself, and the player did not leave during the aftermath. */
+	/**
+	 * Eligible for the rates: engaged, the power ran out by itself, and the player did not leave
+	 * during the aftermath. Only the decision outcomes among these count (`isDecision`).
+	 */
 	inRates: boolean;
 
 	eats: EatRecord[];
@@ -114,7 +114,10 @@ export interface TrialMeasures {
 	/** Power left when the last scared ghost was eaten; null if some were still scared at the end. */
 	allEatenLeft: number | null;
 
-	/** Power left when the player stopped closing in for good; negative after the end; null if they never did. */
+	/**
+	 * Power left when the player stopped closing in for good; negative after the end; null if they
+	 * never did. For a last chase that ended in an eat, the power left at the eat.
+	 */
 	turnLeft: number | null;
 	turnDist: number | null;
 	/** Seconds since the power started (game time) of the turn-away moment. */
@@ -123,10 +126,15 @@ export interface TrialMeasures {
 	turnReachable: boolean | null;
 	/** Number of separate chases during the power-up. */
 	chases: number;
+	/**
+	 * How the last chase ended: `turn` (turned away), `eat` (ate the ghost; no chase began after it),
+	 * `open` (still chasing when the trial closed); null when there was no chase.
+	 */
+	lastChaseEnd: ChaseEnd | null;
 
-	/** Path distance to the nearest ghost that just turned dangerous, when the power ran out. */
+	/** Path distance to the nearest ghost that just turned dangerous, when the power ran out ("caught" needs 5 tiles or less). */
 	endDist: number | null;
-	/** Was the player still closing in when the power ran out. */
+	/** Was the player still closing in when the power ran out (the last chase was running: turned with less than 0.2 s left, after the end, or never). */
 	endClosing: boolean | null;
 
 	after: Aftermath;
