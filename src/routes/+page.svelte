@@ -12,6 +12,8 @@
 		ROLE_LABEL
 	} from '#lib/ui/index.ts';
 	import HeroArt from '#lib/ui/HeroArt.svelte';
+	import { useQuery } from 'convex-svelte';
+	import { api } from '#convex/_generated/api.js';
 
 	const listings = cueListings();
 	const ready = listings.filter((c) => c.ready).length;
@@ -23,13 +25,20 @@
 		{ title: 'Replay', text: 'Close calls are saved and can be watched again, frame by frame, with the cue the player saw.' }
 	];
 
-	// TODO(live strip): needs a Convex query returning { trials, participants, playingNow }, e.g.
-	// `api.stats.overview`. Swap these placeholders for `useQuery(api.stats.overview, {})` once it exists.
-	const live: { trials: number | null; participants: number | null; playing: number | null } = {
-		trials: null,
-		participants: null,
-		playing: null
-	};
+	// Live strip: totals of human play, straight from Convex (updates as trials arrive). `now` moves
+	// every 10 s so "playing now" also drops back when people leave.
+	let now = $state(Date.now());
+	$effect(() => {
+		const id = setInterval(() => (now = Date.now()), 10_000);
+		return () => clearInterval(id);
+	});
+	const counters = useQuery(api.live.counters, () => ({ source: 'human' as const, now: Math.floor(now / 10_000) * 10_000 }));
+	const live = $derived({
+		trials: counters.data?.trials ?? null,
+		participants: counters.data?.participants ?? null,
+		playing: counters.data?.nowPlaying ?? null
+	});
+	const fmt = (n: number | null) => (n === null ? null : n.toLocaleString('en-US'));
 </script>
 
 <svelte:head>
@@ -52,7 +61,7 @@
 				<Button size="lg" variant="ghost" href="/dashboard">See the data →</Button>
 			</div>
 			<p class="note">
-				The study takes about 15 minutes. Use <Kbd>←</Kbd><Kbd>↑</Kbd><Kbd>↓</Kbd><Kbd>→</Kbd> or
+				The study takes about 8 minutes (or 20 for the full version). Use <Kbd>←</Kbd><Kbd>↑</Kbd><Kbd>↓</Kbd><Kbd>→</Kbd> or
 				<Kbd>W</Kbd><Kbd>A</Kbd><Kbd>S</Kbd><Kbd>D</Kbd> to move.
 			</p>
 		</div>
@@ -64,8 +73,10 @@
 	<section class="live" aria-labelledby="live-title">
 		<div class="live-head">
 			<h2 id="live-title" class="eyebrow">So far</h2>
-			{#if live.trials === null}
-				<Badge>Not connected yet</Badge>
+			{#if counters.error}
+				<Badge tone="warn">Offline</Badge>
+			{:else if live.trials === null}
+				<Badge>Connecting</Badge>
 			{:else}
 				<Badge tone="live">Live</Badge>
 			{/if}
@@ -73,12 +84,12 @@
 		<div class="live-stats">
 			<Stat
 				label="Power-ups measured"
-				value={live.trials}
+				value={fmt(live.trials)}
 				info="Each power-up a person plays is one trial: from eating the power dot until 3 seconds after it ends."
 				sub="human players only"
 			/>
-			<Stat label="Participants" value={live.participants} sub="anonymous" />
-			<Stat label="Playing now" value={live.playing} tone="accent" sub="in the last minute" />
+			<Stat label="Participants" value={fmt(live.participants)} sub="anonymous" />
+			<Stat label="Playing now" value={fmt(live.playing)} tone="accent" sub="open game pages" />
 		</div>
 	</section>
 
@@ -113,8 +124,8 @@
 
 		<ul class="grid">
 			{#each listings as c (c.id)}
-				<li class="card" class:pending={!c.ready}>
-					<CuePreviewSlot cue={c} />
+				<li class="card" class:pending={!c.ready} data-preview-host>
+					<CuePreviewSlot cue={c} play="hover" />
 					<div class="card-body">
 						<CueChip cue={c} wrap />
 						<p class="tag">{c.tagline}</p>

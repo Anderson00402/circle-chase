@@ -1,28 +1,35 @@
 <script lang="ts">
 	/**
-	 * SLOT for a live cue preview thumbnail (to be built by the preview agent).
+	 * Board-shaped box (19 x 21 tiles) for a cue thumbnail. Fills its container's width.
 	 *
-	 * Today it draws a placeholder: a dark board-shaped tile with the cue's code. To add the real
-	 * preview, either pass it as children (<CuePreviewSlot {cue}><MyPreview {cue} /></CuePreviewSlot>)
-	 * or replace the placeholder branch below. Keep the box: it has the board's aspect ratio
-	 * (19 x 21 tiles) and fills its container's width, so the home grid and the cues gallery need
-	 * no layout change. A preview should draw from game time, pause off-screen, and show a still
-	 * frame under prefers-reduced-motion.
+	 *   <CuePreviewSlot cue={listing} />                      live preview when the cue is registered
+	 *   <CuePreviewSlot cue={listing} play="hover" />          still frame, animates on hover / focus
+	 *   <CuePreviewSlot cue={listing}>...</CuePreviewSlot>     anything else inside the box
+	 *
+	 * A cue whose file is not written yet (no `cue.cue` and not a full Cue) shows a placeholder.
+	 * Hover is detected on the closest `[data-preview-host]` ancestor (the card), or the box itself.
 	 */
 	import type { Snippet } from 'svelte';
 	import type { Cue } from '#lib/game/types.ts';
+	import CuePreview from './CuePreview.svelte';
 	interface Props {
-		cue: Pick<Cue, 'id' | 'code' | 'role'>;
+		/** A listing (`cueListings()`, with `cue` when registered) or a registered Cue. */
+		cue: Pick<Cue, 'id' | 'code' | 'role'> & { cue?: Cue };
 		/** Width / height of the box. Defaults to the board's. */
 		ratio?: number;
+		play?: 'loop' | 'hover' | 'still';
+		fps?: number;
 		children?: Snippet;
 	}
-	let { cue, ratio = 19 / 21, children }: Props = $props();
+	let { cue, ratio = 19 / 21, play = 'loop', fps, children }: Props = $props();
+	const live = $derived<Cue | null>(cue.cue ?? ('tagline' in cue && 'channel' in cue ? (cue as Cue) : null));
 </script>
 
 <div class="slot {cue.role}" style:aspect-ratio={ratio} data-cue-preview={cue.id}>
 	{#if children}
 		{@render children()}
+	{:else if live}
+		<CuePreview cue={live} {play} {fps} />
 	{:else}
 		<svg class="maze" viewBox="0 0 76 84" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
 			<path
@@ -34,7 +41,7 @@
 			/>
 		</svg>
 		<span class="code num" aria-hidden="true">{cue.code}</span>
-		<span class="label">Preview coming</span>
+		<span class="label">Being built</span>
 	{/if}
 </div>
 

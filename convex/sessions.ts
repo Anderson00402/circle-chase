@@ -61,7 +61,8 @@ export const overview = query({
 				participant: p ? { _id: p._id, number: p.number, nickname: p.nickname ?? null } : null,
 				blocks: blocks.map((b) => ({
 					_id: b._id, cue: b.cue, orderIndex: b.orderIndex, startedAt: b.startedAt, endedAt: b.endedAt ?? null,
-					trialCount: b.trialCount, engagedCount: b.engagedCount, deaths: b.deaths, score: b.score
+					trialCount: b.trialCount, engagedCount: b.engagedCount, deaths: b.deaths, score: b.score,
+					practice: b.practice ?? false, abandoned: b.abandoned ?? false
 				}))
 			});
 		}

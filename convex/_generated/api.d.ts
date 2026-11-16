@@ -24,6 +24,7 @@ import type * as presence from "../presence.js";
 import type * as ratings from "../ratings.js";
 import type * as sessions from "../sessions.js";
 import type * as sim from "../sim.js";
+import type * as study from "../study.js";
 import type * as summary from "../summary.js";
 import type * as trials from "../trials.js";
 import type * as validators from "../validators.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   ratings: typeof ratings;
   sessions: typeof sessions;
   sim: typeof sim;
+  study: typeof study;
   summary: typeof summary;
   trials: typeof trials;
   validators: typeof validators;

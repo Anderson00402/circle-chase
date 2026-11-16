@@ -1,7 +1,7 @@
 /** Top-level navigation, shared by the top bar and the home page. Change links here only. */
 
-/** Where "Free play" goes. The play page lets the player switch cue from there. */
-export const FREE_PLAY_HREF = '/play/timer-bar';
+/** Where "Free play" goes: the play page, which opens the last condition played (timer bar at first). */
+export const FREE_PLAY_HREF = '/play';
 
 export interface NavItem {
 	href: string;

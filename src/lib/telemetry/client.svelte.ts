@@ -35,6 +35,10 @@ export interface TelemetryContext {
 	/** A study flow passes its own session (and the block's position); free play makes one per tab. */
 	session?: { key: string; cueOrder: string[] };
 	blockIndex?: number;
+	/** Study warm-up round: the block (and its trials) are stored with `practice: true`. */
+	practice?: boolean;
+	/** A study flow's own block key (so it can rate and annotate the block later). Default: a new one. */
+	blockKey?: string;
 }
 
 export interface RecentTrial {
@@ -125,7 +129,7 @@ function uid(): string {
 	try { return crypto.randomUUID(); } catch { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 }
 
-function detectSource(): Source {
+export function detectSource(): Source {
 	try {
 		if (navigator.webdriver) return 'bot';
 		if (new URLSearchParams(location.search).has('bot')) return 'bot';
@@ -133,7 +137,8 @@ function detectSource(): Source {
 	return 'human';
 }
 
-function participantId(source: Source): string {
+/** The anonymous participant id of this browser (made on first use). */
+export function participantId(source: Source): string {
 	const key = source === 'bot' ? 'cc.pid.bot' : 'cc.pid';
 	const s = storage();
 	let pid = s?.getItem(key) ?? null;
@@ -181,7 +186,7 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 	const source = ctx.source ?? detectSource();
 	const pid = participantId(source);
 	const sessionKey = ctx.session?.key ?? freePlaySession(ctx.mode, false).key;
-	const blockKey = uid();
+	const blockKey = ctx.blockKey ?? uid();
 	const instance = uid();
 	const sound = ctx.sound ?? (() => true);
 
@@ -281,7 +286,7 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 			key: sessionKey, pid, mode: ctx.mode, source, cueOrder: ctx.session?.cueOrder ?? [], appVersion: APP_VERSION,
 			difficulty: ctx.difficulty ?? 'normal', sound: sound(), reducedMotion: reducedMotion(), inputType: inputLabel(inputSeen), viewport: viewport()
 		});
-		enqueue('blockStart', { key: blockKey, sessionKey, cue: ctx.cue, orderIndex: blockIndex });
+		enqueue('blockStart', { key: blockKey, sessionKey, cue: ctx.cue, orderIndex: blockIndex, ...(ctx.practice ? { practice: true } : {}) });
 	}
 
 	// ----- measuring -----

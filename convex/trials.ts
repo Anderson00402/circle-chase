@@ -27,13 +27,14 @@ export const save = mutation({
 		const now = Date.now();
 		const trialId = await ctx.db.insert('trials', {
 			...trial, key, participantId: s.participantId, sessionId: s._id, blockId: b._id, cue: b.cue,
-			mode: s.mode, source: s.source, blockIndex: b.orderIndex, createdAt: now
+			mode: s.mode, source: s.source, blockIndex: b.orderIndex, createdAt: now,
+			...(b.practice ? { practice: true } : {})
 		});
 		let clipId = null;
 		if (clip) {
 			clipId = await ctx.db.insert('clips', {
 				...clip, trialId, sessionId: s._id, participantId: s.participantId, mode: s.mode, source: s.source,
-				outcome: trial.outcome, createdAt: now, size: clip.data.byteLength
+				outcome: trial.outcome, createdAt: now, size: clip.data.byteLength, ...(b.practice ? { practice: true } : {})
 			});
 			await ctx.db.patch(trialId, { clipId });
 		}
@@ -73,7 +74,8 @@ export const list = query({
 				f.mode ? q.eq(q.field('mode'), f.mode) : true,
 				f.cue ? q.eq(q.field('cue'), f.cue) : true,
 				f.outcome ? q.eq(q.field('outcome'), f.outcome) : true,
-				f.engagedOnly ? q.eq(q.field('engaged'), true) : true
+				f.engagedOnly ? q.eq(q.field('engaged'), true) : true,
+				f.includePractice ? true : q.neq(q.field('practice'), true)
 			))
 			.paginate(f.paginationOpts);
 		return { ...page, page: page.page.map(light) };

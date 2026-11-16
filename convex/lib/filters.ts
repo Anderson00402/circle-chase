@@ -16,7 +16,9 @@ export const filterArgs = {
 	from: v.optional(v.number()),
 	to: v.optional(v.number()),
 	participantId: v.optional(v.id('participants')),
-	sessionId: v.optional(v.id('sessions'))
+	sessionId: v.optional(v.id('sessions')),
+	/** Include study warm-up trials (left out by default). */
+	includePractice: v.optional(v.boolean())
 };
 const filterObject = v.object(filterArgs);
 export type Filter = Infer<typeof filterObject>;
@@ -28,6 +30,7 @@ export function matches(t: Doc<'trials'>, f: Filter): boolean {
 		&& (!f.cue || t.cue === f.cue)
 		&& (!f.participantId || t.participantId === f.participantId)
 		&& (!f.sessionId || t.sessionId === f.sessionId)
+		&& (!!f.includePractice || !t.practice)
 		&& t.createdAt >= (f.from ?? 0)
 		&& t.createdAt <= (f.to ?? Number.MAX_SAFE_INTEGER);
 }

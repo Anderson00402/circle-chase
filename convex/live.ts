@@ -13,9 +13,10 @@ export const counters = query({
 	handler: async (ctx, a) => {
 		const src = a.source ?? 'human';
 		const now = a.now ?? Date.now();
-		const trials = src === 'all'
+		const trials = (src === 'all'
 			? await ctx.db.query('trials').withIndex('by_created').collect()
-			: await ctx.db.query('trials').withIndex('by_source_created', (i) => i.eq('source', src)).collect();
+			: await ctx.db.query('trials').withIndex('by_source_created', (i) => i.eq('source', src)).collect()
+		).filter((t) => !t.practice);
 		const sessions = src === 'all'
 			? await ctx.db.query('sessions').collect()
 			: await ctx.db.query('sessions').withIndex('by_source_started', (i) => i.eq('source', src)).collect();

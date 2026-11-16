@@ -9,6 +9,7 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { clipFields, device, inputType, measures, mode, source, trialContext, viewport } from './validators';
+import { studyInfo } from './study';
 import { simInfo } from './sim';
 
 export default defineSchema({
@@ -44,6 +45,8 @@ export default defineSchema({
 		reducedMotion: v.boolean(),
 		inputType,
 		viewport,
+		/** Guided study sessions only: length, sound check, counterbalancing row (convex/study.ts). */
+		study: v.optional(studyInfo),
 		blocks: v.number(),
 		trials: v.number(),
 		/** Simulated sessions only: preset, planted levels and the bot's traits (convex/sim.ts). */
@@ -68,7 +71,14 @@ export default defineSchema({
 		trialCount: v.number(),
 		engagedCount: v.number(),
 		deaths: v.number(),
-		score: v.number()
+		score: v.number(),
+		/** Study warm-up round (orderIndex -1): kept, but left out of summaries, counters, lists and exports by default. */
+		practice: v.optional(v.boolean()),
+		/** Study mode: how often the game was paused during the block, and for how long in total (s). */
+		pauses: v.optional(v.number()),
+		pausedSeconds: v.optional(v.number()),
+		/** Study mode: the block was left unfinished (refresh, closed tab) and the round was played again. */
+		abandoned: v.optional(v.boolean())
 	})
 		.index('by_key', ['key'])
 		.index('by_session', ['sessionId', 'orderIndex'])
@@ -86,6 +96,8 @@ export default defineSchema({
 		blockIndex: v.number(),
 		createdAt: v.number(),
 		clipId: v.optional(v.id('clips')),
+		/** Copied from the block: a study warm-up trial (see blocks.practice). */
+		practice: v.optional(v.boolean()),
 		...trialContext,
 		...measures
 	})
@@ -108,6 +120,7 @@ export default defineSchema({
 		outcome: v.string(),
 		createdAt: v.number(),
 		size: v.number(),
+		practice: v.optional(v.boolean()),
 		...clipFields
 	})
 		.index('by_trial', ['trialId'])
@@ -132,6 +145,8 @@ export default defineSchema({
 		clearest: v.optional(v.string()),
 		leastClear: v.optional(v.string()),
 		comment: v.optional(v.string()),
+		/** After a block: "What told you the power was ending?" in the player's words (optional). */
+		note: v.optional(v.string()),
 		mode,
 		source,
 		createdAt: v.number()

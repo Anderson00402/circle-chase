@@ -7,15 +7,21 @@ const scale = (n: number, what: string) => {
 
 /** After a block: clarity and distraction, 1-7 (idempotent by `key`; a second save updates). */
 export const saveBlock = mutation({
-	args: { key: v.string(), blockKey: v.string(), clarity: v.number(), distraction: v.number() },
+	args: {
+		key: v.string(), blockKey: v.string(), clarity: v.number(), distraction: v.number(),
+		/** "What told you the power was ending?" (optional free text, kept to 300 characters). */
+		note: v.optional(v.string())
+	},
 	handler: async (ctx, a) => {
 		scale(a.clarity, 'clarity');
 		scale(a.distraction, 'distraction');
 		const b = await ctx.db.query('blocks').withIndex('by_key', (i) => i.eq('key', a.blockKey)).unique();
 		if (!b) throw new Error('unknown block');
 		const old = await ctx.db.query('ratings').withIndex('by_key', (i) => i.eq('key', a.key)).unique();
-		if (old) { await ctx.db.patch(old._id, { clarity: a.clarity, distraction: a.distraction }); return old._id; }
+		const note = a.note?.trim() ? { note: a.note.trim().slice(0, 300) } : {};
+		if (old) { await ctx.db.patch(old._id, { clarity: a.clarity, distraction: a.distraction, ...note }); return old._id; }
 		return ctx.db.insert('ratings', {
+			...note,
 			key: a.key, kind: 'block', sessionId: b.sessionId, participantId: b.participantId, blockId: b._id, cue: b.cue,
 			clarity: a.clarity, distraction: a.distraction, mode: b.mode, source: b.source, createdAt: Date.now()
 		});

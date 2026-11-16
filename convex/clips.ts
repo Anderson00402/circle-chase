@@ -43,7 +43,8 @@ export const moments = query({
 			.order('desc')
 			.filter((q) => q.and(
 				src === 'all' ? true : q.eq(q.field('source'), src),
-				a.outcome ? q.eq(q.field('outcome'), a.outcome) : true
+				a.outcome ? q.eq(q.field('outcome'), a.outcome) : true,
+				q.neq(q.field('practice'), true)
 			))
 			.paginate(a.paginationOpts);
 		return { ...page, page: page.page.map(card) };

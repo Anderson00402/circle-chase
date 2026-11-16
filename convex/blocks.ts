@@ -3,7 +3,11 @@ import { mutation } from './_generated/server';
 
 /** Open a block: one cue played in a session (idempotent by `key`). */
 export const start = mutation({
-	args: { key: v.string(), sessionKey: v.string(), cue: v.string(), orderIndex: v.number() },
+	args: {
+		key: v.string(), sessionKey: v.string(), cue: v.string(), orderIndex: v.number(),
+		/** Study warm-up round: its trials are kept but left out of results by default. */
+		practice: v.optional(v.boolean())
+	},
 	handler: async (ctx, a) => {
 		const old = await ctx.db.query('blocks').withIndex('by_key', (i) => i.eq('key', a.key)).unique();
 		if (old) return { blockId: old._id };
@@ -12,7 +16,8 @@ export const start = mutation({
 		const now = Date.now();
 		const blockId = await ctx.db.insert('blocks', {
 			key: a.key, sessionId: s._id, participantId: s.participantId, cue: a.cue, orderIndex: a.orderIndex,
-			mode: s.mode, source: s.source, startedAt: now, trialCount: 0, engagedCount: 0, deaths: 0, score: 0
+			mode: s.mode, source: s.source, startedAt: now, trialCount: 0, engagedCount: 0, deaths: 0, score: 0,
+			...(a.practice ? { practice: true } : {})
 		});
 		await ctx.db.patch(s._id, { blocks: s.blocks + 1, lastActiveAt: now });
 		return { blockId };
