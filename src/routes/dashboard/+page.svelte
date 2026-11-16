@@ -55,8 +55,14 @@
 	});
 
 	const simulated = $derived(source === 'bot');
+	// A minute clock for the run list ("still running" means written to in the last two minutes).
+	let minute = $state(Math.floor(Date.now() / 60_000) * 60_000);
+	$effect(() => {
+		const t = setInterval(() => (minute = Math.floor(Date.now() / 60_000) * 60_000), 30_000);
+		return () => clearInterval(t);
+	});
 	const facets = useQuery(api.dashboard.facets, () => ({
-		source, ...(mode !== 'both' ? { mode } : {}), ...(simulated && run ? { run } : {})
+		source, ...(mode !== 'both' ? { mode } : {}), ...(simulated && run ? { run } : {}), ...(simulated ? { now: minute } : {})
 	}));
 	const runs = $derived<RunInfo[]>(facets.data?.runs ?? []);
 	const otherPlay = $derived(facets.data?.other ?? { sessions: 0, trials: 0, lastAt: 0 });
@@ -125,7 +131,7 @@
 	const runOptions = $derived([
 		...runs.map((r) => ({
 			value: r.run,
-			label: `${presetWord(r.preset)} run, ${plural(r.sessions, 'player')}, ${plural(r.trials, 'power-up')}, ${ago(r.startedAt, now)}${r.complete ? '' : ' (unfinished)'}`
+			label: `${presetWord(r.preset)} run, ${plural(r.sessions, 'player')}, ${plural(r.trials, 'power-up')}, ${ago(r.startedAt, now)}${r.complete ? '' : ' (still running)'}`
 		})),
 		...(otherPlay.trials ? [{ value: OTHER_RUN, label: `Other simulated play, ${plural(otherPlay.trials, 'power-up')}` }] : [])
 	]);
@@ -276,7 +282,7 @@
 				{:else if runInfo}
 					One simulator run: {presetWord(runInfo.preset).toLowerCase()}
 					{runInfo.preset === 'flat' ? '(every condition given the same awareness)' : '(each condition given its own awareness level)'},
-					{plural(runInfo.sessions, 'simulated player')}, {plural(runInfo.trials, 'power-up')}{runInfo.complete ? '' : ', unfinished'}.
+					{plural(runInfo.sessions, 'simulated player')}, {plural(runInfo.trials, 'power-up')}{runInfo.complete ? '' : ', still running'}.
 				{/if}
 				{DEFS.simulated}
 			</p>

@@ -484,11 +484,13 @@ export const sessions = query({
 
 /**
  * What the filter controls offer: trial counts per source and mode (from the session counters, so
- * this stays cheap), the participants that have trials, and the simulator runs (newest first; a
- * run is complete when every session in it played every planned condition).
+ * this stays cheap), the participants that have trials, and the simulator runs (newest first). A
+ * run counts as complete once nothing has been written to it for two minutes: simulated players
+ * may quit early on purpose, and the planned size is not stored, so "still being written" is the
+ * only sure sign of an unfinished run. `now` (ms) comes from the page so the query stays cached.
  */
 export const facets = query({
-	args: { source: v.optional(sourceFilter), mode: v.optional(mode), run: v.optional(v.string()) },
+	args: { source: v.optional(sourceFilter), mode: v.optional(mode), run: v.optional(v.string()), now: v.optional(v.number()) },
 	handler: async (ctx, a) => {
 		const sessions = await ctx.db.query('sessions').collect();
 		const counts = { human: { study: 0, arcade: 0 }, bot: { study: 0, arcade: 0 } };
@@ -504,7 +506,6 @@ export const facets = query({
 					r.trials += s.trials;
 					r.startedAt = Math.min(r.startedAt, s.startedAt);
 					r.lastAt = Math.max(r.lastAt, s.lastActiveAt);
-					r.complete &&= s.blocks >= s.cueOrder.length;
 					runs.set(s.sim.run, r);
 				} else {
 					other.sessions++;
@@ -523,6 +524,8 @@ export const facets = query({
 			if (p) participants.push({ id: p._id, number: p.number, nickname: p.nickname ?? null, source: p.source, trials });
 		}
 		participants.sort((x, y) => x.number - y.number);
+		const now = a.now ?? Date.now();
+		for (const r of runs.values()) r.complete = now - r.lastAt > 120_000;
 		return { counts, participants, runs: [...runs.values()].sort((x, y) => y.startedAt - x.startedAt), other };
 	}
 });
