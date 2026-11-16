@@ -178,7 +178,11 @@ export function auditTrial(scenes: Scene[], trial: AuditTrial): AuditResult {
 		if (ran && !endSeen) {
 			endSeen = true;
 			// Nothing becomes a chase after the end: approaches that are not one by now are dropped.
-			for (const g of [...going.values()]) if (!g.chase) { near(-g.low, MIN_GAIN, '3 tiles of own approach'); going.delete(g.ghost); }
+			for (const g of [...going.values()]) {
+				// How close to 3 tiles each approach was when the power ran out decides whether it is a chase at all.
+				near(-g.low, MIN_GAIN, '3 tiles of own approach by the end of the power');
+				if (!g.chase) going.delete(g.ghost);
+			}
 			for (const g of f.ghosts) {
 				if (g.mode !== 'active' || Math.abs(g.revertedAt - f.power.endedAt) > 0.011) continue;
 				const d = pathBetween(scene.maze, f.player.x, f.player.y, g.x, g.y);
