@@ -1,12 +1,12 @@
 import type { Cue, CueContext } from '../types';
-import { CALM, expiredNow, HOT, justExpired, LOW, powered, WARN } from './shared-screen';
+import { CALM, expiredNow, HOT, justExpired, powered, WARN } from './shared-screen';
 
 /**
  * Heartbeat: while powered, the floor along the edges of the board glows and beats "lub-dub".
  *
  * The tempo has three clear steps rather than a smooth ramp, so a player can tell them apart:
  *   more than 4 s left   60 per minute, pale ice     (calm)
- *   4 s to 2 s left      90 per minute, amber        (getting low)
+ *   4 s to 2 s left      90 per minute, orange       (getting low)
  *   last 2 s            150 per minute, heart red    (about to end)
  * Beats are counted back from the end of the power, not forward from its start, so whatever the
  * length the last 2 s always hold the same five fast beats and the fifth, a single big one, lands
@@ -18,10 +18,14 @@ import { CALM, expiredNow, HOT, justExpired, LOW, powered, WARN } from './shared
  */
 
 /** Tempo steps: beats this far apart (s) while the beat itself is at or below `upTo` seconds left. */
+/** Each step is also brighter and reaches further in from the edge (`depth`, tiles), so the steps
+ * differ by more than their colour and stay apart on every maze theme (amber on the gold maze). */
+/** The middle step: an orange redder than the shared amber, so it stands apart from the gold maze's own glow. */
+const MID = '#ff7f3f';
 const STEPS = [
-	{ upTo: WARN, period: 0.4, color: HOT, base: 0.36, peak: 1, dub: 0.13, rm: 0.9 },
-	{ upTo: 4, period: 2 / 3, color: LOW, base: 0.3, peak: 0.85, dub: 0.2, rm: 0.6 },
-	{ upTo: Infinity, period: 1, color: CALM, base: 0.3, peak: 0.8, dub: 0.24, rm: 0.4 }
+	{ upTo: WARN, period: 0.4, color: HOT, base: 0.5, peak: 1, dub: 0.13, rm: 0.95, depth: 3.6 },
+	{ upTo: 4, period: 2 / 3, color: MID, base: 0.42, peak: 1, dub: 0.2, rm: 0.7, depth: 3 },
+	{ upTo: Infinity, period: 1, color: CALM, base: 0.24, peak: 0.7, dub: 0.24, rm: 0.35, depth: 2.3 }
 ];
 type Step = (typeof STEPS)[number];
 const EPS = 1e-6;
@@ -93,7 +97,7 @@ export const heartbeat: Cue = {
 	name: 'Heartbeat',
 	tagline: 'The edges of the board beat like a heart that races as the power runs out.',
 	description:
-		'While you are powered, the floor along the edges of the board glows and beats like a heart, with a low thump you can hear. It beats slow and pale at first, faster and amber below 4 seconds, and races in red for the last 2 seconds; one big beat lands as the power ends.',
+		'While you are powered, the floor along the edges of the board glows and beats like a heart, with a low thump you can hear. It beats slow and pale at first; below 4 seconds it beats faster in orange and the glow reaches further in; in the last 2 seconds it races in red, deeper still. One big beat lands as the power ends.',
 	channel: 'screen',
 	baseFlash: false,
 
@@ -105,7 +109,7 @@ export const heartbeat: Cue = {
 			const fadeIn = k.clamp(power.elapsed / 0.25);
 			if (k.reduceMotion) {
 				// Steady level per step, creeping up a little with the power used so it never sits still.
-				light(k, 2.6, now.color, fadeIn * (now.rm + 0.1 * (1 - power.frac)));
+				light(k, now.depth, now.color, fadeIn * (now.rm + 0.05 * (1 - power.frac)));
 				return;
 			}
 			// The latest beat (the smallest beat time not below `left`) and its echo.
@@ -119,7 +123,7 @@ export const heartbeat: Cue = {
 				const race = step === STEPS[0], fade = race ? 0.08 : 0.11, since = b - left;
 				pulse = Math.max(shape(since, fade), race ? 0 : 0.45 * shape(since - step.dub, fade));
 			}
-			light(k, 2.6, now.color, fadeIn * (now.base + (step.peak - now.base) * pulse));
+			light(k, now.depth, now.color, fadeIn * (now.base + (step.peak - now.base) * pulse));
 		} else if (justExpired(k, FINAL)) {
 			// The final beat: one big red pulse that reaches deeper in, then nothing.
 			const t = power.sinceExpired;
