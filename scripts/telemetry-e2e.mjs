@@ -18,7 +18,8 @@ const PATH = '/play/timer-bar?mode=study';
 const stamp = () => new Date().toISOString().slice(11, 19);
 const http = new ConvexHttpClient(CONVEX);
 
-if (!args.includes('--keep')) {
+// Keeps existing data unless asked: --fresh deletes all simulated data first.
+if (args.includes('--fresh')) {
 	let r = await http.mutation(api.admin.deleteBotData, { confirm: 'delete bot data' });
 	console.log('cleared old bot data', r.deleted);
 	while (r.continuing) { await new Promise((ok) => setTimeout(ok, 500)); r = { continuing: false }; }
