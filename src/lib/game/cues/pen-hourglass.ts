@@ -187,6 +187,31 @@ function drawGlass(k: CueContext, frac: number, hot: number, beat: number, done:
 	ctx.fill();
 }
 
+/**
+ * The pen door, drawn back over the glass so the player can still see where wisps come out: a
+ * dark notch cut through the cap and the door's own glowing bar in it.
+ */
+function drawDoor(k: CueContext, alpha = 1) {
+	const { ctx, T } = k, d = k.geo.door;
+	if (!(d.w > 0 && d.h > 0)) return;
+	const across = d.w >= d.h, h = Math.max(1.5, T * 0.14), pad = T * 0.12, gap = T * 0.32;
+	ctx.save();
+	ctx.globalAlpha *= alpha;
+	ctx.fillStyle = k.colors.bg;
+	ctx.beginPath();
+	if (across) ctx.roundRect(d.x - pad, d.cy - gap, d.w + 2 * pad, 2 * gap, gap * 0.5);
+	else ctx.roundRect(d.cx - gap, d.y - pad, 2 * gap, d.h + 2 * pad, gap * 0.5);
+	ctx.fill();
+	ctx.fillStyle = k.colors.door;
+	ctx.shadowColor = k.colors.door;
+	ctx.shadowBlur = T * 0.3 * k.dpr;
+	ctx.beginPath();
+	if (across) ctx.roundRect(d.x - T * 0.08, d.cy - h / 2, d.w + T * 0.16, h, h / 2);
+	else ctx.roundRect(d.cx - h / 2, d.y - T * 0.08, h, d.h + T * 0.16, h / 2);
+	ctx.fill();
+	ctx.restore();
+}
+
 function drawEnd(k: CueContext) {
 	const { T } = k;
 	const t = k.power.sinceExpired, D = 0.6;
@@ -195,6 +220,7 @@ function drawEnd(k: CueContext) {
 	k.ctx.globalAlpha = 1 - k.ease.inQuad(u);
 	drawGlass(k, 0, 1, 0, true);
 	k.ctx.globalAlpha = 1;
+	drawDoor(k, 1 - k.ease.inQuad(u));
 	// The glass flashes once as the last grain lands.
 	k.glow(b.cx, b.cy, b.w * (0.6 + 0.4 * u), '#ffffff', 0.8 * (1 - u));
 	if (!k.reduceMotion) {
@@ -209,7 +235,7 @@ export const penHourglass: Cue = {
 	name: 'Pen hourglass',
 	tagline: 'The pen in the middle becomes an hourglass that runs out with the power.',
 	description:
-		'When you take a power dot the pen in the middle turns into an hourglass full of gold sand, and the top runs down at an even pace. In the last 2 seconds the glass glows white hot and the whole pen throbs; the last grain drops as the power ends and the glass flashes.',
+		'When you take a power dot the pen in the middle turns into an hourglass full of gold sand, and the top runs down at an even pace. In the last 2 seconds the glass glows white hot and the whole pen throbs; the last grain drops as the power ends and the glass flashes. The pen door stays visible on top.',
 	channel: 'maze',
 	baseFlash: false,
 
@@ -219,6 +245,7 @@ export const penHourglass: Cue = {
 			// A quick flip when the power starts (a squash, so it stays inside the pen block).
 			const e = power.elapsed, FLIP = 0.35;
 			const flipping = !k.reduceMotion && e < FLIP;
+			ctx.save();
 			if (flipping) {
 				const b = penBlock(k), s = Math.cos(Math.PI * (1 - k.ease.outCubic(e / FLIP)));
 				ctx.translate(b.cx, b.cy);
@@ -226,6 +253,8 @@ export const penHourglass: Cue = {
 				ctx.translate(-b.cx, -b.cy);
 			}
 			drawGlass(k, power.frac, hotness(k), finalBeat(k), false);
+			ctx.restore();
+			drawDoor(k);
 			return;
 		}
 		drawEnd(k);
