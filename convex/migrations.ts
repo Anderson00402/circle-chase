@@ -71,3 +71,28 @@ export const slimTrialsLeft = internalQuery({
 		return { checked: Math.min(n, limit), left };
 	}
 });
+
+/**
+ * Give `runNumber` to the participants that already played through the run console (a session
+ * with `run` info), per source in order of first visit, after any run numbers already given. Their
+ * `number` and the sessions' stored `run.participantNumber` stay as they were. Safe to run again.
+ */
+export const numberRunParticipants = mutation({
+	args: { confirm: v.literal('number run participants') },
+	handler: async (ctx) => {
+		const given: Record<string, number> = {};
+		for (const src of ['human', 'bot'] as const) {
+			const people = await ctx.db.query('participants').withIndex('by_source', (i) => i.eq('source', src)).collect();
+			let next = people.reduce((m, p) => Math.max(m, p.runNumber ?? 0), 0);
+			given[src] = 0;
+			for (const p of people) {
+				if (p.runNumber !== undefined) continue;
+				const sessions = await ctx.db.query('sessions').withIndex('by_participant', (i) => i.eq('participantId', p._id)).collect();
+				if (!sessions.some((s) => s.run)) continue;
+				await ctx.db.patch(p._id, { runNumber: ++next });
+				given[src]++;
+			}
+		}
+		return given;
+	}
+});

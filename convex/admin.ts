@@ -7,10 +7,12 @@ import { internal } from './_generated/api';
 import type { TableNames } from './_generated/dataModel';
 import { internalMutation, mutation, type MutationCtx } from './_generated/server';
 import { RULES_VERSION, rescore } from './lib/rules';
+import type { Doc, Id } from './_generated/dataModel';
+import { rowOf } from './lib/digest';
 
-const TABLES: TableNames[] = ['clips', 'trials', 'ratings', 'blocks', 'presence', 'sessions', 'participants', 'counters'];
+const TABLES: TableNames[] = ['clips', 'trialSeries', 'trialDigests', 'trials', 'ratings', 'blocks', 'presence', 'sessions', 'participants', 'counters'];
 /** Clips are the heavy rows (10-15 KB); keep a batch well inside one mutation's limits. */
-const BATCH: Partial<Record<TableNames, number>> = { clips: 200 };
+const BATCH: Partial<Record<TableNames, number>> = { clips: 200, trialDigests: 20 };
 const DEFAULT_BATCH = 1000;
 
 async function purge(ctx: MutationCtx, onlyBots: boolean) {
@@ -80,6 +82,7 @@ export const reclassifyStep = internalMutation({
 	handler: async (ctx, a) => {
 		const page = await ctx.db.query('trials').paginate({ numItems: RECLASSIFY_BATCH, cursor: a.cursor });
 		let { seen, changed, old } = a;
+		const touched = new Map<Id<'sessions'>, Doc<'trials'>[]>();
 		for (const t of page.page) {
 			seen++;
 			const r = rescore(t);
@@ -87,12 +90,20 @@ export const reclassifyStep = internalMutation({
 			if (r.outcome === t.outcome && r.rulesVersion === t.rulesVersion && r.wasted === t.wasted) continue;
 			changed++;
 			await ctx.db.patch(t._id, r);
+			touched.set(t.sessionId, [...(touched.get(t.sessionId) ?? []), { ...t, ...r } as Doc<'trials'>]);
 			if (t.clipId) {
 				const clip = await ctx.db.get(t.clipId);
 				if (clip && (clip.outcome !== r.outcome || clip.numbers.outcome !== r.outcome)) {
 					await ctx.db.patch(clip._id, { outcome: r.outcome, numbers: { ...clip.numbers, outcome: r.outcome } });
 				}
 			}
+		}
+		// The dashboard's digests: one write per session touched, keeping each trial's stored curve.
+		for (const [sessionId, ts] of touched) {
+			const d = await ctx.db.query('trialDigests').withIndex('by_session', (i) => i.eq('sessionId', sessionId)).unique();
+			if (!d) continue;
+			const byId = new Map(ts.map((t) => [t._id, t]));
+			await ctx.db.patch(d._id, { rows: d.rows.map((row) => (byId.has(row.id) ? rowOf(byId.get(row.id)!, undefined, row) : row)) });
 		}
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(0, internal.admin.reclassifyStep, { cursor: page.continueCursor, seen, changed, old });

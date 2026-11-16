@@ -8,6 +8,7 @@ import { unpackSeries } from './lib/series';
 import { clipFields, measures, outcome, packedSeries, trialContext } from './validators';
 import { bump, trialCounts } from './counters';
 import { rescore } from './lib/rules';
+import { syncDigest } from './lib/digest';
 
 /**
  * Store one finished trial, and its clip when there is one (idempotent by `key`). Context (cue,
@@ -53,6 +54,7 @@ export const save = mutation({
 			});
 			await ctx.db.patch(trialId, { clipId });
 		}
+		await syncDigest(ctx, (await ctx.db.get(trialId))!, series);
 		if (!b.practice) await bump(ctx, s.source, trialCounts({ ...trial, createdAt: now }, !!clip));
 		await ctx.db.patch(b._id, { trialCount: b.trialCount + 1, engagedCount: b.engagedCount + (trial.engaged ? 1 : 0) });
 		await ctx.db.patch(s._id, { trials: s.trials + 1, lastActiveAt: now });

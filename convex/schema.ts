@@ -12,6 +12,7 @@ import { clipFields, device, inputType, measures, mode, packedSeries, source, tr
 import { runInfo, studyInfo } from './runs';
 import { simInfo } from './sim';
 import { counterFields } from './counters';
+import { trialDigestTable } from './lib/digest';
 
 export default defineSchema({
 	/** One per browser (anonymous id kept in localStorage) or per bot. */
@@ -19,6 +20,11 @@ export default defineSchema({
 		pid: v.string(),
 		/** 1, 2, 3... in order of first visit; picks the study's counterbalanced cue order. */
 		number: v.number(),
+		/**
+		 * Run-console participants only: 1, 2, 3... per source, in the order the console first ensured
+		 * them. Picks the suggested (counterbalanced) case order; free play and bots on play pages never get one.
+		 */
+		runNumber: v.optional(v.number()),
 		nickname: v.optional(v.string()),
 		source,
 		firstSeen: v.number(),
@@ -27,6 +33,7 @@ export default defineSchema({
 	})
 		.index('by_pid', ['pid'])
 		.index('by_number', ['number'])
+		.index('by_source_runNumber', ['source', 'runNumber'])
 		.index('by_source', ['source', 'firstSeen']),
 
 	/** One visit: a study run (several blocks) or free play. */
@@ -138,6 +145,9 @@ export default defineSchema({
 		.index('by_trial', ['trialId'])
 		.index('by_source_cue', ['source', 'cue', 'createdAt'])
 		.index('by_run', ['simRun', 'cue', 'createdAt']),
+
+	/** One per session: a compact row per trial for the dashboard (convex/lib/digest.ts, owned by the dashboard). */
+	trialDigests: trialDigestTable,
 
 	/** Replay clip of one trial: stored for engaged and caught trials. */
 	clips: defineTable({
