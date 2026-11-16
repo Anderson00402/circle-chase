@@ -90,7 +90,7 @@ export const session = query({
 		const p = await ctx.db.get(s.participantId);
 		return {
 			sessionId: s._id,
-			participant: p ? { number: p.number, nickname: p.nickname ?? null } : null,
+			participant: p ? { number: p.number, runNumber: p.runNumber ?? null, nickname: p.nickname ?? null } : null,
 			run: s.run ?? null,
 			runs: blocks.map((b) => {
 				const r = ratings.find((x) => x.blockId === b._id);
