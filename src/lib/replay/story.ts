@@ -108,7 +108,7 @@ export function describe(t: StoryTrial, opts: { turnGhost?: string | null; endGh
 		}
 		case 'overstayed': {
 			const near = a.nearMiss && a.minDangerDist !== null ? ` with a near miss (${s1(a.minDangerDist)} tiles)` : '';
-			const react = t.reaction !== null ? `, moving away ${s1(t.reaction)} s after it ran out` : '';
+			const react = t.reaction === null ? '' : t.reaction < 0.05 ? ', moved away right as it ran out' : `, moved away ${s1(t.reaction)} s after it ran out`;
 			return `Was still closing in on ${endG} when the power ran out${tiles(t.endDist)}${react}, and got away${near}.`;
 		}
 		case 'timely-retreat':

@@ -68,16 +68,29 @@
 	$effect(() => {
 		if (!trial || clipQ.isLoading || readyFor === id) return;
 		readyFor = id;
+		const fromHash = applyHash(trial.cue);
+		playing = !fromHash && !reduceMotion && scenes.length > 0;
+	});
+
+	/** Reads `#left=..&vs=..&aids=..`; returns true when it set the playhead. */
+	let written = '';
+	function applyHash(trialCue: string): boolean {
+		written = location.hash;
 		const h = new URLSearchParams(location.hash.slice(1));
 		const at = h.get('left');
 		const fromHash = at !== null && Number.isFinite(+at);
 		time = fromHash ? clamp(endT - +at) : t0;
-		vsCue = h.get('vs') ?? (trial.cue === 'none' ? 'timer-bar' : 'none');
+		vsCue = h.get('vs') ?? (trialCue === 'none' ? 'timer-bar' : 'none');
 		compare = h.has('vs');
 		const a = (h.get('aids') ?? '').split(',');
 		aids = { highlight: a.includes('hl'), line: a.includes('line'), tag: a.includes('tag') };
-		playing = !fromHash && !reduceMotion && scenes.length > 0;
-	});
+		return fromHash;
+	}
+	// A pasted or edited hash on the same page takes effect without a reload.
+	function onhash() {
+		if (!trial || location.hash === written) return;
+		if (applyHash(trial.cue)) playing = false;
+	}
 
 	const clamp = (t: number) => Math.min(t1, Math.max(t0, t));
 
@@ -107,8 +120,9 @@
 		if (compare) h.set('vs', vsCue);
 		const a = [aids.highlight && 'hl', aids.line && 'line', aids.tag && 'tag'].filter(Boolean);
 		if (a.length) h.set('aids', a.join(','));
-		const url = page.url.pathname + page.url.search + '#' + h.toString();
-		const timer = setTimeout(() => { goto(url, { state: page.state, shallow: true, replace: true }).catch(() => {}); }, 250);
+		const hash = '#' + h.toString();
+		const url = page.url.pathname + page.url.search + hash;
+		const timer = setTimeout(() => { written = hash; goto(url, { state: page.state, shallow: true, replace: true }).catch(() => {}); }, 250);
 		return () => clearTimeout(timer);
 	});
 
@@ -134,8 +148,8 @@
 	const deathT = $derived(markers.find((m) => m.kind === 'death')?.t ?? null);
 	const status = $derived(
 		deathT !== null && time >= deathT ? { text: 'Caught', tone: 'bad' }
-		: left > 0 ? (left <= 3 ? { text: 'Power on, last 3 s', tone: 'warn' } : { text: 'Power on', tone: 'accent' })
-		: expired ? { text: 'Ghosts dangerous again', tone: 'bad' } : { text: 'Power cut short', tone: 'neutral' }
+		: left > 0 ? (left <= 3 ? { text: 'Last 3 s', tone: 'warn' } : { text: 'Power on', tone: 'accent' })
+		: expired ? { text: 'Ghosts dangerous', tone: 'bad' } : { text: 'Power cut short', tone: 'neutral' }
 	);
 
 	// The ghost the player was up against at the turn and at the end, for the story.
@@ -240,7 +254,27 @@
 </script>
 
 <svelte:head><title>Replay{trial ? ` · ${OUTCOME_LABEL[outcome]} · ${cue.name}` : ''} · Circle Chase</title></svelte:head>
-<svelte:window onkeydown={onkey} />
+<svelte:window onkeydown={onkey} onhashchange={onhash} />
+
+{#snippet timeline()}
+	<section class="tl" aria-label="Timeline">
+		<Timeline {t0} {t1} {startT} {endT} {expired} {markers} {series} {time} onseek={onscrub} />
+		<div class="legend">
+			<span class="what">Line: tiles to the nearest scared ghost</span>
+			<span><i class="sw chase"></i>Closing in</span>
+			<span><i class="sw calm"></i>Not chasing</span>
+			<span><i class="sw danger"></i>Ghosts dangerous</span>
+			<span><i class="sw ideal"></i>Ideal turn-away (2 to 0.2 s left)</span>
+		</div>
+		<div class="marks" role="group" aria-label="Jump to a moment">
+			{#each markers as m (m.kind + m.t)}
+				<button type="button" class="mk {m.kind}" class:at={Math.abs(clamp(m.t) - time) < 0.03} onclick={() => { playing = false; seek(m.t); }}>
+					{markerText(m)} <span class="num">{m.t < t0 - 0.06 ? 'before the clip' : leftWords(endT - m.t)}</span>
+				</button>
+			{/each}
+		</div>
+	</section>
+{/snippet}
 
 <Page width="full" class="replay-page">
 	<div class="top">
@@ -290,11 +324,12 @@
 						{/if}
 					</div>
 					<div class="boards">
-						<ReplayBoard {scene} {cue} {aids} {target} {left} {reduceMotion} label="Replay as the player saw it, with {cue.name}" />
+						<ReplayBoard {scene} {cue} {aids} {target} {left} dist={seriesAt?.dist ?? null} {reduceMotion} label="Replay as the player saw it, with {cue.name}" />
 						{#if compare}
-							<ReplayBoard {scene} cue={vs} {aids} {target} {left} {reduceMotion} label="The same moment redrawn with {vs.name}" />
+							<ReplayBoard {scene} cue={vs} {aids} {target} {left} dist={seriesAt?.dist ?? null} {reduceMotion} label="The same moment redrawn with {vs.name}" />
 						{/if}
 					</div>
+					{#if compare}{@render timeline()}{/if}
 				{:else}
 					<div class="noclip">
 						<EmptyState title="No recording for this trial" icon="replay">
@@ -360,24 +395,9 @@
 					<Segmented size="sm" label="Speed" options={[{ value: 0.25, label: '0.25x' }, { value: 0.5, label: '0.5x' }, { value: 1, label: '1x' }]} bind:value={speed} />
 				</section>
 
-				<section class="tl" aria-label="Timeline">
-					<Timeline {t0} {t1} {startT} {endT} {expired} {markers} {series} {time} onseek={onscrub} />
-					<div class="legend">
-						<span class="what">Line: tiles to the nearest scared ghost</span>
-						<span><i class="sw chase"></i>Closing in</span>
-						<span><i class="sw calm"></i>Not chasing</span>
-						<span><i class="sw danger"></i>Ghosts dangerous</span>
-						<span><i class="sw ideal"></i>Ideal turn-away (2 to 0.2 s left)</span>
-					</div>
-					<div class="marks" role="group" aria-label="Jump to a moment">
-						{#each markers as m (m.kind + m.t)}
-							<button type="button" class="mk {m.kind}" class:at={Math.abs(clamp(m.t) - time) < 0.03} onclick={() => { playing = false; seek(m.t); }}>
-								{markerText(m)} <span class="num">{m.t < t0 - 0.06 ? 'before the clip' : leftWords(endT - m.t)}</span>
-							</button>
-						{/each}
-					</div>
-				</section>
+				{#if !compare}{@render timeline()}{/if}
 
+				{#if scenes.length}
 				<section class="tools" aria-label="View">
 					<div class="tool-row">
 						<label class="check strong"><input type="checkbox" bind:checked={compare} disabled={!scenes.length} /> Compare cues <Kbd>C</Kbd></label>
@@ -395,6 +415,7 @@
 					</div>
 					<p class="hint">Off by default, so the board is exactly what the player saw.</p>
 				</section>
+				{/if}
 
 				<section class="numbers" aria-label="Key numbers">
 					<h2 class="eyebrow">Key numbers</h2>
@@ -455,7 +476,7 @@
 	.crumbs { display: flex; gap: var(--space-2); font-size: var(--text-sm); color: var(--ink-faint); }
 	.crumbs a { color: var(--ink-dim); text-decoration: none; }
 	.crumbs a:hover { color: var(--ink); text-decoration: underline; }
-	.headline { display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0; }
+	.headline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); flex: 1; min-width: 0; }
 	h1 {
 		display: flex;
 		align-items: center;
@@ -492,6 +513,9 @@
 		width: min(calc((100dvh - var(--bar-h) - 84px - 40px) * var(--aspect) * var(--n)), 64vw);
 		min-width: 0;
 	}
+	/* Two boards: as wide as the column allows, as tall as that makes them (no empty band). */
+	.player.compare .stage { height: auto; min-height: 0; width: min(calc((100dvh - var(--bar-h) - 124px) * var(--aspect) * 2), 66vw); }
+	.player.compare .boards { flex: none; aspect-ratio: calc(var(--aspect) * 2 + 0.04); }
 	.captions { display: flex; gap: var(--space-3); min-height: 32px; }
 	.cap { flex: 1; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 	.cap .eyebrow { white-space: nowrap; }
@@ -518,10 +542,11 @@
 	.dot.good { background: var(--good); }
 	.dot.warn { background: var(--warn); }
 
-	.readouts { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.2fr; gap: var(--space-3); }
+	.readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-3); }
 	.ro { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 	.lab { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
 	.val { font-size: var(--text-xl); font-weight: 600; color: var(--ink); white-space: nowrap; }
+	.ro:last-child .val { white-space: normal; }
 	.val small { font-size: var(--text-sm); color: var(--ink-dim); font-weight: 400; }
 	.ro.big .val { font-size: var(--text-2xl); color: var(--accent); }
 	.ro.big .val.after { color: var(--bad); }
@@ -553,7 +578,12 @@
 	.tb svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 	.tb svg .fill { fill: currentColor; stroke: none; }
 
-	.tl { padding: var(--space-3) var(--space-3) var(--space-3) var(--space-2) !important; }
+	.tl {
+		background: var(--surface);
+		border: 1px solid var(--rule);
+		border-radius: var(--radius-lg);
+		padding: var(--space-3) var(--space-3) var(--space-3) var(--space-2) !important;
+	}
 	.legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); padding: var(--space-1) 0 0 40px; font-size: var(--text-xs); color: var(--ink-dim); }
 	.legend span { display: inline-flex; align-items: center; gap: 6px; }
 	.legend .what { color: var(--ink-faint); }
@@ -610,6 +640,10 @@
 		.boards { flex: none; aspect-ratio: calc(var(--aspect) * var(--n)); }
 		.readouts { grid-template-columns: 1fr 1fr; }
 		.keys { display: none; }
+		.headline { flex-basis: 100%; order: -1; }
+		.top { padding-top: var(--space-2); }
+		.prevnext { margin-left: auto; }
+		.numbers dl, .context dl { grid-template-columns: 1fr 1fr; }
 	}
 	@media (max-width: 960px) and (pointer: fine) {
 		.keys { display: block; }

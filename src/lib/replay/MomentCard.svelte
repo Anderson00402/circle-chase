@@ -86,7 +86,7 @@
 	}
 	.card:hover { border-color: var(--rule-strong); transform: translateY(-1px); }
 	.card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-	.thumb { position: relative; aspect-ratio: 1; background: var(--bg); padding: 8px; }
+	.thumb { position: relative; min-width: 0; aspect-ratio: 1; background: var(--bg); padding: 8px; }
 	.ph { width: 100%; height: 100%; border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--surface-2), var(--bg)); }
 	.still-tag {
 		position: absolute;
@@ -111,4 +111,12 @@
 	dd { margin: 0; font-size: var(--text-sm); }
 	dd.bad { color: var(--bad); }
 	.meta { margin: 0; font-size: var(--text-xs); color: var(--ink-faint); }
+	/* Phones: thumbnail beside the text, so more moments fit on a screen. */
+	@media (max-width: 520px) {
+		.card { flex-direction: row; }
+		.thumb { flex: none; width: 128px; align-self: start; padding: 6px; }
+		.still-tag { display: none; }
+		.body { flex: 1; min-width: 0; padding: var(--space-2) var(--space-3); gap: 6px; }
+		.row1 { flex-wrap: wrap; }
+	}
 </style>

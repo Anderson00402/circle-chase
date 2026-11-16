@@ -206,9 +206,10 @@
 		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 		gap: var(--space-4);
 	}
+	.grid > li { min-width: 0; }
 	.more { display: flex; justify-content: center; padding: var(--space-5) 0; }
 	@media (max-width: 520px) {
-		.grid { grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+		.grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
 		.selects { width: 100%; }
 		.f { flex: 1 1 140px; }
 	}

@@ -24,10 +24,12 @@
 		target: Target;
 		/** Seconds left on the power (negative after the end), for the tag. */
 		left: number;
+		/** Distance to show on the ghost's tag (the readout's value, so both agree); falls back to the target's. */
+		dist?: number | null;
 		reduceMotion: boolean;
 		label: string;
 	}
-	let { scene, cue, aids, target, left, reduceMotion, label }: Props = $props();
+	let { scene, cue, aids, target, left, dist = null, reduceMotion, label }: Props = $props();
 
 	let holder: HTMLDivElement;
 	let board: HTMLCanvasElement;
@@ -84,19 +86,20 @@
 			ctx.lineTo(ax, ay);
 			ctx.stroke();
 			ctx.restore();
-			if (target.dist !== null) {
-				const mx = (pxx + ax) / 2, my = (pyy + ay) / 2;
-				tag(ctx, `${target.dist.toFixed(1)} tiles`, mx, my, T, gColor);
-			}
 		}
 		if (aids.highlight) {
 			ring(ctx, pxx, pyy, T * 1.05, color('--player'), T);
-			if (g) {
-				const [gx, gy] = P(g.x, g.y);
-				ring(ctx, gx, gy, T * 1.1, gColor, T);
-				const name = g.id.charAt(0).toUpperCase() + g.id.slice(1);
-				tag(ctx, name, gx, gy - T * 1.55, T, color(GHOST_VAR[g.id] ?? '--ink'));
-			}
+			if (g) ring(ctx, ...P(g.x, g.y), T * 1.1, gColor, T);
+		}
+		// One tag on the ghost: its name (highlight) and the distance (line).
+		if (g && (aids.highlight || aids.line)) {
+			const [gx, gy] = P(g.x, g.y);
+			const d = dist ?? target.dist;
+			const name = g.id.charAt(0).toUpperCase() + g.id.slice(1);
+			const text = [aids.highlight ? name : '', aids.line && d !== null ? `${d.toFixed(1)} tiles` : ''].filter(Boolean).join(' \u00b7 ');
+			// Below the ghost when the player's time tag would sit next to it.
+			const clash = aids.tag && Math.abs(gy - pyy) < T * 2 && Math.abs(gx - pxx) < T * 5;
+			if (text) tag(ctx, text, gx, gy + (clash ? T * 1.55 : -T * 1.55), T, aids.highlight ? color(GHOST_VAR[g.id] ?? '--ink') : gColor);
 		}
 		if (aids.tag) {
 			const txt = Math.abs(left) < 0.005 ? '0.00 s' : left > 0 ? `${left.toFixed(2)} s left` : `${signed(left)} s`;
