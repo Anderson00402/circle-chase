@@ -11,9 +11,9 @@ your checklist), `docs/STUDY.md`, and whatever else your category needs (`docs/A
 
 - **Review only. Do not change the app.** No edits under `src/`, `convex/`, `docs/`, `scripts/`,
   no commits. You may write throwaway scripts and screenshots under `.shots/review-<n>/`.
-- **Do not delete data.** No admin wipe or delete mutations, no `--fresh`, and do **not** run
-  `scripts/telemetry-e2e.mjs` (it deletes all simulated data). Adding data by playing (by hand
-  through Playwright, or with a bot) is fine; a browser driven by automation records as simulated.
+- **Do not delete data.** No admin wipe or delete mutations and no `--fresh` flag on any script.
+  Adding data by playing (by hand through Playwright, or with a bot) is fine; a browser driven by
+  automation records as simulated.
 - The app is running: http://localhost:5173 (dev server) with Convex on :3210. Do not restart them.
 - **Use the app like its user would**: a researcher who picks a case, plays it with a participant,
   then reads the dashboard and watches replays. Drive it with Playwright (system Chrome; see
