@@ -18,7 +18,7 @@
 		group?: string;
 		/** Extra line for the tooltip. */
 		note?: string;
-		/** Text in place of a value when a column has nothing counted (default "no trials"). */
+		/** Text in place of a value when a column has nothing counted (default "none yet"). */
 		empty?: string;
 	}
 	export interface ForestRef {
@@ -174,7 +174,7 @@
 								<span class="num rate">{pct(v.rate)}</span>
 								<span class="num kn">{v.k}/{v.n}</span>
 							{:else}
-								<span class="none">{row.empty ?? 'no trials'}</span>
+								<span class="none">{row.empty ?? 'none yet'}</span>
 							{/if}
 						</td>
 					{/each}
@@ -192,14 +192,14 @@
 			{#if v && v.n > 0}
 				<div class="t-row">{hover.col.title} <b>{pct(v.rate)}</b></div>
 				<div class="t-row">95% interval <b>{pctRange(v.lo, v.hi)}</b></div>
-				<div class="t-row">Trials <b>{v.k} of {v.n}</b></div>
+				<div class="t-row">Power-ups <b>{v.k} of {v.n}</b></div>
 				{#each hover.col.refs.filter((r) => r.id !== hover?.row.id) as r (r.id)}
 					<div class="t-row">vs {r.code}. {r.name} <b>{pct(r.value)}</b></div>
 				{/each}
 			{:else}
-				<div class="t-row">No counted trials yet</div>
+				<div class="t-row">No counted power-ups yet</div>
 			{/if}
-			{#if hover.row.thin && v && v.n > 0}<div class="t-note">Fewer than 10 counted trials: not enough data to rank.</div>{/if}
+			{#if hover.row.thin && v && v.n > 0}<div class="t-note">Fewer than 10 counted power-ups: not enough data to rank.</div>{/if}
 			{#if hover.row.note}<div class="t-note">{hover.row.note}</div>{/if}
 		</Tooltip>
 	{/if}

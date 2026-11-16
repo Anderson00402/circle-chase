@@ -331,13 +331,20 @@
 			<SimCheck run={activeRun} preset={runInfo?.preset ?? null} main={data} />
 		{/if}
 
-		<div id="within" class="anchor">
-			<Paired main={data} {order} {selected} onselect={select} />
-		</div>
+		{#if data.totals.decisions > 0}
+			<div id="within" class="anchor">
+				<Paired main={data} {order} {selected} onselect={select} />
+			</div>
 
-		<div id="why" class="anchor">
-			<Why main={data} {filter} bind:order {selected} onselect={select} />
-		</div>
+			<div id="why" class="anchor">
+				<Why main={data} {filter} bind:order {selected} onselect={select} />
+			</div>
+		{:else}
+			<p id="within" class="later anchor">
+				The comparisons within people and the evidence behind the ranking (turn-away times, approach curves, learning,
+				ratings) appear here as soon as power-ups are counted. The live feed and sessions below already show what was recorded.
+			</p>
+		{/if}
 
 		<section id="explore" class="anchor explore" aria-labelledby="explore-h">
 			<header>
@@ -471,6 +478,12 @@
 		cursor: pointer;
 	}
 	.hint {
+		color: var(--ink-dim);
+		font-size: var(--text-sm);
+	}
+	.later {
+		max-width: 80ch;
+		margin-top: var(--space-6);
 		color: var(--ink-dim);
 		font-size: var(--text-sm);
 	}

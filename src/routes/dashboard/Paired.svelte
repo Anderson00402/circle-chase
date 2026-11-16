@@ -122,7 +122,7 @@
 
 	<Panel
 		title="Difference from the {refName}, person by person"
-		sub="For everyone who played both, their {RATE_WORD[rate]} rate under the condition minus under the {refName}, averaged over those people. Bars: 95% intervals over people. A bar clear of zero, after adjusting for all {family.length} comparisons, is marked clear."
+		sub="For everyone who played both, their {RATE_WORD[rate]} rate under the condition minus under the {refName}, averaged over those people. Bars: 95% intervals over people. A bar clear of zero{family.length > 1 ? `, after adjusting for all ${family.length} comparisons,` : ''} is marked clear."
 	>
 		{#snippet actions()}
 			<div class="ctl">
