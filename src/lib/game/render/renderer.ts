@@ -27,7 +27,9 @@ export const BASE_COLORS = {
 	accent: '#ff8a4c',
 	flash: '#f7f9ff',
 	flashInk: '#ff3d6b',
-	ghost: { hunter: '#ff4d6d', ambusher: '#ffa133', guard: '#35e0ff', drifter: '#c08cff' }
+	// Our own set: magenta, sunflower, mint and violet. Kept apart from the lime hero, the blue scared
+	// look, the white blink and every maze colour (checked in `palette.test.ts`).
+	ghost: { hunter: '#ff3db8', ambusher: '#ffd83d', guard: '#3df29b', drifter: '#a866ff' }
 } as const;
 
 export function paletteFor(maze: Maze): Palette {

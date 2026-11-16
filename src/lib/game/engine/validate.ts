@@ -84,7 +84,7 @@ export function checkMaze(m: Maze): string[] {
 		for (let x = 0; x < W; x++) {
 			const t = at(x, y);
 			if (t === DOOR) doors++;
-			if (t !== PEN) continue;
+			if (t !== PEN && t !== DOOR) continue;
 			for (const d of DIRS) {
 				const n = at(x + d.x, y + d.y);
 				const ok = n === WALL || n === PEN || n === DOOR || (t === DOOR && x + d.x === ex && y + d.y === ey);

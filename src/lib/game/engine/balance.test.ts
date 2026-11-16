@@ -18,7 +18,8 @@ import { STUDY_CONFIG, createGame } from './game';
 import { createBot } from './bot';
 
 const STEP = 1 / 120;
-it.runIf(process.env.BALANCE)('balance table', () => {
+const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
+it.runIf(!!env.BALANCE)('balance table', () => {
 	const rows: string[] = [];
 	for (const mode of ['arcade', 'study'] as const) for (const d of MAZE_DEFS) {
 		pick.id = d.id;

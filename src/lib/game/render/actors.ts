@@ -7,8 +7,10 @@ import { clamp, hash, mix, rgba, TAU } from './util';
  * The characters.
  *
  * Hero ("Sprig"): a round lime seed-creature seen from the side, with two eyes in three-quarter
- * view, a rounded bite for a mouth that chomps as it moves, and a leaf sprout on top. It turns to
- * face where it goes (mirrored for left, rotated for up and down).
+ * view and a leaf sprout on top. It eats with a mouth inside its face: a rounded opening low on the
+ * front that gulps open and shut as it walks, while the whole body gives a small hop and stretch on
+ * each gulp. The outline always stays a full circle. It turns to face where it goes (mirrored for
+ * left, rotated for up and down).
  *
  * Wisps: flame-like spirits with a head and one swept tail that streams behind them. Each has its
  * own crest and eyelids so they can be told apart without colour: hunter has two horns and a
@@ -34,34 +36,17 @@ function faceTransform(c: CanvasRenderingContext2D, face: number) {
 	else if (face === 2) { c.rotate(Math.PI / 2); c.scale(1, -1); }
 }
 
-/** Intersections of the circle (0,0,r) and the circle (x,y,q); null when they do not cross. */
-function crossings(r: number, x: number, y: number, q: number): [[number, number], [number, number]] | null {
-	const d = Math.hypot(x, y);
-	if (d >= r + q || d <= Math.abs(r - q)) return null;
-	const a = (r * r - q * q + d * d) / (2 * d), h = Math.sqrt(Math.max(0, r * r - a * a));
-	const ux = x / d, uy = y / d, bx = ux * a, by = uy * a;
-	return [[bx + uy * h, by - ux * h], [bx - uy * h, by + ux * h]];
-}
-
 /**
- * Traces the hero's body (a circle with a bite out of the front) in local coordinates.
- * `open` 0..1. Returns false when the mouth is closed (plain circle traced).
+ * Traces the hero's mouth in local coordinates (facing +x): a wide rounded opening low on the front
+ * of the face, flat-ish on top and deep below, `open` 0..1.
  */
-function heroBody(c: CanvasRenderingContext2D, r: number, open: number): boolean {
+function mouthPath(c: CanvasRenderingContext2D, r: number, open: number) {
+	const x0 = r * 0.3, x1 = r * 0.9, top = r * 0.16, depth = r * (0.1 + 0.36 * open);
 	c.beginPath();
-	if (open < 0.04) { c.arc(0, 0, r, 0, TAU); return false; }
-	const mx = r * 1.02, my = r * 0.2, q = r * (0.16 + 0.46 * open);
-	const hit = crossings(r, mx, my, q);
-	if (!hit) { c.arc(0, 0, r, 0, TAU); return false; }
-	const [p1, p2] = hit;
-	const a1 = Math.atan2(p1[1], p1[0]), a2 = Math.atan2(p2[1], p2[0]);
-	const b1 = Math.atan2(p1[1] - my, p1[0] - mx), b2 = Math.atan2(p2[1] - my, p2[0] - mx);
-	// Around the back of the body from the lower lip to the upper lip, then in through the bite.
-	c.moveTo(p2[0], p2[1]);
-	c.arc(0, 0, r, a2, a1 + TAU, false);
-	c.arc(mx, my, q, b1, b2, true);
+	c.moveTo(x0, top);
+	c.quadraticCurveTo((x0 + x1) / 2, top - r * 0.05, x1, top - r * 0.04);
+	c.bezierCurveTo(x1 + r * 0.02, top + depth * 0.9, x0 + r * 0.25, top + depth * 1.25, x0, top);
 	c.closePath();
-	return true;
 }
 
 /**
@@ -74,12 +59,16 @@ export function drawHero(
 ) {
 	const r = heroRadius(T) * (o.scale ?? 1);
 	if (r < 0.4) return;
-	const open = o.open ?? (moving ? Math.abs(Math.sin(travel * Math.PI)) : 0.18);
+	// One gulp per tile walked. Standing still, the mouth rests slightly open.
+	const open = clamp(o.open ?? (moving ? 0.5 - 0.5 * Math.cos(travel * Math.PI * 2) : 0.15));
 	const body = o.color ?? pal.player;
 	c.save();
 	if (o.alpha !== undefined) c.globalAlpha *= clamp(o.alpha);
 	c.translate(cx, cy);
 	faceTransform(c, face);
+	// The gulp: a small hop and a stretch towards the front as the mouth opens.
+	c.translate(r * 0.03 * open, -r * 0.07 * open);
+	c.scale(1 + 0.05 * open, 1 - 0.04 * open);
 
 	// Leaf sprout on the crown, leaning back, swaying a little with each step.
 	if (!o.plain && r > 3) {
@@ -102,8 +91,9 @@ export function drawHero(
 		c.restore();
 	}
 
-	// Body with a soft light from the top left.
-	const closed = !heroBody(c, r, open);
+	// Body: always a full circle, with a soft light from the top left.
+	c.beginPath();
+	c.arc(0, 0, r, 0, TAU);
 	const g = c.createRadialGradient(-r * 0.35, -r * 0.45, r * 0.1, 0, 0, r * 1.05);
 	g.addColorStop(0, mix(body, '#ffffff', 0.55));
 	g.addColorStop(0.55, body);
@@ -117,14 +107,33 @@ export function drawHero(
 	}
 	if (o.plain) { c.restore(); return; }
 
-	// Mouth: a dark line when closed, a dark inside with a tongue when open.
-	if (closed && r > 3) {
-		c.strokeStyle = mix(body, '#000000', 0.65);
-		c.lineWidth = Math.max(0.8, r * 0.09);
+	// Mouth: a smile line when shut; open, a dark opening with a tongue and a lighter lip above.
+	const ink = mix(body, '#000000', 0.7);
+	if (open < 0.12 || r <= 3) {
+		c.strokeStyle = ink;
+		c.lineWidth = Math.max(0.8, r * 0.1);
 		c.lineCap = 'round';
 		c.beginPath();
-		c.moveTo(r * 0.55, r * 0.32);
-		c.quadraticCurveTo(r * 0.78, r * 0.42, r * 0.95, r * 0.22);
+		c.moveTo(r * 0.32, r * 0.2);
+		c.quadraticCurveTo(r * 0.62, r * 0.36, r * 0.88, r * 0.14);
+		c.stroke();
+	} else {
+		mouthPath(c, r, open);
+		c.fillStyle = '#2a0d14';
+		c.fill();
+		if (r > 5 && open > 0.35) {
+			c.save();
+			c.clip();
+			c.fillStyle = '#ff6f8e';
+			c.beginPath();
+			c.ellipse(r * 0.55, r * (0.2 + 0.36 * open), r * 0.24, r * 0.15, 0, 0, TAU);
+			c.fill();
+			c.restore();
+			mouthPath(c, r, open);
+		}
+		c.lineWidth = Math.max(0.7, r * 0.06);
+		c.strokeStyle = ink;
+		c.lineJoin = 'round';
 		c.stroke();
 	}
 

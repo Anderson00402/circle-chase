@@ -195,7 +195,7 @@
 			const c = node.getContext('2d')!;
 			c.setTransform(r, 0, 0, r, 0, 0);
 			c.clearRect(0, 0, css, css);
-			if (w.life) drawHero(c, paletteFor(game.maze), css * 0.98, css / 2, css / 2 + css * 0.06, 3, 0.25, false, 0, { open: 0.35 });
+			if (w.life) drawHero(c, paletteFor(game.maze), css * 0.98, css / 2, css / 2 + css * 0.06, 3, 0.25, false, 0, { open: 0.6 });
 			else drawBonus(c, w.bonus ?? 0, css / 2, css / 2, css * 0.92);
 		};
 		paint(what);
@@ -233,7 +233,7 @@
 					if (e.type === 'level') { readyLabel = `LEVEL ${e.level}`; fit(); }
 					if (e.type === 'die') readyLabel = 'READY';
 					if (e.type === 'bonusShow') lastBonusKind = e.kind;
-					if (e.type === 'bonus') bonuses = [...bonuses, lastBonusKind];
+					if (e.type === 'bonus') bonuses = [...bonuses, e.kind ?? lastBonusKind];
 					if (e.type === 'over') {
 						running = false;
 						newBest = arcade() && f.score > readBest() && f.score > 0;
@@ -342,12 +342,13 @@
 					<div class="card">
 						{#if overlay === 'title'}
 							<h2 id="cc-overlay-title">Ready?</h2>
-							<p>Eat every dot. After a power dot the wisps turn blue and you can catch them, for a while.</p>
+							<p>Eat every dot. After a power dot the ghosts turn blue and you can catch them, for a while.</p>
 						{:else if overlay === 'paused'}
 							<h2 id="cc-overlay-title">Paused</h2>
 							<p>The game is on hold.</p>
 						{:else}
-							<h2 id="cc-overlay-title">{newBest ? 'New best score' : 'Game over'}</h2>
+							<h2 id="cc-overlay-title">Game over</h2>
+							{#if newBest}<p class="best">New best</p>{/if}
 							<p>You scored {hud.score.toLocaleString('en-US')} on {diffLabel} and reached level {hud.level}.</p>
 						{/if}
 						<button class="primary" bind:this={primaryBtn} onclick={primary}>
@@ -428,6 +429,7 @@
 	}
 	.card h2 { margin: 0 0 6px; font-family: var(--font-display, inherit); font-size: 26px; }
 	.card p { margin: 0 0 14px; color: var(--ink-dim, #a3b6de); }
+	.card .best { margin: -2px 0 10px; font-weight: 700; color: var(--accent, #ff8a4c); }
 	.card .hint { margin: 14px 0 0; font-size: 13px; }
 	.primary {
 		font: inherit;

@@ -39,10 +39,10 @@
 	--player: #c6f23a;
 	--scared: #cfe6ff;
 	--scared-fill: #3d4fe6;
-	--hunter: #ff4d6d;
-	--ambusher: #ffa133;
-	--guard: #35e0ff;
-	--drifter: #c08cff;
+	--hunter: #ff3db8;
+	--ambusher: #ffd83d;
+	--guard: #3df29b;
+	--drifter: #a866ff;
 
 	/* Cue roles, used by CueChip and charts: references are neutral, the baseline is cool, ideas are warm. */
 	--role-reference: #a3b3d6;

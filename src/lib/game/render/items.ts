@@ -1,12 +1,14 @@
 import { clamp, mix, rgba, TAU } from './util';
+import { BONUS_ITEMS, bonusItem } from '../engine/levels';
 
 /**
- * Bonus items, one per level kind, all original: a gem, a mushroom, an acorn, a paper lantern,
- * a pinwheel, a teacup, a kite and a little rocket. Drawn with plain paths so they stay crisp at
- * any size, from HUD icons to the board.
+ * Bonus items, all original: a gem, a mushroom, an acorn, a paper lantern, a pinwheel, a teacup,
+ * a kite and a little rocket. Drawn with plain paths so they stay crisp at any size, from HUD icons
+ * to the board. Names, points and order live in one list, `BONUS_ITEMS` in `engine/levels.ts`;
+ * `kind` there is the drawing here.
  */
-export const BONUS_NAMES = ['Gem', 'Mushroom', 'Acorn', 'Lantern', 'Pinwheel', 'Teacup', 'Kite', 'Rocket'] as const;
-export const bonusName = (kind: number) => BONUS_NAMES[((kind % 8) + 8) % 8];
+export const BONUS_NAMES: readonly string[] = [...BONUS_ITEMS].sort((a, b) => a.kind - b.kind).map((b) => b.name);
+export const bonusName = (kind: number) => bonusItem(((kind % 8) + 8) % 8).name;
 
 /** Draws bonus item `kind` centred at (cx, cy), fitting a box `size` CSS pixels wide. */
 export function drawBonus(c: CanvasRenderingContext2D, kind: number, cx: number, cy: number, size: number, time = 0) {
