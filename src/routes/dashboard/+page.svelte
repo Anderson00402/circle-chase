@@ -85,7 +85,7 @@
 		const u = new URL(page.url.href);
 		const set = (k: string, v: string, d: string) => (v === d ? u.searchParams.delete(k) : u.searchParams.set(k, v));
 		set('data', source, 'human');
-		set('run', simulated ? run : '', '');
+		set('run', activeRun, '');
 		set('mode', mode, 'both');
 		set('p', participant, 'all');
 		set('period', period, 'all');
