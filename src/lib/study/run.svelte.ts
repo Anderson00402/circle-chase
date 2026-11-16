@@ -4,7 +4,7 @@
  *
  * - Each participant label ("P07") gets its own anonymous participant id and one session; every run
  *   of a case is a block of that session, numbered in the order it was played.
- * - The participant number (from Convex) picks a row of the balanced Latin square: the suggested
+ * - The participant's run number (from Convex: console participants only, 1, 2, 3... per source) picks a row of the balanced Latin square: the suggested
  *   order of cases. It is a hint; the researcher may play any case.
  */
 import type { ConvexClient } from 'convex/browser';
@@ -107,17 +107,20 @@ export function ensureParticipant(client: ConvexClient): Promise<void> {
 	ensuring = (async () => {
 		try {
 			const r = await client.mutation(api.participants.ensure, {
-				pid: p.pid, source: p.source, device: deviceInfo(), ...(p.label ? { nickname: p.label } : {})
+				pid: p.pid, source: p.source, device: deviceInfo(), console: true, ...(p.label ? { nickname: p.label } : {})
 			});
 			if (run.p.pid !== p.pid) return; // a new participant was started meanwhile
-			const o = caseOrder(r.number, CUES.map((c) => c.id));
-			run.p.number = r.number;
+			// Console participants are numbered on their own (1, 2, 3... per source), so the counterbalanced
+			// order is not skewed by bots or play pages opened without a run.
+			const number = r.runNumber ?? r.number;
+			const o = caseOrder(number, CUES.map((c) => c.id));
+			run.p.number = number;
 			run.p.row = o.row;
 			run.p.order = o.cues;
 			if (!run.p.label) {
 				// No label typed: name the participant after their number, on the row too.
-				run.p.label = `P${String(r.number).padStart(2, '0')}`;
-				client.mutation(api.participants.ensure, { pid: p.pid, source: p.source, device: deviceInfo(), nickname: run.p.label }).catch(() => {});
+				run.p.label = `P${String(number).padStart(2, '0')}`;
+				client.mutation(api.participants.ensure, { pid: p.pid, source: p.source, device: deviceInfo(), console: true, nickname: run.p.label }).catch(() => {});
 			}
 			persist();
 			queueSetup(client);
@@ -150,7 +153,7 @@ export function setLabel(client: ConvexClient, label: string) {
 		if (run.p.number !== null) {
 			// Update the nickname on the participant row and the session's run info.
 			ensuring = null;
-			client.mutation(api.participants.ensure, { pid: run.p.pid, source: run.p.source, device: deviceInfo(), ...(clean ? { nickname: clean } : {}) }).catch(() => {});
+			client.mutation(api.participants.ensure, { pid: run.p.pid, source: run.p.source, device: deviceInfo(), console: true, ...(clean ? { nickname: clean } : {}) }).catch(() => {});
 			queueSetup(client);
 		} else ensureParticipant(client);
 	} else newParticipant(client, clean);
