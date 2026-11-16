@@ -59,7 +59,6 @@ export function checkMaze(m: Maze): string[] {
 	// Start and bonus tile: on open floor, not on a dot.
 	if (tile(m.start) !== PATH) bad('start is not on open floor');
 	else if (dot(m.start)) bad('start is on a dot');
-	if (m.start[1] < H / 2) bad('start is not in the lower half');
 	if (tile(m.bonusTile) !== PATH) bad('bonus tile is not on open floor');
 	else if (dot(m.bonusTile)) bad('bonus tile is on a dot');
 
@@ -69,21 +68,23 @@ export function checkMaze(m: Maze): string[] {
 		if (tiles[i] === PATH && dist[i] < 0) bad(`tile ${i % W},${(i / W) | 0} cannot be reached from the start`);
 	for (let i = 0; i < W * H; i++) if (dotsInit[i] && tiles[i] !== PATH) bad(`pickup on a non-floor tile at ${i % W},${(i / W) | 0}`);
 
-	// Pen: door in the middle column, exit right above it, home and slots inside, sealed otherwise.
+	// Pen: door in the middle column in the top or bottom wall of the pen, exit just outside it,
+	// home and slots inside, sealed otherwise.
 	const [ex, ey] = m.exit;
+	const penSide = at(ex, ey + 1) === DOOR ? 1 : at(ex, ey - 1) === DOOR ? -1 : 0;
 	if (tile(m.exit) !== PATH) bad('exit is not on open floor');
-	if (at(ex, ey + 1) !== DOOR) bad('exit is not directly above the door');
+	if (!penSide) bad('exit is not next to the door (above or below it)');
+	else if (at(ex, ey + 2 * penSide) !== PEN) bad('the door does not lead into the pen');
 	if (ex !== (W - 1) / 2) bad('door is not in the middle column');
 	if (tile(m.home) !== PEN) bad('home is not a pen tile');
 	if (m.penSlots.length < 3) bad('fewer than three pen slots');
 	for (const s of m.penSlots) if (tile(s) !== PEN) bad(`pen slot ${s} is not a pen tile`);
-	if (m.bonusTile[1] <= m.home[1]) bad('bonus tile is not below the pen');
 	let doors = 0;
 	for (let y = 0; y < H; y++)
 		for (let x = 0; x < W; x++) {
 			const t = at(x, y);
 			if (t === DOOR) doors++;
-			if (t !== PEN && t !== DOOR) continue;
+			if (t !== PEN) continue;
 			for (const d of DIRS) {
 				const n = at(x + d.x, y + d.y);
 				const ok = n === WALL || n === PEN || n === DOOR || (t === DOOR && x + d.x === ex && y + d.y === ey);
@@ -107,7 +108,39 @@ export function checkMaze(m: Maze): string[] {
 	for (const y of m.tunnelRows) if (dotsInit[y * W] || dotsInit[y * W + W - 1]) bad(`dots inside tunnel ${y}`);
 
 	if (m.bannerRow < 0 || m.bannerRow >= H) bad('banner row is off the board');
+
+	// Our own conventions, so no board reads as the classic one at a glance (see `penLayout`).
+	const pen = penLayout(m);
+	if (dist[m.exit[1] * W + m.exit[0]] >= 0 && dist[m.exit[1] * W + m.exit[0]] < 10) bad('start is fewer than 10 steps from where the ghosts come out');
+	for (const y of tunnels) if (y >= pen.top && y <= pen.bottom) bad(`tunnel row ${y} runs past the pen; keep tunnels away from pen height`);
+	if (m.bonusTile[0] === ex && m.bonusTile[1] > pen.bottom && m.bonusTile[1] <= pen.bottom + 2) bad('bonus tile sits right below the pen');
+	if (m.bonusTile[0] === ex && m.bonusTile[1] < pen.top && m.bonusTile[1] >= pen.top - 2) bad('bonus tile sits right above the pen');
+	if (pen.ring > 0 && pen.ringDots / pen.ring < 0.5) bad(`only ${pen.ringDots} of ${pen.ring} tiles round the pen have dots; no empty ring round the pen`);
 	return problems;
+}
+
+/**
+ * Where the pen block (the pen floor and the wall round it, door included) sits, and how many of the
+ * open tiles touching it (diagonals too) carry a dot.
+ */
+export function penLayout(m: Maze): { top: number; bottom: number; left: number; right: number; doorBelow: boolean; ring: number; ringDots: number } {
+	let top = m.H, bottom = -1, left = m.W, right = -1;
+	for (let y = 0; y < m.H; y++)
+		for (let x = 0; x < m.W; x++) {
+			const t = m.tiles[y * m.W + x];
+			if (t !== PEN) continue;
+			top = Math.min(top, y - 1); bottom = Math.max(bottom, y + 1);
+			left = Math.min(left, x - 1); right = Math.max(right, x + 1);
+		}
+	let ring = 0, ringDots = 0;
+	for (let y = top - 1; y <= bottom + 1; y++)
+		for (let x = left - 1; x <= right + 1; x++) {
+			if (y >= top && y <= bottom && x >= left && x <= right) continue;
+			if (x < 0 || y < 0 || x >= m.W || y >= m.H || m.tiles[y * m.W + x] !== PATH) continue;
+			ring++;
+			if (m.dotsInit[y * m.W + x]) ringDots++;
+		}
+	return { top, bottom, left, right, doorBelow: m.exit[1] > m.home[1], ring, ringDots };
 }
 
 function pathDistancesThroughPen(m: Maze, [sx, sy]: [number, number]): Int16Array {

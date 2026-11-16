@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CLEAR_TIME, DEATH_TIME, READY_TIME, STUDY_CONFIG, createGame, tunnelTiles, type EngineGame } from './game';
+import {
+	CHAIN_POINTS, CLEAR_TIME, DEATH_TIME, EXTRA_LIFE_EVERY, POWER_LOCK_AFTER, READY_TIME, STUDY_CONFIG, TURN_MEMORY,
+	createGame, tunnelTiles, type EngineGame
+} from './game';
 import { createBot, type BotOptions } from './bot';
 import { levelInfo } from './levels';
 import type { GameConfig, GameEvent } from '../types';
@@ -188,6 +191,43 @@ describe('power-ups', () => {
 	});
 });
 
+describe('scoring', () => {
+	it('ghosts caught in one power-up score our own chain, and lives come every 7,500 points', () => {
+		const { game, pilot } = botGame({ seed: 3, infiniteLives: true }, { skill: 1 });
+		const chains = new Map<number, number[]>();
+		let extras = 0, serial = 0;
+		for (let i = 0; i < 400 / STEP; i++) {
+			pilot();
+			game.update(STEP);
+			const f = game.frame();
+			for (const e of f.events) {
+				if (e.type === 'power') serial++;
+				if (e.type === 'eat') chains.set(serial, [...(chains.get(serial) ?? []), e.points]);
+				if (e.type === 'extra') extras++;
+			}
+		}
+		expect(chains.size).toBeGreaterThan(0);
+		for (const pts of chains.values()) expect(pts).toEqual(CHAIN_POINTS.slice(0, pts.length));
+		const score = game.frame().score;
+		expect(score).toBeGreaterThan(EXTRA_LIFE_EVERY);
+		expect(extras).toBe(Math.floor(score / EXTRA_LIFE_EVERY));
+	});
+
+	it('the bonus event names the item that was eaten', () => {
+		const { game, pilot } = botGame({ seed: 2, infiniteLives: true });
+		let shown = -1;
+		for (let i = 0; i < 300 / STEP; i++) {
+			pilot();
+			game.update(STEP);
+			for (const e of game.frame().events) {
+				if (e.type === 'bonusShow') shown = e.kind;
+				if (e.type === 'bonus') { expect(e.kind).toBe(shown); expect(e.points).toBe(game.info.bonus.points); return; }
+			}
+		}
+		throw new Error('the bot never ate a bonus item');
+	});
+});
+
 describe('study mode', () => {
 	it('never ends, keeps power lengths in range at every level, grows power dots back', () => {
 		const { game, pilot } = botGame({ ...STUDY_CONFIG, seed: 5 }, { skill: 0.6, awarenessNoise: 2 });
@@ -243,6 +283,72 @@ describe('feel', () => {
 		expect(game.frame().player.x).toBe(turnX);
 	});
 
+	/** Level 1 runs the player left from the start along a corridor; the first opening above is `upX`. */
+	function runLeft() {
+		const game = createGame({ seed: 1, infiniteLives: true });
+		const m = game.maze, [sx, sy] = m.start;
+		let upX = -1;
+		for (let x = sx - 1; x > 0 && upX < 0; x--) if (m.tiles[(sy - 1) * m.W + x] === 0) upX = x;
+		run(game, READY_TIME + 0.02);
+		return { game, m, sy, upX };
+	}
+	/** Runs until the player has left row `y` or `seconds` pass. */
+	function untilOffRow(game: EngineGame, y: number, seconds: number) {
+		for (let i = 0; i < seconds / STEP; i++) {
+			game.update(STEP);
+			if (Math.abs(game.frame().player.y - y) > 0.5) break;
+		}
+		return game.frame().player;
+	}
+
+	it('a key pressed 3.3 tiles before a junction still turns there', () => {
+		const { game, sy, upX } = runLeft();
+		expect(upX).toBeGreaterThan(0);
+		while (game.frame().player.x > upX + 3.3) game.update(STEP);
+		expect(game.frame().player.x).toBeGreaterThan(upX + 3.2);
+		game.steer(0);
+		const p = untilOffRow(game, sy, 3);
+		expect(p.dir).toBe(0);
+		expect(Math.round(p.x)).toBe(upX);
+	});
+
+	it('a later press replaces the wanted turn', () => {
+		const { game, sy, upX } = runLeft();
+		game.steer(2); // down: there is no opening below until the far end
+		game.update(STEP);
+		game.steer(0);
+		const p = untilOffRow(game, sy, 3);
+		expect(p.dir).toBe(0);
+		expect(Math.round(p.x)).toBe(upX);
+	});
+
+	it('a wish nothing comes of is dropped after about a second and a half', () => {
+		const { game, m, sy } = runLeft();
+		expect(TURN_MEMORY).toBeCloseTo(1.5);
+		// Down is open only at the far left end of the row; the player gets there after the memory is gone.
+		let downX = -1;
+		for (let x = m.start[0] - 1; x > 0; x--) if (m.tiles[(sy + 1) * m.W + x] === 0) { downX = x; break; }
+		const tiles = m.start[0] - downX;
+		expect(tiles / game.info.playerSpeed).toBeGreaterThan(TURN_MEMORY + 0.1);
+		game.steer(2);
+		run(game, tiles / game.info.playerSpeed + 1);
+		const p = game.frame().player;
+		expect(p.y).toBe(sy);
+		expect(Math.round(p.x)).toBe(downX);
+		expect(p.moving).toBe(false);
+	});
+
+	it('a swipe held for one moment turns as well as a held key', () => {
+		// The page steers once per swipe; the engine must keep it, the same as one key press.
+		const a = runLeft(), b = runLeft();
+		for (const g of [a.game, b.game]) while (g.frame().player.x > a.upX + 2.5) g.update(STEP);
+		a.game.steer(0);
+		for (let i = 0; i < 60; i++) { if (i % 4 === 0) b.game.steer(0); b.game.update(STEP); }
+		const pa = untilOffRow(a.game, a.sy, 3), pb = untilOffRow(b.game, b.sy, 3);
+		expect(Math.round(pa.x)).toBe(a.upX);
+		expect(Math.round(pb.x)).toBe(a.upX);
+	});
+
 	it('update is cheap: a simulated minute runs in well under a second', () => {
 		// Real play: a bot keeps the board busy (ghosts out, power-ups, eats). Only update and frame are timed.
 		const { game, pilot } = botGame({ seed: 11, infiniteLives: true }, { skill: 0.9 });
@@ -289,5 +395,26 @@ describe('power lock', () => {
 			}
 			expect(powers).toBeGreaterThan(3);
 		}
+	});
+
+	it('power dots stay off the board until 3 s after a power-up ended', () => {
+		let respawns = 0;
+		for (const seed of [1, 2, 3, 4]) {
+			const game = createGame({ ...STUDY_CONFIG, seed });
+			const bot = createBot(game, { seed });
+			let endedAt = -Infinity;
+			for (let i = 0; i < 150 / STEP; i++) {
+				bot.step();
+				game.update(STEP);
+				const f = game.frame();
+				for (const e of f.events) {
+					if (e.type === 'powerEnd') endedAt = e.t;
+					if (e.type === 'power') expect(e.t - endedAt).toBeGreaterThanOrEqual(POWER_LOCK_AFTER - 1e-9);
+					if (e.type === 'powerRespawn') { respawns++; expect(e.t - endedAt).toBeGreaterThanOrEqual(POWER_LOCK_AFTER - 1e-9); }
+				}
+				if (f.power.left <= 0 && f.t - endedAt < POWER_LOCK_AFTER) expect(Array.from(game.dots).includes(2)).toBe(false);
+			}
+		}
+		expect(respawns).toBeGreaterThan(4);
 	});
 });

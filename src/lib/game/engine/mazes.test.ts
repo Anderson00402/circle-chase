@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAZE_DEFS, allMazes, buildMaze, flood, mazeById, mazeForLevel } from './mazes';
-import { checkMaze, drawMaze } from './validate';
+import { checkMaze, drawMaze, penLayout } from './validate';
 import { pathDistance, pathDistances } from './paths';
 import { tunnelTiles } from './game';
 import { PATH } from '../types';
@@ -48,6 +48,58 @@ describe('mazes', () => {
 		const problems = checkMaze(buildMaze({ ...def, rows }));
 		expect(problems.some((p) => p.includes('dead end'))).toBe(true);
 		expect(problems.some((p) => p.includes('symmetric'))).toBe(true);
+	});
+});
+
+describe('our own layouts', () => {
+	// The middle every board used to share: a pen in the centre with the door on top, an empty ring
+	// round it, a side tunnel at pen height between solid wings, the bonus right under the pen and
+	// the start right under that.
+	const CLASSIC_MIDDLE = [
+		'#######################',
+		'#o...................o#',
+		'#.####.####.####.####.#',
+		'#.####.####.####.####.#',
+		'#.....................#',
+		'#.#######.###.#######.#',
+		'#.#######.###.#######.#',
+		'#.....................#',
+		'#####.#.#######.#.#####',
+		'#####.#,,,,,,,,,#.#####',
+		'#####.#,###-###,#.#####',
+		',,,,,.,,#_____#,,.,,,,,',
+		'#####.#,#_____#,#.#####',
+		'#####.#,#######,#.#####',
+		'#####.#,,,,B,,,,#.#####',
+		'#####.#.#######.#.#####',
+		'#.....................#',
+		'#.####.####.####.####.#',
+		'#.####.####.####.####.#',
+		'#..........S..........#',
+		'#.#######.###.#######.#',
+		'#.#######.###.#######.#',
+		'#o...................o#',
+		'#######################',
+	];
+
+	it('the validator rejects the classic middle', () => {
+		const problems = checkMaze(buildMaze({ ...MAZE_DEFS[4], rows: CLASSIC_MIDDLE }));
+		expect(problems.some((p) => p.includes('runs past the pen'))).toBe(true);
+		expect(problems.some((p) => p.includes('right below the pen'))).toBe(true);
+		expect(problems.some((p) => p.includes('round the pen have dots'))).toBe(true);
+	});
+
+	it('pens, bonus tiles and starts differ from maze to maze', () => {
+		const ms = allMazes();
+		const pens = ms.map((m) => { const p = penLayout(m); return { mid: (p.top + p.bottom) / 2 / m.H, below: p.doorBelow, size: `${p.right - p.left}x${p.bottom - p.top}` }; });
+		// Pens sit at clearly different heights, both door sides are used, and there is more than one pen shape.
+		const heights = pens.map((p) => p.mid).sort((a, b) => a - b);
+		expect(heights.at(-1)! - heights[0]).toBeGreaterThan(0.4);
+		expect(new Set(pens.map((p) => p.below)).size).toBe(2);
+		expect(new Set(pens.map((p) => p.size)).size).toBeGreaterThanOrEqual(3);
+		const key = (p: [number, number], m: { W: number; H: number }) => `${Math.round((p[0] / m.W) * 10)},${Math.round((p[1] / m.H) * 10)}`;
+		expect(new Set(ms.map((m) => key(m.bonusTile, m))).size).toBe(ms.length);
+		expect(new Set(ms.map((m) => key(m.start, m))).size).toBeGreaterThanOrEqual(4);
 	});
 });
 

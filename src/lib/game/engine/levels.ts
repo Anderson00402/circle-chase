@@ -4,28 +4,35 @@ import { mazeForLevel } from './mazes';
 /**
  * Level table: everything that changes from level to level and between difficulties.
  *
- * Speeds follow the genre's usual ramp: on level 1 the player is clearly faster than the ghosts,
- * from level 5 the ghosts are nearly as fast, and scared ghosts and the tunnels stay slow.
+ * Our own tuning. It keeps the genre's shape (the player starts clearly faster than the ghosts and
+ * the gap closes over the first levels; scared ghosts and tunnels stay slow; calm spells get
+ * shorter and chases longer) but every number comes from a few smooth rules below rather than a
+ * table, so there is no level-by-level copy of any other game's settings.
  * Speeds are in tiles per second; `BASE_SPEED` is "100%".
  */
 export const BASE_SPEED = 7;
 
-/** Bonus items (our own set). `kind` is what the renderer draws; points rise with the level. */
+/**
+ * Bonus items (our own set, one list shared by the engine and the renderer). `kind` is the drawing
+ * in `render/items.ts`; the order is the order they first appear in, with points rising.
+ */
 export interface BonusItem {
 	kind: number;
 	name: string;
 	points: number;
 }
 export const BONUS_ITEMS: readonly BonusItem[] = [
-	{ kind: 0, name: 'Seed', points: 100 },
-	{ kind: 1, name: 'Leaf', points: 300 },
-	{ kind: 2, name: 'Shell', points: 500 },
-	{ kind: 3, name: 'Acorn', points: 700 },
-	{ kind: 4, name: 'Star', points: 1000 },
-	{ kind: 5, name: 'Crown', points: 2000 },
-	{ kind: 6, name: 'Gem', points: 3000 },
-	{ kind: 7, name: 'Comet', points: 5000 }
+	{ kind: 2, name: 'Acorn', points: 150 },
+	{ kind: 1, name: 'Mushroom', points: 250 },
+	{ kind: 5, name: 'Teacup', points: 400 },
+	{ kind: 3, name: 'Lantern', points: 600 },
+	{ kind: 4, name: 'Pinwheel', points: 900 },
+	{ kind: 6, name: 'Kite', points: 1300 },
+	{ kind: 0, name: 'Gem', points: 1800 },
+	{ kind: 7, name: 'Rocket', points: 2500 }
 ];
+/** The bonus item drawn as `kind` (falls back to the first). */
+export const bonusItem = (kind: number): BonusItem => BONUS_ITEMS.find((b) => b.kind === kind) ?? BONUS_ITEMS[0];
 
 export interface DifficultyDef {
 	label: string;
@@ -79,43 +86,55 @@ export interface LevelInfo {
 	releaseAfterDeath: [number, number, number, number];
 	/** Small dots left at which the hunter hurries (a little faster, and chases even in scatter). */
 	hurryDots: number;
-	/** Hunter speed while hurrying; a second step at half `hurryDots` adds as much again. */
+	/** Hunter speed while hurrying; a second, faster step at a third of `hurryDots`. */
 	hurrySpeed: number;
 	hurrySpeed2: number;
 }
 
-// Shares of BASE_SPEED by level band: player, player with power, ghost, scared ghost, tunnel.
-const SPEED_BANDS: { upTo: number; s: [number, number, number, number, number] }[] = [
-	{ upTo: 1, s: [0.8, 0.9, 0.75, 0.5, 0.4] },
-	{ upTo: 4, s: [0.9, 0.95, 0.85, 0.55, 0.45] },
-	{ upTo: 20, s: [1, 1, 0.95, 0.6, 0.5] },
-	{ upTo: Infinity, s: [0.9, 0.9, 0.95, 0.6, 0.5] }
-];
-// Arcade power length on normal, by level; the last value repeats.
-const POWER_TIME = [6, 5, 4, 3.5, 3, 5, 3, 3, 2.5, 4.5, 2.5, 2];
-const BONUS_BY_LEVEL = [0, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7];
-const HURRY_DOTS = [20, 30, 40, 40, 40, 50, 50, 50, 60, 60, 60, 80];
+/** Rises by `step` per level from `from`, never past `to`. */
+const ramp = (level: number, from: number, step: number, to: number) => Math.min(to, from + step * (level - 1));
 
+/**
+ * Calm spells (scatter) and chases, alternating, starting with a calm spell. Calm spells shrink by
+ * a second and a half each wave and a little each level; chases grow by eight seconds each wave and
+ * a little each level. After the fourth calm spell the chase never ends.
+ */
 function wavesFor(level: number, scatterScale: number): number[] {
-	const w = level === 1 ? [7, 20, 7, 20, 5, 20, 5, Infinity]
-		: level <= 4 ? [7, 20, 7, 20, 5, 40, 1, Infinity]
-			: [5, 20, 5, 20, 5, 40, 1, Infinity];
-	return w.map((s, i) => (i % 2 === 0 && Number.isFinite(s) ? Math.round(s * scatterScale * 10) / 10 : s));
+	const shrink = Math.max(0.55, 1 - 0.08 * (level - 1));
+	const out: number[] = [];
+	for (let k = 0; k < 4; k++) {
+		out.push(Math.round(Math.max(1.5, (8 - 1.5 * k) * shrink) * scatterScale * 10) / 10);
+		out.push(k < 3 ? Math.min(60, 15 + 8 * k + 2 * (level - 1)) : Infinity);
+	}
+	return out;
 }
 
-const pick = <T>(table: readonly T[], level: number): T => table[Math.min(level, table.length) - 1];
+/**
+ * Arcade power length on normal: 6.5 s on level 1, about half a second less each level, with a
+ * one-off breather of 1.5 s on every fourth level. Never under 2 s on any difficulty.
+ */
+export const MIN_POWER_TIME = 2;
+function powerTimeFor(level: number, powerScale: number): number {
+	const base = Math.max(2.5, 6.5 - 0.45 * (level - 1)) + (level % 4 === 0 ? 1.5 : 0);
+	return Math.max(MIN_POWER_TIME, Math.round(base * powerScale * 10) / 10);
+}
 
 /** Everything the rules need for one level at one difficulty. Pure; cheap enough to call per frame. */
 export function levelInfo(level: number, difficulty: Difficulty = 'normal'): LevelInfo {
 	level = Math.max(1, Math.floor(level));
 	const diff = DIFFICULTY[difficulty] ?? DIFFICULTY.normal;
 	const maze = mazeForLevel(level);
-	const [p, pp, g, gs, gt] = SPEED_BANDS.find((b) => level <= b.upTo)!.s;
+	// Shares of BASE_SPEED. The ghosts close the gap over the first six levels; from level 13 they
+	// gain a little more while the player stays put.
+	const p = ramp(level, 0.83, 0.03, 0.98);
+	const g = ramp(level, 0.77, 0.035, 0.94) + (level >= 13 ? 0.02 : 0);
+	const scared = ramp(level, 0.52, 0.015, 0.6);
 	const ghost = (share: number) => share * BASE_SPEED * diff.ghostScale;
-	// Release counts were tuned for a ~240-dot board; scale to this maze.
-	const dotScale = maze.dotTotal / 240;
-	const dots = level === 1 ? [0, 0, 30, 60] : level === 2 ? [0, 0, 0, 50] : [0, 0, 0, 0];
-	const hurry = Math.round(pick(HURRY_DOTS, level) * dotScale);
+	const dots = maze.dotTotal;
+	// Waiting ghosts leave after a share of the board's dots; the shares shrink each level.
+	const waitShare = [0, 0.03, 0.11, 0.24].map((s) => Math.max(0, s - 0.035 * (level - 1)));
+	// The hunter hurries once this share of the small dots is left (more of the board on later levels).
+	const hurryShare = ramp(level, 0.09, 0.012, 0.3);
 	return {
 		level,
 		difficulty,
@@ -123,20 +142,20 @@ export function levelInfo(level: number, difficulty: Difficulty = 'normal'): Lev
 		mazeName: maze.name,
 		label: `Level ${level} · ${maze.name}`,
 		playerSpeed: p * BASE_SPEED,
-		playerPowerSpeed: pp * BASE_SPEED,
+		playerPowerSpeed: Math.min(1, p + 0.06) * BASE_SPEED,
 		ghostSpeed: ghost(g),
-		ghostScaredSpeed: ghost(gs),
-		ghostTunnelSpeed: ghost(gt),
-		ghostPenSpeed: ghost(0.45),
-		eyesSpeed: BASE_SPEED * 1.6,
-		powerTime: Math.max(1.5, Math.round(pick(POWER_TIME, level) * diff.powerScale * 10) / 10),
+		ghostScaredSpeed: ghost(scared),
+		ghostTunnelSpeed: ghost(g * 0.55),
+		ghostPenSpeed: ghost(0.48),
+		eyesSpeed: BASE_SPEED * 1.7,
+		powerTime: powerTimeFor(level, diff.powerScale),
 		waves: wavesFor(level, diff.scatterScale),
-		bonus: BONUS_ITEMS[pick(BONUS_BY_LEVEL, level)],
-		releaseDots: dots.map((n) => Math.round(n * dotScale * diff.releaseScale)) as LevelInfo['releaseDots'],
-		releaseIdle: Math.max(2, (level <= 4 ? 4 : 3) + diff.idleBonus),
-		releaseAfterDeath: [0, 7, 17, 32].map((n) => Math.round(n * dotScale * diff.releaseScale)) as LevelInfo['releaseAfterDeath'],
-		hurryDots: difficulty === 'easy' ? 0 : hurry,
-		hurrySpeed: ghost(g + 0.05),
-		hurrySpeed2: ghost(g + 0.1)
+		bonus: BONUS_ITEMS[Math.min(level, BONUS_ITEMS.length) - 1],
+		releaseDots: waitShare.map((s) => Math.round(s * dots * diff.releaseScale)) as LevelInfo['releaseDots'],
+		releaseIdle: Math.max(2, Math.max(2.5, 5 - 0.5 * (level - 1)) + diff.idleBonus),
+		releaseAfterDeath: [0, 0.025, 0.06, 0.11].map((s) => Math.round(s * dots * diff.releaseScale)) as LevelInfo['releaseAfterDeath'],
+		hurryDots: difficulty === 'easy' ? 0 : Math.round(hurryShare * (dots - 4)),
+		hurrySpeed: ghost(g + 0.04),
+		hurrySpeed2: ghost(g + 0.07)
 	};
 }

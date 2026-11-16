@@ -117,7 +117,7 @@ export type GameEvent = { t: number } & (
 	| { type: 'powerRespawn'; x: number; y: number }
 	| { type: 'die'; by: GhostId }
 	| { type: 'bonusShow'; x: number; y: number; kind: number }
-	| { type: 'bonus'; points: number; x: number; y: number }
+	| { type: 'bonus'; points: number; x: number; y: number; kind?: number }
 	| { type: 'mode'; mode: 'scatter' | 'chase' }
 	| { type: 'clear' }
 	| { type: 'level'; level: number }

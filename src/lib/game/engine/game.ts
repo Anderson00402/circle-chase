@@ -4,7 +4,7 @@ import {
 	type GhostId, type GhostMode, type Maze, type Popup, type PowerEndReason, type Scene
 } from '../types';
 import { flood, mazeForLevel } from './mazes';
-import { DIFFICULTY, levelInfo, type LevelInfo } from './levels';
+import { DIFFICULTY, MIN_POWER_TIME, levelInfo, type LevelInfo } from './levels';
 
 /** Game rules. No page access here, so the same code runs in tests, bots and the browser. */
 
@@ -13,22 +13,35 @@ export { DIFFICULTY, type DifficultyDef } from './levels';
 /** Player speed on level 1, normal (tiles per second). Kept for older callers; see `levelInfo`. */
 export const PLAYER_SPEED = levelInfo(1).playerSpeed;
 export const READY_TIME = 1.8, DEATH_TIME = 1.6, CLEAR_TIME = 2.2;
-const TURN_MEMORY = 0.5; // seconds an early key press is kept
+/**
+ * Seconds an early key press or swipe is kept. The wanted direction is used at the first junction
+ * where it is possible, or replaced by the next press; this only drops a wish nothing came of.
+ */
+export const TURN_MEMORY = 1.5;
 /** How far before a tile centre (in tiles) the player may already start a turn. Ghosts never do. */
 export const CORNER_WINDOW = 0.35;
 const EAT_FREEZE = 0.35; // the board holds still for a moment when a ghost is eaten
 /** The player loses a moment for each dot eaten (genre convention), a little more for a power dot. */
-export const DOT_PAUSE = 1 / 60;
-const POWER_PAUSE = 3 / 60;
+export const DOT_PAUSE = 0.015;
+const POWER_PAUSE = 0.06;
 const HIT_RADIUS2 = 0.36; // squared distance in tiles at which player and ghost touch
-const BONUS_AT = [0.3, 0.7]; // share of the level's dots eaten at which the bonus item appears
-const EXTRA_LIFE_AT = 10000;
-const POWER_POINTS = 50, DOT_POINTS = 10;
+const BONUS_AT = [0.25, 0.6]; // share of the level's dots eaten at which the bonus item appears
+const BONUS_STAY = [7.5, 9]; // seconds the bonus item stays, drawn between these
+/** An extra life every this many points. */
+export const EXTRA_LIFE_EVERY = 7500;
+const POWER_POINTS = 40, DOT_POINTS = 10;
+/** Points for the first, second, third and fourth ghost caught in one power-up. */
+export const CHAIN_POINTS = [150, 300, 500, 800] as const;
+/**
+ * Study rules (`powerLock`): power dots stay off the board until this long after a power-up ends,
+ * so the aftermath of a trial is never cut short by a new power-up.
+ */
+export const POWER_LOCK_AFTER = 3;
 const RESPAWN_CLEARANCE = 3; // a power dot does not grow back right under the player
 
 /** Scatter corners as fractions of the maze; targets sit just outside so ghosts circle the corner. */
 const CORNERS: Record<GhostId, [number, number]> = {
-	hunter: [1, 0], ambusher: [0, 0], guard: [0, 1], drifter: [1, 1]
+	hunter: [0, 0], ambusher: [1, 0], guard: [1, 1], drifter: [0, 1]
 };
 
 export const DEFAULT_CONFIG: GameConfig = {
@@ -99,7 +112,7 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 	let dotsLeft = 0, smallLeft = 0, smallTotal = 0, smallEaten = 0;
 	let distExit: Int16Array, distHome: Int16Array, tunnel: Uint8Array;
 	let level = Math.max(1, config.startLevel | 0), score = 0, lives = DIFFICULTY[config.difficulty].lives;
-	let deaths = 0, extraGiven = false;
+	let deaths = 0, nextLife = EXTRA_LIFE_EVERY;
 	let phase: Frame['phase'] = 'ready', phaseTime = 0, time = 0;
 	let player: Player, ghosts: Ghost[] = [];
 	let want: Dir = -1, wantAge = 0, eatPause = 0;
@@ -161,7 +174,7 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 
 	function addScore(n: number) {
 		score += n;
-		if (!extraGiven && score >= EXTRA_LIFE_AT) { extraGiven = true; lives++; emit({ type: 'extra' }); }
+		while (score >= nextLife) { nextLife += EXTRA_LIFE_EVERY; lives++; emit({ type: 'extra' }); }
 	}
 
 	// ---- power-up ----
@@ -169,7 +182,7 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 		if (powerOn) endPower('refreshed');
 		// Study mode: the length comes only from the range, so it is the same at every level.
 		const range = config.frightRange;
-		frightTotal = range ? range[0] + rng() * (range[1] - range[0]) : lv.powerTime;
+		frightTotal = range ? range[0] + rng() * (range[1] - range[0]) : Math.max(MIN_POWER_TIME, lv.powerTime);
 		fright = frightTotal;
 		powerOn = true;
 		chain = 0;
@@ -276,7 +289,8 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 	function tickPickups(dt: number) {
 		if (bonus && (bonus.left -= dt) <= 0) bonus = null;
 		if (!respawns.length) return;
-		if (config.powerLock && powerOn) return;
+		// Study rules: no power dot comes back while a power-up runs or during its aftermath.
+		if (config.powerLock && (powerOn || (powerEndedAt >= 0 && time < powerEndedAt + POWER_LOCK_AFTER))) return;
 		const [px, py] = pos(player);
 		respawns = respawns.filter((r) => {
 			if (time < r.at) return true;
@@ -340,7 +354,7 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 		if (bonus && x === m.bonusTile[0] && y === m.bonusTile[1]) {
 			addScore(bonus.points);
 			popups.push({ x, y, text: '+' + bonus.points, age: 0 });
-			emit({ type: 'bonus', points: bonus.points, x, y });
+			emit({ type: 'bonus', points: bonus.points, x, y, kind: bonus.kind });
 			bonus = null;
 		}
 		const d = dots[i];
@@ -364,7 +378,7 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 			emit({ type: 'dot', x, y });
 			if (bonusShown < BONUS_AT.length && smallEaten >= BONUS_AT[bonusShown] * smallTotal) {
 				bonusShown++;
-				bonus = { kind: lv.bonus.kind, points: lv.bonus.points, left: 9 + rng() };
+				bonus = { kind: lv.bonus.kind, points: lv.bonus.points, left: BONUS_STAY[0] + rng() * (BONUS_STAY[1] - BONUS_STAY[0]) };
 				emit({ type: 'bonusShow', x: m.bonusTile[0], y: m.bonusTile[1], kind: bonus.kind });
 			}
 		}
@@ -391,7 +405,7 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 	/** 0, 1 or 2: how much the hunter hurries near the end of a level. */
 	function hurry(g: Ghost) {
 		if (g.id !== 'hunter' || hurryHeld || lv.hurryDots <= 0) return 0;
-		return smallLeft <= lv.hurryDots / 2 ? 2 : smallLeft <= lv.hurryDots ? 1 : 0;
+		return smallLeft <= lv.hurryDots / 3 ? 2 : smallLeft <= lv.hurryDots ? 1 : 0;
 	}
 
 	function ghostCan(g: Ghost, d: number) {
@@ -418,10 +432,10 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 				// Straight at the player.
 				return [p.x, p.y];
 			case 'ambusher':
-				// Aims four tiles ahead of where the player is facing, to cut them off.
-				return [p.x + f.x * 4, p.y + f.y * 4];
+				// Aims three tiles ahead of where the player is facing and one to its left, to cut them off.
+				return [p.x + f.x * 3 + f.y, p.y + f.y * 3 - f.x];
 			case 'guard': {
-				// Keeps to its own area (the lower left); chases only while the player is inside it,
+				// Keeps to its own area (the lower right); chases only while the player is inside it,
 				// otherwise walks a slow loop around the area.
 				const [ax, ay] = guardArea();
 				const r = Math.max(m.W, m.H) * 0.34;
@@ -434,7 +448,7 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 				return g.wander;
 		}
 	}
-	const guardArea = (): [number, number] => [m.W * 0.27, m.H * 0.7];
+	const guardArea = (): [number, number] => [m.W * 0.73, m.H * 0.7];
 
 	function pickWander(g: Ghost) {
 		// Half the time somewhere near the player, half the time anywhere on the board.
@@ -508,8 +522,8 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 			const dy = py - gy;
 			if (dx * dx + dy * dy > HIT_RADIUS2) continue;
 			if (g.scared) {
-				chain = Math.min(chain + 1, 4);
-				const points = 100 * 2 ** chain;
+				chain = Math.min(chain + 1, CHAIN_POINTS.length);
+				const points = CHAIN_POINTS[chain - 1];
 				addScore(points);
 				g.scared = false;
 				g.mode = 'returning';
