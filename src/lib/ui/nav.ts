@@ -1,7 +1,7 @@
 /** Top-level navigation, shared by the top bar. Change links here only. */
 
-/** Where "play something" links go: the run console, where a case is picked. */
-export const FREE_PLAY_HREF = '/';
+/** The run console, where a case is picked: where "play something" and "back" links go. */
+export const CONSOLE_HREF = '/';
 
 export interface NavItem {
 	href: string;

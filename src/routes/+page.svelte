@@ -14,10 +14,13 @@
 	import { CUES, cueById } from '#lib/game/cues/index.ts';
 	import type { Cue, CueId } from '#lib/game/types.ts';
 	import CuePreview from '#lib/ui/CuePreview.svelte';
-	import { Button, CueChip, InfoTip, Kbd, Segmented, ROLE_LABEL } from '#lib/ui/index.ts';
+	import { previewMoment } from '#lib/ui/preview-moment.svelte.ts';
+	import { MOMENTS } from '#lib/study/preview-scenes.ts';
+	import { Button, ConnectionDot, CueChip, InfoTip, Kbd, Segmented, ROLE_LABEL, slow, whereLabel } from '#lib/ui/index.ts';
+	import { outboxStatus } from '#lib/study/outbox.svelte.ts';
 	import OutcomeBar from '#lib/study/OutcomeBar.svelte';
-	import { outcomeMix as mixWords } from '#lib/outcomes.ts';
-	import { ensureIfNamed, newParticipant, persist, playHref, reload, run, setLabel, suggestedNext } from '#lib/study/run.svelte.ts';
+	import { MODE_LABEL, outcomeMix as mixWords } from '#lib/outcomes.ts';
+	import { ensureIfNamed, newParticipant, persist, playHref, reload, run, setLabel, suggestedNext, summaryHref } from '#lib/study/run.svelte.ts';
 
 	const client = useConvexClient();
 
@@ -25,11 +28,17 @@
 	const IDEAS = CUES.filter((c) => c.role === 'idea');
 	const ALL = [...REFS, ...IDEAS];
 
-	const CHANNEL: Record<Cue['channel'], string> = {
-		hud: 'beside the board', ghosts: 'on the ghosts', player: 'on the player', maze: 'in the maze', screen: 'whole screen'
-	};
 
 	const selected = $derived(cueById(run.settings.selected));
+
+	/**
+	 * Thumbnails of cues drawn on the characters zoom on the chase (at thumbnail size the whole board
+	 * makes them look like "No signal"); cues drawn on the maze or around the board need the whole board.
+	 */
+	const closeUp = (c: Cue) => (c.channel === 'ghosts' ? 'ghost' : c.channel === 'player' ? 'player' : false) as false | 'ghost' | 'player';
+	const momentValue = $derived(previewMoment.left === null ? 'live' : String(previewMoment.left));
+	const momentOptions = [{ value: 'live', label: 'Playing' }, ...MOMENTS.map((m) => ({ value: String(m.left), label: m.label }))];
+	function setMoment(v: string) { previewMoment.left = v === 'live' ? null : Number(v); }
 	function select(id: CueId, focus = false) {
 		run.settings.selected = id;
 		persist();
@@ -65,6 +74,24 @@
 	});
 	const runs = $derived([...(sheet.data?.runs ?? [])].sort((a, b) => a.orderIndex - b.orderIndex));
 	const next = $derived(suggestedNext(played.keys()));
+	const sheetLate = slow(() => sheet.isLoading);
+
+	/** This participant's totals for the status line. */
+	const totals = $derived(runs.reduce((t, r) => ({ trials: t.trials + r.trials, counted: t.counted + r.counted, clips: t.clips + r.clips }), { trials: 0, counted: 0, clips: 0 }));
+
+	// The suggested next case is selected for the researcher whenever it changes: once a label is
+	// entered (the order arrives with the participant number) and when coming back from a run (the
+	// case just played drops out). A case picked by hand that has not been played is left alone.
+	let lastNext: string | null = null;
+	$effect(() => {
+		const id = next?.id ?? null;
+		if (id === lastNext) return;
+		lastNext = id;
+		if (!id) return;
+		const pickedPlayed = played.has(run.settings.selected);
+		const fresh = run.p.runs.length === 0;
+		if (pickedPlayed || fresh) select(id as CueId);
+	});
 
 	// ----- settings -----
 	let sound = $state(true);
@@ -133,9 +160,6 @@
 		}
 	}
 
-	// ----- live totals -----
-	let now = $state(Date.now());
-	const counters = useQuery(api.live.counters, () => ({ source: 'human' as const, now: Math.floor(now / 10_000) * 10_000 }));
 	const n = (x: number | undefined) => (x === undefined ? '-' : x.toLocaleString('en-US'));
 
 	onMount(() => {
@@ -143,8 +167,6 @@
 		labelDraft = run.p.label;
 		try { sound = localStorage.getItem('cc:sound') !== '0'; } catch { /* ignore */ }
 		ensureIfNamed(client);
-		const id = setInterval(() => (now = Date.now()), 10_000);
-		return () => clearInterval(id);
 	});
 </script>
 
@@ -166,7 +188,7 @@
 		ondblclick={() => play(c)}
 		data-preview-host
 	>
-		<span class="thumb"><CuePreview cue={c} fps={15} /></span>
+		<span class="thumb"><CuePreview cue={c} fps={15} zoom={closeUp(c)} /></span>
 		<span class="meta">
 			<span class="code num">{c.code}</span>
 			<span class="name">{c.name}</span>
@@ -188,6 +210,11 @@
 			<p>Pick a case, then play it with the participant.</p>
 			<span class="keys"><Kbd>←</Kbd><Kbd>→</Kbd> or <Kbd>0</Kbd>-<Kbd>9</Kbd> <Kbd>A</Kbd> <Kbd>B</Kbd> to pick, <Kbd>Enter</Kbd> to play</span>
 		</header>
+		<div class="compare">
+			<span class="lab">Compare all at <InfoTip term="Compare at a moment">Freezes every preview at the same time left, so the thirteen cases can be compared side by side. Cases drawn on the characters show a close-up of the chase; the selected case shows the whole board.</InfoTip></span>
+			<Segmented label="Compare all previews at a moment" size="sm" options={momentOptions} value={momentValue} onchange={setMoment} />
+			<span class="dim">left</span>
+		</div>
 
 		<div class="cases-grid" role="radiogroup" aria-label="Case">
 			<div class="group refs">
@@ -197,8 +224,21 @@
 
 			<aside class="sheet" aria-labelledby="sheet-title">
 				<div class="sheet-head">
-					<h2 id="sheet-title">{run.p.label || 'New participant'}{run.p.number ? ` · #${run.p.number}` : ''}</h2>
-					<span class="dim">{runs.length || run.p.runs.length} run{(runs.length || run.p.runs.length) === 1 ? '' : 's'} · {played.size} of {CUES.length} cases</span>
+					<h2 id="sheet-title" class="visually-hidden">Participant and runs</h2>
+					<label for="participant" class="plabel">Participant</label>
+					<input
+						id="participant"
+						bind:this={labelInput}
+						bind:value={labelDraft}
+						onchange={commitLabel}
+						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitLabel(); (e.currentTarget as HTMLInputElement).blur(); } }}
+						maxlength="24"
+						autocomplete="off"
+						spellcheck="false"
+						placeholder="e.g. P07"
+					/>
+					<Button size="sm" variant="ghost" onclick={freshParticipant}>New participant</Button>
+					<span class="dim count-line">{run.p.number ? `#${run.p.number} · ` : ''}{runs.length || run.p.runs.length} run{(runs.length || run.p.runs.length) === 1 ? '' : 's'} · {played.size} of {CUES.length} cases</span>
 				</div>
 				{#if next}
 					<p class="suggest">
@@ -206,7 +246,7 @@
 						<InfoTip term="Suggested next">From a counterbalanced order (balanced Latin square, row {(run.p.row ?? 0) + 1}) picked by participant number, so no case always comes early or late. Any case may be played; the real order is recorded.</InfoTip>
 					</p>
 				{:else if run.p.number === null}
-					<p class="suggest dim">{run.p.label ? 'Connecting to suggest an order...' : 'Enter a participant label to see the suggested order.'}</p>
+					<p class="suggest dim">{run.p.label ? 'Connecting to suggest an order...' : 'Type a label for the participant. The suggested order of cases, and each run played, appear here.'}</p>
 				{:else}
 					<p class="suggest good">Every case has been played.</p>
 				{/if}
@@ -215,15 +255,21 @@
 						{#each runs as r (r.key)}
 							{@const c = cueById(r.cue)}
 							<li>
-								<span class="i num">{r.orderIndex + 1}</span>
-								<span class="what"><span class="num">{c.code}</span> {c.name}{r.mode === 'arcade' ? ' (arcade)' : ''}</span>
-								<span class="count num" title={mixWords(r.outcomes, 8) || 'No power-ups'}>{r.trials}</span>
-								<span class="bar"><OutcomeBar outcomes={r.outcomes} height={4} /></span>
+								<a href={summaryHref(r.cue, r.key, r.mode)} title="Open the summary of run {r.orderIndex + 1}: {mixWords(r.outcomes, 8) || 'no power-ups'}">
+									<span class="i num">{r.orderIndex + 1}</span>
+									<span class="what"><span class="num">{c.code}</span> {c.name}{r.mode === 'arcade' ? ` (${MODE_LABEL.arcade.toLowerCase()})` : ''}</span>
+									<span class="count num">{r.trials}</span>
+									<span class="bar"><OutcomeBar outcomes={r.outcomes} height={4} /></span>
+								</a>
 							</li>
 						{/each}
 					</ol>
+				{:else if !run.p.label && run.p.number === null}
+					<!-- The line above already says what to do. -->
+				{:else if sheetLate.current}
+					<p class="empty">Can't reach the database: runs played now are kept on this machine and appear here when it is back.</p>
 				{:else}
-					<p class="empty">No runs yet for this participant. Each case played appears here with its power-ups.</p>
+					<p class="empty">No runs yet for this participant. Each case played appears here; click one to open its summary.</p>
 				{/if}
 			</aside>
 
@@ -237,7 +283,7 @@
 	<section class="selected" aria-labelledby="sel-title">
 		<div class="sel-head">
 			<CueChip cue={selected} size="sm" />
-			<span class="role">{ROLE_LABEL[selected.role]} · {CHANNEL[selected.channel]}</span>
+			<span class="role">{ROLE_LABEL[selected.role]} · {whereLabel(selected)}</span>
 		</div>
 		<h2 id="sel-title">{selected.name}</h2>
 		<p class="tagline">{selected.tagline}</p>
@@ -246,25 +292,12 @@
 
 		<div class="settings">
 			<div class="set">
-				<label for="participant">Participant</label>
-				<div class="pinput">
-					<input
-						id="participant"
-						bind:this={labelInput}
-						bind:value={labelDraft}
-						onchange={commitLabel}
-						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitLabel(); (e.currentTarget as HTMLInputElement).blur(); } }}
-						maxlength="24"
-						autocomplete="off"
-						spellcheck="false"
-						placeholder="P07"
-					/>
-					<Button size="sm" variant="ghost" onclick={freshParticipant}>New participant</Button>
-				</div>
+				<span class="lab">Playing with</span>
+				<strong class="who num">{run.p.label || 'no label yet'}</strong>
 			</div>
 			<div class="set">
-				<span class="lab">Rules <InfoTip term="Rules">Study: each power-up lasts a random 4 to 8 s, power dots grow back, no game over, one maze. Arcade: the normal game with fixed power lengths, lives and levels. Both are measured.</InfoTip></span>
-				<Segmented label="Rules" size="sm" options={[{ value: 'study', label: 'Study' }, { value: 'arcade', label: 'Arcade' }]} bind:value={run.settings.rules} onchange={() => persist()} />
+				<span class="lab">Rules <InfoTip term="Rules">Study rules: each power-up lasts a random 4 to 8 s, power dots grow back, no game over, one maze. Arcade rules: the normal game with fixed power lengths, lives and levels. Both are measured.</InfoTip></span>
+				<Segmented label="Rules" size="sm" options={[{ value: 'study', label: MODE_LABEL.study }, { value: 'arcade', label: MODE_LABEL.arcade }]} bind:value={run.settings.rules} onchange={() => persist()} />
 			</div>
 			<div class="set">
 				<span class="lab">Sound</span>
@@ -279,18 +312,19 @@
 	</section>
 
 	<footer class="status">
-		<span><span class="num">{n(counters.data?.trials)}</span> power-up{counters.data?.trials === 1 ? '' : 's'} measured</span>
-		<span><span class="num">{n(counters.data?.participants)}</span> participant{counters.data?.participants === 1 ? '' : 's'}</span>
-		<span><span class="num">{n(counters.data?.nowPlaying)}</span> playing now</span>
-		<span class="dim">people only, all sessions</span>
-		<span class="links"><a href="/dashboard">Dashboard</a><a href="/replays">Replays</a></span>
+		<span class="who-line">{run.p.label || 'This participant'}:</span>
+		<span><span class="num">{sheet.isLoading ? '-' : n(totals.trials)}</span> power-up{totals.trials === 1 ? '' : 's'} measured</span>
+		<span><span class="num">{sheet.isLoading ? '-' : n(totals.counted)}</span> count toward the rates</span>
+		<span><span class="num">{sheet.isLoading ? '-' : n(totals.clips)}</span> replay{totals.clips === 1 ? '' : 's'}</span>
+		<ConnectionDot saving={outboxStatus} />
+		<span class="links"><a href="/replays{run.p.number ? `?p=${run.p.number}` : ''}">This participant's replays</a><a href="/dashboard">Dashboard</a></span>
 	</footer>
 </div>
 
 <style>
 	.console {
 		/* Thumbnail size: three rows of cards must fit the screen height, five the left column's width. */
-		--thumb: clamp(84px, min(calc((100dvh - 330px) / 3), calc((100vw - 520px) / 5 - 14px)), 190px);
+		--thumb: clamp(84px, min(calc((100dvh - 368px) / 3), calc((100vw - 520px) / 5 - 14px)), 190px);
 		--gap: 10px;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) 380px;
@@ -300,7 +334,9 @@
 		max-width: 1440px;
 		margin: 0 auto;
 		padding: var(--space-4) var(--gutter) var(--space-3);
-		min-height: calc(100dvh - var(--bar-h));
+		/* One screen: a long description scrolls inside the selected panel instead of pushing the status line off. */
+		height: calc(100dvh - var(--bar-h));
+		min-height: 600px;
 		box-sizing: border-box;
 	}
 
@@ -310,6 +346,8 @@
 	.top p { color: var(--ink-dim); }
 	.keys { margin-left: auto; color: var(--ink-faint); font-size: var(--text-xs); }
 	.keys :global(kbd) { margin: 0 1px; }
+	.compare { display: flex; align-items: center; flex-wrap: wrap; gap: 4px var(--space-2); margin: calc(-1 * var(--space-2)) 0 var(--space-2); }
+	.compare .lab { font-size: var(--text-xs); }
 	.cases-grid {
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr);
@@ -390,14 +428,34 @@
 		background: var(--surface);
 		margin-top: 22px;
 	}
-	.sheet-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
-	.sheet-head h2 { margin: 0; color: var(--ink); font-family: var(--font-body); font-size: var(--text-md); letter-spacing: 0; text-transform: none; }
+	.sheet-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+	.plabel { color: var(--ink-dim); font-size: var(--text-sm); font-weight: 600; }
+	.sheet-head input {
+		flex: 1 1 90px;
+		min-width: 0;
+		max-width: 180px;
+		height: 32px;
+		padding: 0 10px;
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--rule-strong);
+		background: var(--surface-2);
+		color: var(--ink);
+		font: inherit;
+		font-family: var(--font-mono);
+		font-weight: 600;
+	}
+	.sheet-head input::placeholder { color: var(--ink-faint); font-family: var(--font-body); font-weight: 400; }
+	.sheet-head input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+	.count-line { margin-left: auto; }
+	.who { font-family: var(--font-mono); }
 	.dim { color: var(--ink-faint); font-size: var(--text-xs); }
 	.suggest { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--ink-dim); }
 	.suggest.good { color: var(--good); }
 	.link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 650; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 	.runs { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
-	.runs li { display: grid; grid-template-columns: 22px minmax(0, 1fr) 28px 70px; align-items: center; gap: 8px; font-size: var(--text-sm); }
+	.runs a { display: grid; grid-template-columns: 22px minmax(0, 1fr) 28px 70px; align-items: center; gap: 8px; padding: 2px 4px; border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--ink); text-decoration: none; }
+	.runs a:hover { background: var(--surface-2); }
+	.runs a:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
 	.runs .i { color: var(--ink-faint); text-align: right; }
 	.runs .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.runs .count { text-align: right; color: var(--ink-dim); }
@@ -424,21 +482,7 @@
 	.desc { flex: 1 1 auto; min-height: 2.6em; overflow-y: auto; color: var(--ink-dim); font-size: var(--text-sm); }
 	.settings { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) 0; border-top: 1px solid var(--rule); }
 	.set { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-	.set > label, .lab { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-dim); font-size: var(--text-sm); }
-	.pinput { display: flex; align-items: center; gap: var(--space-2); }
-	.pinput input {
-		width: 96px;
-		height: 32px;
-		padding: 0 10px;
-		border-radius: var(--radius-sm);
-		border: 1px solid var(--rule-strong);
-		background: var(--surface-2);
-		color: var(--ink);
-		font: inherit;
-		font-family: var(--font-mono);
-		font-weight: 600;
-	}
-	.pinput input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+	.lab { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-dim); font-size: var(--text-sm); }
 	.enter { margin-left: 6px; opacity: 0.75; }
 	.phone-only { display: none; }
 	.enter :global(kbd) { background: transparent; color: inherit; border-color: currentColor; }
@@ -456,6 +500,7 @@
 		font-size: var(--text-sm);
 	}
 	.status .num { color: var(--ink); font-weight: 650; }
+	.who-line { color: var(--ink); font-weight: 650; }
 	.links { margin-left: auto; display: flex; gap: var(--space-4); }
 	.links a { font-weight: 650; }
 
@@ -469,9 +514,10 @@
 			--thumb: calc((100vw - 2 * var(--gutter) - 2 * var(--gap)) / 3 - 14px);
 			grid-template-columns: minmax(0, 1fr);
 			grid-template-rows: auto;
+			height: auto;
 			min-height: 0;
 		}
-		.cases-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'refs' 'ideas' 'sheet'; }
+		.cases-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'sheet' 'refs' 'ideas'; }
 		.row, .refs .row { grid-template-columns: repeat(3, calc(var(--thumb) + 14px)); }
 		.sheet { margin-top: 0; max-height: 260px; }
 		.selected { grid-row: auto; grid-column: auto; position: relative; }

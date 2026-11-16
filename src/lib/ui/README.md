@@ -17,7 +17,7 @@ import { Page, PageHeader, Panel, Stat, Button } from '#lib/ui/index.ts';
   `<main>` fills what is left under the bar (`100dvh - var(--bar-h)`). Make your page a flex column
   with `flex: 1; min-height: 0` (or use `<Page width="full">`) and size the board to it. To give
   another route the same treatment, add it to `fill` in the layout.
-- Top-level links live in `nav.ts` (`NAV`, `DEV_NAV` for the small developer links, `FREE_PLAY_HREF`); change them there only.
+- Top-level links live in `nav.ts` (`NAV`, `DEV_NAV` for the small developer links, `CONSOLE_HREF`); change them there only.
 - Every page sets `<svelte:head><title>Name · Circle Chase</title></svelte:head>`.
 - UI text: plain words, sentence case, no em dashes.
 
@@ -28,7 +28,7 @@ import { Page, PageHeader, Panel, Stat, Button } from '#lib/ui/index.ts';
 | `Page` | Width and padding wrapper. `width`: `narrow` \| `wide` \| `full`. | `<Page width="wide">…</Page>` |
 | `PageHeader` | Title, one-line `lead`, optional `eyebrow`, `actions` snippet, extra children. | `<PageHeader eyebrow="Results" title="Dashboard" lead="…">{#snippet actions()}…{/snippet}</PageHeader>` |
 | `Panel` | Titled surface for a chart, table or form. `sub`, `actions` snippet, `flush` for edge-to-edge tables, `level` 2 or 3. | `<Panel title="Caught rate by cue" sub="Engaged trials, humans">…</Panel>` |
-| `Button` | `variant`: `primary` (one per view) \| `quiet` \| `danger` \| `ghost`; `size`: `sm` \| `md` \| `lg`; `block`. Becomes a link with `href`. | `<Button variant="primary" href="/study">Take the study</Button>` |
+| `Button` | `variant`: `primary` (one per view) \| `quiet` \| `danger` \| `ghost`; `size`: `sm` \| `md` \| `lg`; `block`. Becomes a link with `href`. | `<Button variant="primary" href="/">Go to the run console</Button>` |
 | `Stat` | Big number with `label`, `value` (preformatted, null shows a dash), `unit`, `sub`, `interval`, `delta` + `deltaTone`, `info` (definition), `tone`, `size`. | `<Stat label="Caught rate" value="18" unit="%" interval="95% CI 9-31%" sub="of 42 engaged trials" info="…" />` |
 | `Badge` | Small label. `tone`: `neutral` \| `accent` \| `good` \| `bad` \| `warn` \| `sim` \| `live`. Use `sim` on anything showing bot data. | `<Badge tone="sim">Simulated</Badge>` |
 | `Segmented` | Bindable radio group styled as a switch. Options `{ value, label, hint? }`. | `<Segmented label="Data" options={[…]} bind:value={source} />` |
@@ -53,7 +53,9 @@ Helpers:
   is not written yet (`ready: false`), with `code`, `name`, `role`, `tagline` and the `cue` itself
   when registered. Use it for any list that should always show thirteen.
 - `ROLE_LABEL`: `{ reference: 'Reference', baseline: 'Baseline', idea: 'Idea' }`.
-- `NAV`, `DEV_NAV`, `FREE_PLAY_HREF` (the run console), `isCurrent(item, pathname)` from `nav.ts`.
+- `NAV`, `DEV_NAV`, `CONSOLE_HREF` (the run console), `isCurrent(item, pathname)` from `nav.ts`.
+- `connection` (shared database connection state), `slow(() => q.isLoading)` (true after about 5 s of loading or while offline) from `connection.svelte.ts`; `ConnectionDot` shows it in the top bar.
+- Outcome wording, tones and colours: `src/lib/outcomes.ts` only.
 
 ## Tokens (`src/app.css`)
 

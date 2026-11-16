@@ -7,7 +7,7 @@
 
 	interface Props {
 		/** Writes waiting in the outbox, and whether they keep failing (null when unknown). */
-		saving?: { pending: number; failing: boolean } | null;
+		saving?: { pending: number; failing: boolean; failingCount?: number } | null;
 	}
 	let { saving = null }: Props = $props();
 
@@ -15,7 +15,7 @@
 	const tone = $derived(s === 'connected' ? (saving?.failing ? 'warn' : 'good') : s === 'offline' ? 'bad' : 'warn');
 	const words = $derived.by(() => {
 		if (s !== 'connected') return CONN_LABEL[s];
-		if (saving?.failing) return 'Saving is failing';
+		if (saving?.failing) return `Saving is failing${saving.failingCount ? ` (${saving.failingCount})` : ''}`;
 		if (saving && saving.pending > 0) return `Saving ${saving.pending}`;
 		return 'Saved';
 	});

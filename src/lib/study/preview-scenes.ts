@@ -99,3 +99,25 @@ export function previewClip(): PreviewClip {
 	if (!cached) throw new Error('no preview situation found');
 	return cached;
 }
+
+/**
+ * Index of the scene closest to `left` seconds of power left (negative: after the end). Used by
+ * "compare at a moment", which sets every preview to the same time left.
+ */
+export function indexForLeft(clip: PreviewClip, left: number): number {
+	let best = clip.startIndex, err = Infinity;
+	for (let i = clip.startIndex; i < clip.scenes.length; i++) {
+		const e = Math.abs(leftAt(clip, i) - left);
+		if (e < err) { err = e; best = i; }
+	}
+	return best;
+}
+
+/** The moments offered by "compare at a moment", as seconds left (negative: after the end). */
+export const MOMENTS: { left: number; label: string }[] = [
+	{ left: 3, label: '3 s' },
+	{ left: 2, label: '2 s' },
+	{ left: 1, label: '1 s' },
+	{ left: 0.3, label: '0.3 s' },
+	{ left: -0.3, label: 'Just after' }
+];

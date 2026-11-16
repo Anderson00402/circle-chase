@@ -19,7 +19,7 @@
 	import RunBoard, { type RunEnd } from '#lib/study/RunBoard.svelte';
 	import RunSummary from '#lib/study/RunSummary.svelte';
 	import {
-		activeRun, endedLocally, ensureIfNamed, ensureParticipant, nextOrderIndex, playHref, recordRun, run, setActiveRun,
+		activeRun, endedLocally, ensureIfNamed, ensureParticipant, nextOrderIndex, playHref, queueSetup, recordRun, run, setActiveRun,
 		suggestedNext, summaryHref, uid
 	} from '#lib/study/run.svelte.ts';
 	import { MODE_LABEL } from '#lib/outcomes.ts';
@@ -73,7 +73,7 @@
 		if (!cue) return;
 		recordRun({ blockKey, cue: cue.id, mode: rules, orderIndex, startedAt: Date.now() });
 		setActiveRun({ blockKey, cue: cue.id, rules, orderIndex });
-		ensureParticipant(client);
+		ensureParticipant(client).then(() => queueSetup(client));
 	}
 
 	/** End run: wait for the power-up being measured, unless it was already asked for (then end now). */

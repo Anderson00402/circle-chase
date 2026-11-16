@@ -66,15 +66,17 @@
 	function stop() { controller?.abort(); }
 
 	// ----- clearing -----
-	let deleteOpen = $state(false), wipeOpen = $state(false), wipeText = $state('');
+	let deleteOpen = $state(false), wipeOpen = $state(false), wipeText = $state(''), deleteText = $state('');
 	let clearing = $state<string | null>(null);
 	async function deleteBots() {
+		if (deleteText !== 'delete simulated data') return;
 		clearing = 'Deleting simulated data...';
 		try {
 			const r = await client.mutation(api.admin.deleteBotData, { confirm: 'delete bot data' });
 			clearing = r.continuing ? 'Deleting simulated data in the background. The counts below fall to zero when it is done.' : 'Simulated data deleted.';
 		} catch (e) { clearing = 'Could not delete: ' + (e instanceof Error ? e.message : String(e)); }
 		deleteOpen = false;
+		deleteText = '';
 	}
 	async function wipe() {
 		if (wipeText !== 'wipe everything') return;
@@ -97,7 +99,11 @@
 			deleteBots: () => client.mutation(api.admin.deleteBotData, { confirm: 'delete bot data' }),
 			summary: () => client.query(api.summary.byCue, { source: 'bot', mode: 'study' }),
 			counters: () => client.query(api.live.counters, { source: 'bot' }),
-			check: (run?: string) => client.query(api.dashboard.simCheck, run ? { run } : {}),
+			// Without a run, check the latest one.
+			check: async (run?: string) => {
+				const id = run ?? (await client.query(api.sim.runs, {})).sort((a, b) => b.startedAt - a.startedAt)[0]?.run;
+				return id ? client.query(api.dashboard.simCheck, { run: id }) : null;
+			},
 			runs: () => client.query(api.sim.runs, {}),
 			get progress() { return progress; }
 		};
@@ -263,10 +269,15 @@
 </Page>
 
 <Dialog bind:open={deleteOpen} title="Delete all simulated data?">
-	<p>Every row recorded as a bot is removed: participants, sessions, blocks, trials, clips and ratings. Human data is not touched.</p>
+	<p>Every row recorded as a bot is removed: participants, sessions, blocks, trials, clips and ratings. Human data is not touched. It cannot be undone.</p>
+	<Field label='Type "delete simulated data" to confirm'>
+		{#snippet children(id)}
+			<input {id} class="input" type="text" autocomplete="off" bind:value={deleteText} />
+		{/snippet}
+	</Field>
 	{#snippet actions()}
-		<Button variant="quiet" onclick={() => (deleteOpen = false)}>Cancel</Button>
-		<Button variant="danger" onclick={deleteBots}>Delete simulated data</Button>
+		<Button variant="quiet" onclick={() => { deleteOpen = false; deleteText = ''; }}>Cancel</Button>
+		<Button variant="danger" onclick={deleteBots} disabled={deleteText !== 'delete simulated data'}>Delete simulated data</Button>
 	{/snippet}
 </Dialog>
 

@@ -4,6 +4,23 @@
 	 * and can be compared side by side. A single requestAnimationFrame loop runs only while at least
 	 * one preview is on screen and playing; the browser stops it in hidden tabs.
 	 */
+	import type { PreviewClip as Clip } from '#lib/study/preview-scenes.ts';
+	import { focusPath as fp, type FocusWindow as FW } from '#lib/replay/focus.ts';
+
+	/**
+	 * Close-up camera paths for the shared clip, one per subject: ghost cues keep the nearest scared
+	 * ghost in view, player cues the player; both widen to take in the pair when it fits.
+	 */
+	const zoomCache = new Map<string, { clip: Clip; path: FW[] }>();
+	export const ZOOM = { min: 9, max: 13 };
+	function zoomPath(clip: Clip, subject: 'ghost' | 'player'): FW[] {
+		const hit = zoomCache.get(subject);
+		if (hit?.clip === clip) return hit.path;
+		const path = fp(clip.scenes, { min: ZOOM.min, max: ZOOM.max, pad: 5, subject });
+		zoomCache.set(subject, { clip, path });
+		return path;
+	}
+
 	interface Client { tick(now: number): void }
 	const active = new Set<Client>();
 	let raf = 0;
@@ -29,6 +46,9 @@
 	 *   <CuePreview {cue} />                       loops while on screen (thumbnail, capped at 20 fps)
 	 *   <CuePreview {cue} play="hover" />          still frame; plays while its card is hovered or focused
 	 *   <CuePreview {cue} controls fps={60} />     larger, with play / pause, scrubber and "seconds left"
+	 *   <CuePreview {cue} zoom />                  close up on the player and the ghost that matters
+	 *
+	 * "Compare at a moment" (`previewMoment`) freezes every preview at the same time left.
 	 *
 	 * With prefers-reduced-motion it shows a still (about 1.5 s before the end) and a play button.
 	 * The scenes come from `previewClip()` (src/lib/study/preview-scenes.ts), built once per page.
@@ -36,7 +56,9 @@
 	import { onMount } from 'svelte';
 	import type { Cue } from '#lib/game/types.ts';
 	import { SceneView } from '#lib/game/render/index.ts';
-	import { leftAt, previewClip, type PreviewClip } from '#lib/study/preview-scenes.ts';
+	import { indexForLeft, leftAt, previewClip, type PreviewClip } from '#lib/study/preview-scenes.ts';
+	import ZoomView from '#lib/replay/ZoomView.svelte';
+	import { previewMoment } from './preview-moment.svelte.ts';
 
 	interface Props {
 		cue: Cue;
@@ -46,8 +68,10 @@
 		fps?: number;
 		/** Play / pause, scrubber and the seconds-left readout. */
 		controls?: boolean;
+		/** Show a window of the board that follows the chase: around the nearest scared ghost or the player. */
+		zoom?: false | 'ghost' | 'player';
 	}
-	let { cue, play = 'loop', fps = 20, controls = false }: Props = $props();
+	let { cue, play = 'loop', fps = 20, controls = false, zoom = false }: Props = $props();
 
 	const HOLD = 0.8; // seconds the last frame stays before the loop starts again
 
@@ -61,8 +85,10 @@
 	let scrubbing = $state(false);
 	let host: HTMLDivElement;
 
+	/** A moment picked with "compare at a moment" freezes the preview there. */
+	const frozenAt = $derived(previewMoment.left);
 	const wantsMotion = $derived(
-		userPlaying ?? (play === 'loop' ? !reduce : play === 'hover' ? hovered && !reduce : false)
+		frozenAt !== null ? false : (userPlaying ?? (play === 'loop' ? !reduce : play === 'hover' ? hovered && !reduce : false))
 	);
 	const running = $derived(!!clip && visible && wantsMotion && !scrubbing);
 	const left = $derived(clip ? leftAt(clip, index) : NaN);
@@ -70,11 +96,16 @@
 		Number.isNaN(left) ? 'Before the power dot' : left > 0 ? `${left.toFixed(1)} s left` : `Ran out ${(-left).toFixed(1)} s ago`
 	);
 
-	// Paused previews show the still unless someone moved them.
+	// Paused previews show the still unless someone moved them; a chosen moment wins over both.
 	let moved = false;
 	$effect(() => {
-		if (clip && !running && !moved) index = clip.stillIndex;
+		if (!clip) return;
+		if (frozenAt !== null) { index = indexForLeft(clip, frozenAt); userPlaying = null; moved = false; return; }
+		if (!running && !moved) index = clip.stillIndex;
 	});
+
+	// Close-ups: one smoothed camera path per clip, shared by every zoomed preview.
+	const path = $derived(clip && zoom ? zoomPath(clip, zoom) : null);
 
 	let lastDraw = 0, offset = 0;
 	const client: Client = {
@@ -95,6 +126,7 @@
 
 	function togglePlay() {
 		if (!clip) return;
+		if (previewMoment.left !== null) { previewMoment.left = null; }
 		const next = !running;
 		if (next && userPlaying === false) {
 			// Resume from where it was paused rather than jumping to the shared clock.
@@ -104,6 +136,7 @@
 	}
 
 	function onScrub(e: Event) {
+		previewMoment.left = null;
 		moved = true;
 		index = +(e.currentTarget as HTMLInputElement).value;
 		userPlaying = false;
@@ -139,7 +172,11 @@
 <div class="preview" class:controls bind:this={host}>
 	<div class="stage">
 		{#if clip}
-			<SceneView scene={clip.scenes[index]} {cue} fit banners={false} reduceMotion={reduce} label="Preview of {cue.name}" />
+			{#if path}
+				<ZoomView scene={clip.scenes[index]} {cue} view={path[index]} minSize={ZOOM.min} reduceMotion={reduce} label="Close-up preview of {cue.name}" />
+			{:else}
+				<SceneView scene={clip.scenes[index]} {cue} fit banners={false} reduceMotion={reduce} label="Preview of {cue.name}" />
+			{/if}
 		{/if}
 		{#if !controls && reduce && play !== 'still'}
 			<button class="play-btn" onclick={togglePlay} aria-label={running ? `Pause preview of ${cue.name}` : `Play preview of ${cue.name}`}>
@@ -177,7 +214,7 @@
 <style>
 	.preview { width: 100%; height: 100%; display: flex; flex-direction: column; gap: var(--space-2); }
 	.stage { position: relative; flex: 1; min-height: 0; }
-	.stage :global(.scene-view) { position: absolute; inset: 0; }
+	.stage :global(.scene-view), .stage :global(.zoom) { position: absolute; inset: 0; }
 	.play-btn {
 		position: absolute;
 		right: 8px;

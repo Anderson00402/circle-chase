@@ -10,7 +10,7 @@
 	import Mark from '#lib/ui/Mark.svelte';
 	import ConnectionDot from '#lib/ui/ConnectionDot.svelte';
 	import { watchConnection } from '#lib/ui/connection.svelte.ts';
-	import { getOutbox } from '#lib/study/outbox.svelte.ts';
+	import { outboxStatus, startOutbox } from '#lib/study/outbox.svelte.ts';
 	import { DEV_NAV, NAV, isCurrent } from '#lib/ui/nav.ts';
 	import type { LayoutProps } from './$types';
 
@@ -21,9 +21,7 @@
 	// The shared connection state (top bar dot, "can't reach the database" on slow lists) and the
 	// run console's write outbox, started once for the whole app so writes left by an earlier page
 	// are sent even if the next page never writes.
-	// HOOK (Data plumbing): when outbox.svelte.ts exports startOutbox() and a status store, call
-	// startOutbox(client) here and pass its status to <ConnectionDot saving={...} />.
-	const outbox = getOutbox(client);
+	startOutbox(client);
 	onMount(() => watchConnection(client));
 
 	/**
@@ -80,7 +78,7 @@
 			<span>Menu</span>
 		</button>
 
-		<span class="conn-slot"><ConnectionDot saving={outbox.state} /></span>
+		<span class="conn-slot"><ConnectionDot saving={outboxStatus} /></span>
 
 		<nav id="site-nav" class:open={menuOpen} aria-label="Main">
 			<ul>
@@ -264,9 +262,10 @@
 		.menu-btn {
 			display: inline-flex;
 			margin-left: 0;
+			order: 2;
 		}
 		.conn-slot {
-			order: 0;
+			order: 1;
 			margin-left: auto;
 		}
 		nav {

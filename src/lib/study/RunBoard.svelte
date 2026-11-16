@@ -4,7 +4,7 @@
 	 * participant is looking, the live measurement panel beside it. Mount it with a new `blockKey`
 	 * for every run. Call `end()` to close the block; `onended` follows once the writes are out.
 	 *
-	 * Pauses (P, Escape, the window losing focus) are counted and stored on the block.
+	 * Pauses (P, Escape, the window losing focus) are counted by the telemetry client and stored on the block.
 	 */
 	import { onMount } from 'svelte';
 	import { useConvexClient } from 'convex-svelte';
@@ -13,7 +13,6 @@
 	import type { Cue, Game as GameT, GameConfig, Scene } from '../game/types';
 	import { createTelemetry, type Mode, type RecentTrial } from '../telemetry/client.svelte.ts';
 	import LivePanel from '../telemetry/LivePanel.svelte';
-	import { getOutbox } from './outbox.svelte.ts';
 	import type { Participant } from './run.svelte.ts';
 
 	export interface RunEnd { blockKey: string; recent: RecentTrial[]; started: boolean }
@@ -50,14 +49,13 @@
 	const config: Partial<GameConfig> = rules === 'study' ? { ...studyRules } : { difficulty: 'normal' };
 
 	let gameRef = $state<ReturnType<typeof Game>>();
-	let started = false, ending = false, lastWall = 0, pauses = 0, pausedSeconds = 0;
+	let started = false, ending = false, lastWall = 0;
 
 	function onframe(scene: Scene, game: GameT) {
 		if (ending) return;
 		tel.onFrame(scene, game);
 		const wall = performance.now();
 		// The game sends no frames while paused.
-		if (lastWall && wall - lastWall > 400) { pauses++; pausedSeconds += (wall - lastWall) / 1000; }
 		lastWall = wall;
 		if (!started) { started = true; onstarted?.(); }
 	}
@@ -68,7 +66,6 @@
 		ending = true;
 		gameRef?.setPaused(true);
 		await tel.endBlock(5000);
-		if (started) getOutbox(client).send('markBlock', { blockKey, pauses, pausedSeconds: Math.round(pausedSeconds * 10) / 10 }, `pauses:${blockKey}`);
 		const recent = $state.snapshot(tel.live.recent) as RecentTrial[];
 		tel.destroy();
 		onended({ blockKey, recent, started });

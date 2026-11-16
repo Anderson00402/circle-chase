@@ -70,6 +70,8 @@
 	const result = $derived(build(+(q.get('seed') ?? 1), +(q.get('level') ?? 1), q.get('dense') === '1'));
 </script>
 
+<svelte:head><title>Film strip · {cue.name} · Circle Chase</title></svelte:head>
+
 <div class="dev">
 	<h1>{cue.code} · {cue.name} <small>{result.note}{reduce ? ' · reduced motion' : ''}</small></h1>
 	<nav>
@@ -95,6 +97,9 @@
 	nav a { color: inherit; opacity: 0.7; text-decoration: none; }
 	nav a.on { opacity: 1; text-decoration: underline; }
 	.grid { display: flex; flex-wrap: wrap; gap: 10px; }
-	figure { margin: 0; }
+	figure { margin: 0; max-width: 100%; }
+	/* Phones: frames shrink to the screen instead of scrolling the page sideways. */
+	figure :global(canvas) { max-width: 100%; height: auto !important; }
+	h1 { overflow-wrap: anywhere; }
 	figcaption { font: 12px var(--font-mono, monospace); opacity: 0.85; padding-top: 3px; text-align: center; }
 </style>

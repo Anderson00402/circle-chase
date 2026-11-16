@@ -8,7 +8,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api } from '#convex/_generated/api.js';
-	import { Badge, Button, EmptyState, FREE_PLAY_HREF, Page, PageHeader, Segmented, Select, cueListings } from '#lib/ui/index.ts';
+	import { Badge, Button, EmptyState, CONSOLE_HREF, Page, PageHeader, Segmented, Select, cueListings } from '#lib/ui/index.ts';
 	import MomentCard from '#lib/replay/MomentCard.svelte';
 	import { SORTS, applyList, filterMoments, readState, toSearch, type ListState, type Source } from '#lib/replay/list.ts';
 	import { OUTCOME_LABEL, OUTCOME_ORDER } from '#lib/replay/story.ts';
@@ -125,7 +125,7 @@
 				A replay is saved for every power-up where the player was chasing near the end, or was caught.
 				Play a round and come back.
 				{#snippet actions()}
-					<Button variant="primary" href={FREE_PLAY_HREF}>Play a round</Button>
+					<Button variant="primary" href={CONSOLE_HREF}>Play a round</Button>
 				{/snippet}
 			</EmptyState>
 		{/if}

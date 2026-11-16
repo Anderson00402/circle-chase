@@ -38,3 +38,27 @@ export const ROLE_LABEL: Record<Cue['role'], string> = {
 	baseline: 'Baseline',
 	idea: 'Idea'
 };
+
+/**
+ * Where each case's signal appears on screen, in plain words, for the console's sublabel. More
+ * exact than the cue's channel (the timer bar is a "hud" cue but sits over the top wall).
+ */
+const WHERE: Partial<Record<CueId, string>> = {
+	none: 'nothing shown',
+	'classic-blink': 'on the ghosts',
+	'timer-bar': 'over the top wall',
+	'ink-refill': 'on the ghosts',
+	'clock-halos': 'on the ghosts',
+	'burning-fuse': 'along the outer wall',
+	'wall-tide': 'in the walls',
+	heartbeat: 'at the board edges, with sound',
+	'waking-ghosts': 'on the ghosts',
+	'pen-hourglass': 'in the pen',
+	'deflating-player': 'around the player',
+	'final-count': 'next to the player',
+	'dot-sweep': 'across the whole board'
+};
+const BY_CHANNEL: Record<Cue['channel'], string> = {
+	hud: 'beside the board', ghosts: 'on the ghosts', player: 'on the player', maze: 'in the maze', screen: 'whole screen'
+};
+export const whereLabel = (c: Pick<Cue, 'id' | 'channel'>): string => WHERE[c.id] ?? BY_CHANNEL[c.channel];
