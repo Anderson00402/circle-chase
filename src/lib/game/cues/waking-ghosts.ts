@@ -1,27 +1,32 @@
 import type { CueContext, Cue, GhostView } from '../types';
-import { carries, sinceWoke, WARN, warnDepth, wispUnit, wrapDx } from './shared-ghosts';
+import { carries, scaredShiver, sinceWoke, WARN, warnDepth, warnOn, wispUnit, wrapDx } from './shared-ghosts';
 
 /**
- * Idea 6: no gauge at all, only body language. Scared wisps come to in three clear stages that
- * read by silhouette and motion even at small sizes:
+ * Idea 6: no gauge drawn beside the ghost, only the ghost's own body. Scared wisps come to as
+ * the power runs out, and two things grow steadily with the time used, so a glance says how far
+ * along they are, not only which stage:
  *
- *   dazed    squashed flat and wide, eyes shut, rocking slowly from side to side
- *   groggy   back up but still slumped, eyes open, barely swaying
- *   alert    the last 2 s, always: tall, puffed up, leaning towards the hero, shivering harder
- *            and harder, then a quick crouch just before the end
+ *   height   the body rises from squashed flat and wide to tall and narrow, in proportion to the
+ *            time used (a quarter of the way up is a quarter of the time gone)
+ *   eyes     they open in proportion too: shut at the start, half open halfway, wide at the end
+ *
+ * On top of that, three poses mark the stages, so a change is easy to notice:
+ *
+ *   dazed    rocking slowly from side to side (a fixed tilt with reduced motion)
+ *   groggy   upright, barely swaying
+ *   alert    the last 2 s, always: the outline, eyes and stripes take on the ghost's own danger
+ *            colour, it leans towards the hero and shivers harder and harder
  *
  * Then they wake: a springy stretch back into their normal, dangerous selves. The first two
  * stages split the time before the final warning in half, so they scale with the power length.
- * Each stage starts with a small jolt, so a change is hard to miss. With reduced motion each stage
- * is a still pose (flat and tilted, slumped, tall and leaning) and there is no shiver.
+ * Each stage starts with a small hop. With reduced motion there is no rocking, shiver or hop;
+ * the height, the eyes, the tilt and the danger colour carry everything.
  */
 
-interface Pose { sx: number; sy: number; size: number; rot: number }
-
-/** Seconds a stage change takes; the overshoot makes it a jolt. */
-const JOLT = 0.22;
-/** Seconds of the crouch before the snap, and of the snap itself. */
-const CROUCH = 0.3, SNAP = 0.45;
+/** Body shape at the start (flat) and at the end (tall), as x and y scale. */
+const FLAT = { sx: 1.18, sy: 0.6 }, TALL = { sx: 0.9, sy: 1.2 };
+/** Seconds of the hop at a stage change, and of the spring awake at the end. */
+const HOP = 0.24, SNAP = 0.45;
 
 /** Which stage, and seconds into it. */
 function stageAt(total: number, left: number): { s: 0 | 1 | 2; since: number } {
@@ -31,52 +36,90 @@ function stageAt(total: number, left: number): { s: 0 | 1 | 2; since: number } {
 	return { s: 1, since: elapsed - pre / 2 };
 }
 
-function poseOf(k: CueContext, s: 0 | 1 | 2, g: GhostView, i: number, cx: number): Pose {
+/** Tilt of the body for each stage's pose. */
+function tiltOf(k: CueContext, s: 0 | 1 | 2, i: number, cx: number): number {
 	const still = k.reduceMotion;
-	if (s === 0) {
-		// Dazed: flat, wide, rocking (a fixed tilt when still).
-		const rot = still ? (i % 2 ? 0.3 : -0.3) : 0.3 * Math.sin(k.now * 3.4 + i * 1.3);
-		return { sx: 1.14, sy: 0.66, size: 1, rot };
-	}
-	if (s === 1) {
-		// Groggy: upright but slumped, a little sway.
-		return { sx: 1.06, sy: 0.84, size: 1, rot: still ? 0 : 0.06 * Math.sin(k.now * 2.2 + i) };
-	}
-	// Alert: tall, puffed up, leaning towards the hero.
+	if (s === 0) return still ? (i % 2 ? 0.26 : -0.26) : 0.26 * Math.sin(k.now * 3.4 + i * 1.3);
+	if (s === 1) return still ? 0 : 0.05 * Math.sin(k.now * 2.2 + i);
 	const dx = wrapDx(k, cx, k.playerPos()[0]);
-	const lean = Math.abs(dx) > k.T * 0.3 ? Math.sign(dx) * 0.17 : 0;
-	return { sx: 0.9, sy: 1.18, size: 1.1, rot: lean };
+	return Math.abs(dx) > k.T * 0.3 ? Math.sign(dx) * 0.17 : 0;
+}
+
+/** Eyes that open with `open` 0..1: a lid line when shut, a round eye with a pupil when wide. */
+function drawEyes(k: CueContext, x0: number, hy: number, t: number, open: number, white: string, pupil: string, lookX: number) {
+	const { ctx } = k;
+	const rx = Math.max(1.1, t * 0.125), ry = Math.max(0.6, rx * (0.14 + 0.96 * open));
+	for (const s of [-1, 1]) {
+		const ex = x0 + s * t * 0.15, ey = hy + t * 0.02;
+		ctx.fillStyle = white;
+		ctx.beginPath();
+		ctx.ellipse(ex, ey, rx, ry, 0, 0, Math.PI * 2);
+		ctx.fill();
+		// The pupil shows once the eye is open enough to hold it, and grows with it.
+		if (open > 0.3 && t >= 9) {
+			ctx.fillStyle = pupil;
+			ctx.beginPath();
+			ctx.arc(ex + lookX * rx * 0.35, ey + ry * 0.1, Math.min(ry, rx) * 0.55, 0, Math.PI * 2);
+			ctx.fill();
+		}
+	}
 }
 
 function drawWaking(k: CueContext, g: GhostView, i: number, cx: number, cy: number) {
-	const { ctx, T } = k;
+	const { ctx, T, colors } = k;
 	const t = wispUnit(T), still = k.reduceMotion;
+	const used = k.clamp(1 - k.power.frac);
 	const { s, since } = stageAt(k.power.total, k.power.left);
-	let p = poseOf(k, s, g, i, cx);
+	const warn = warnOn(k), deep = warnDepth(k);
+	const danger = colors.ghost[g.id];
 
-	// Stage change: blend from the previous pose with an overshoot (instant when still).
-	if (s > 0 && since < JOLT && !still && k.power.total - k.power.left > JOLT) {
-		const q = poseOf(k, (s - 1) as 0 | 1, g, i, cx), b = k.ease.outBack(since / JOLT);
-		p = { sx: k.lerp(q.sx, p.sx, b), sy: k.lerp(q.sy, p.sy, b), size: k.lerp(q.size, p.size, b), rot: k.lerp(q.rot, p.rot, b) };
-	}
+	// The continuous part: height and width follow the time used exactly.
+	let sx = k.lerp(FLAT.sx, TALL.sx, used), sy = k.lerp(FLAT.sy, TALL.sy, used);
+	let rot = tiltOf(k, s, i, cx), ox = 0, lift = 0;
 
-	let ox = 0;
-	if (s === 2 && !still) {
-		// Shiver that grows to the end, and the crouch just before the snap.
-		const deep = warnDepth(k);
-		const amp = t * (0.03 + 0.08 * deep * deep);
-		ox = (Math.sin(k.now * 53 + i * 2) + Math.sin(k.now * 79 + i)) * 0.5 * amp;
-		p.rot += Math.sin(k.now * 61 + i * 3) * 0.05 * deep;
-		const c = k.ease.inQuad(k.clamp((CROUCH - k.power.left) / CROUCH));
-		p.sy *= 1 - 0.24 * c;
-		p.sx *= 1 + 0.16 * c;
+	if (!still) {
+		// A small hop as each stage begins (a stretch up and back, so the shape at rest stays honest).
+		if (s > 0 && since < HOP && k.power.total - k.power.left > HOP) {
+			const h = Math.sin((since / HOP) * Math.PI);
+			sy *= 1 + 0.14 * h;
+			sx *= 1 - 0.07 * h;
+			lift = t * 0.12 * h;
+			// Blend the tilt from the previous pose's.
+			rot = k.lerp(tiltOf(k, (s - 1) as 0 | 1, i, cx), rot, k.ease.outCubic(since / HOP));
+		}
+		if (s === 2) {
+			// Shiver that grows to the end.
+			const amp = t * (0.03 + 0.08 * deep * deep);
+			ox = (Math.sin(k.now * 53 + i * 2) + Math.sin(k.now * 79 + i)) * 0.5 * amp;
+			rot += Math.sin(k.now * 61 + i * 3) * 0.05 * deep;
+		}
 	}
 
 	const foot = t * 0.44;
-	ctx.translate(cx + ox, cy + foot);
-	ctx.rotate(p.rot);
-	ctx.scale(p.sx * p.size, p.sy * p.size);
-	k.drawGhost(g, i, 'scared', 0, -foot, { eyes: s === 0 ? 'closed' : s === 1 ? 'pale' : 'dark' });
+	ctx.translate(cx + ox, cy + foot - lift);
+	ctx.rotate(rot);
+	ctx.scale(sx, sy);
+	// Eyes are drawn below, unscaled vertically by the squash, so they stay readable when flat.
+	const ink = warn > 0 ? k.mix(colors.scared, danger, warn) : colors.scared;
+	k.drawGhost(g, i, 'scared', 0, -foot, { eyes: 'none', ink });
+	const jx = scaredShiver(k, i);
+	const hy = k.ghostPath(g, i, jx, -foot, { look: 'scared' });
+	// Final warning: a thick outline in the ghost's own danger colour, readable at any size.
+	if (warn > 0) {
+		ctx.lineJoin = 'round';
+		ctx.strokeStyle = k.rgba(danger, warn);
+		ctx.lineWidth = Math.max(1.4, t * 0.11) / Math.min(sx, sy);
+		ctx.stroke();
+	}
+	// Eyes: undo the squash so they open by their own amount, not the body's.
+	if (t >= 7) {
+		ctx.save();
+		ctx.translate(jx, hy);
+		ctx.scale(1 / sx, 1 / sy);
+		const lookX = s === 2 ? Math.sign(wrapDx(k, cx, k.playerPos()[0])) : 0;
+		drawEyes(k, 0, 0, t, used, warn > 0 ? k.mix(colors.scared, danger, warn) : colors.scared, '#0d0f1c', lookX);
+		ctx.restore();
+	}
 }
 
 export const wakingGhosts: Cue = {
@@ -84,9 +127,9 @@ export const wakingGhosts: Cue = {
 	role: 'idea',
 	code: '6',
 	name: 'Ghosts waking up',
-	tagline: 'Scared ghosts come to in stages and snap awake when the power ends.',
+	tagline: 'Scared ghosts rise from flat to tall and open their eyes as the power runs out.',
 	description:
-		'Scared ghosts start out dazed: flat, eyes shut, rocking. Halfway to the last 2 seconds they sit up, still slumped. In the last 2 seconds they stand tall, lean towards you and shiver harder and harder, crouch, then spring back awake and dangerous.',
+		'Scared ghosts start squashed flat with their eyes shut, rocking. As the power runs out they rise steadily and their eyes open, so a ghost halfway up means half the time is gone; halfway to the last 2 seconds they sit upright. In the last 2 seconds their outline and eyes turn their own danger colour and they lean towards you and shiver; when the power ends they spring awake and dangerous.',
 	channel: 'ghosts',
 	baseFlash: false,
 
@@ -100,7 +143,7 @@ export const wakingGhosts: Cue = {
 			drawDefault();
 			return;
 		}
-		// Awake: spring up out of the crouch and settle, anchored at the tail.
+		// Awake: spring up and settle, anchored at the tail.
 		const u = age / SNAP, t = wispUnit(k.T), foot = t * 0.44;
 		const s = k.reduceMotion ? 0 : Math.sin(u * Math.PI * 2.2) * (1 - u) * 0.34;
 		k.ctx.save();
