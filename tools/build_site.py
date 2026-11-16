@@ -45,6 +45,8 @@ NOTES = {
     'dash': 'Shift, X or a tap gives a short burst of speed, then it takes 3 seconds to recharge.',
     'fog': ("The maze is dark except the light around your circle. "
             'A power dot lights up everything for a few seconds.'),
+    'timer-ring': ('A ring around your circle drains as the power runs out, so you can watch the time '
+                   'without looking away from yourself. It flashes with the ghosts in the last 2 seconds.'),
 }
 
 # Fun modes: branches that change the game just for fun. Their tabs sit together at the right end
@@ -235,8 +237,38 @@ HOME = '''<!doctype html>
     padding: 7px 10px; border: 1px solid var(--accent); color: var(--ink); font-size: 13.5px;
   }
 
-  .stage { flex: 1; min-height: 0; position: relative; }
-  .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: var(--desk); }
+  /* The game area: the improvements as a column of tabs on the left, lined up under the Main game
+     tab, and the game's frame beside them. On a narrow screen the column becomes a row above the game. */
+  .stage {
+    flex: 1; min-height: 0; display: flex; gap: 16px; width: 100%; max-width: 1192px; margin: 0 auto;
+    padding: 0 var(--gutter-r) 0 var(--gutter-l);
+  }
+  .side { flex: none; width: 184px; padding-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .side-label {
+    margin: 0; font: 600 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-dim); white-space: nowrap;
+  }
+  .side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .side-tab {
+    display: block; padding: 9px 12px; border: 1px solid var(--rule); border-radius: 4px;
+    font: 600 13.5px/1.2 var(--font-mono); color: var(--ink-dim); text-decoration: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .side-tab:hover { color: var(--ink); background: rgba(166, 196, 255, 0.07); }
+  .side-tab[aria-current="page"] { color: var(--ink); background: var(--panel); box-shadow: inset 3px 0 0 var(--accent); }
+  .frame { flex: 1; min-width: 0; position: relative; }
+  .frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: var(--desk); }
+
+  @media (max-width: 900px) {
+    .stage { flex-direction: column; gap: 4px; }
+    .side {
+      width: auto; padding-top: 8px; flex-direction: row; align-items: center; gap: 10px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .side::-webkit-scrollbar { display: none; }
+    .side ul { flex-direction: row; }
+    .side-tab { padding: 6px 10px; }
+  }
 
   @media (max-width: 560px) {
     .brand { font-size: 20px; }
@@ -266,9 +298,9 @@ HOME = '''<!doctype html>
 </header>
 <div class="notice" id="notice" role="status" hidden></div>
 <div class="about" id="about" aria-live="polite"></div>
-<div class="stage" id="stage">
+<div class="stage">__SIDE__<div class="frame" id="stage">
   <noscript><p style="padding:16px"><a href="v/main/">Play the main game</a> &middot; <a href="versions/">every version</a></p></noscript>
-</div>
+</div></div>
 <script type="application/json" id="versions-data">__DATA__</script>
 <script>
 (() => {
@@ -278,7 +310,7 @@ HOME = '''<!doctype html>
   const stage = document.getElementById('stage');
   const about = document.getElementById('about');
   const notice = document.getElementById('notice');
-  const tabs = [...document.querySelectorAll('#tabs a')];
+  const tabs = [...document.querySelectorAll('#tabs a, #side a')];
   let current = null;
 
   const urlFor = v => (v === main ? location.pathname : location.pathname + '?v=' + encodeURIComponent(v.key));
@@ -373,16 +405,22 @@ def write_home(versions):
 
     main, improvements, fun, pulls = groups(versions)
     versions = main + improvements + pulls + fun
-    tabs = ''.join(map(tab, main))
-    if improvements:
-        tabs += '<li class="group" aria-hidden="true">Improvements</li>' + ''.join(map(tab, improvements))
-    tabs += ''.join(map(tab, pulls))
+    tabs = ''.join(map(tab, main)) + ''.join(map(tab, pulls))
     if fun:
         tabs += '<li class="group fun" aria-hidden="true">Fun modes</li>' + ''.join(map(tab, fun))
+    # Improvements: a column of tabs on the left of the game (left out when there are none).
+    side = ''
+    if improvements:
+        side = ('<nav class="side" id="side" aria-labelledby="side-label">'
+                '<p class="side-label" id="side-label">Improvements</p><ul>'
+                + ''.join(f'<li><a class="side-tab" href="{html.escape(v["href"])}" data-key="{html.escape(v["key"])}">'
+                          f'{html.escape(v["tab"])}</a></li>' for v in improvements)
+                + '</ul></nav>')
     data =[{k: v[k] for k in ('key', 'name', 'kind', 'path', 'note', 'updated', 'sandbox', 'rev')} for v in versions]
     page = (HOME.replace('__FONTS__', html.escape(FONTS))
                 .replace('__README__', html.escape(f'https://github.com/{REPO}#make-your-own-version'))
                 .replace('__TABS__', tabs)
+                .replace('__SIDE__', side)
                 .replace('__DATA__', script_json(data)))
     with open(os.path.join(OUT, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(page)
