@@ -2,7 +2,9 @@
 // End-to-end check of telemetry: a scripted player plays /play/timer-bar?mode=study in Chrome while
 // a second page and a Node subscriber watch the per-cue summary update live; then the stored
 // trials and clips are read back from Convex, and one clip is decoded and redrawn in the browser.
-//   node scripts/telemetry-e2e.mjs [seconds=100] [--keep]   (--keep: do not clear old bot data first)
+//   node scripts/telemetry-e2e.mjs [seconds=100] [--keep] [--offline]
+//   --keep: do not clear old bot data first. --offline: cut the player's network from 30 s to 55 s
+//   (writes must queue, then all arrive once it is back).
 // Needs the dev server (:5173) and Convex (:3210). All data is tagged source: 'bot'.
 import { chromium } from 'playwright';
 import { ConvexClient, ConvexHttpClient } from 'convex/browser';
@@ -39,12 +41,13 @@ const open = async (label) => {
 	page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
 	page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${label} console: ${m.text().slice(0, 200)}`); });
 	await page.goto(APP + PATH, { waitUntil: 'networkidle' });
-	return page;
+	return { page, ctx };
 };
 
 // The viewer only shows the page (its "Stored for this cue" box is a live Convex query).
-const viewer = await open('viewer');
-const player = await open('player');
+const { page: viewer } = await open('viewer');
+const { page: player, ctx: playerCtx } = await open('player');
+const offline = args.includes('--offline');
 await player.bringToFront();
 await player.keyboard.press('Enter');
 await player.evaluate(async () => {
@@ -66,14 +69,18 @@ const viewerCount = () => viewer.evaluate(() => {
 const viewerLog = [];
 const t0 = Date.now();
 while (Date.now() - t0 < seconds * 1000) {
-	await new Promise((ok) => setTimeout(ok, 10_000));
+	await new Promise((ok) => setTimeout(ok, 5_000));
+	const el = (Date.now() - t0) / 1000;
+	if (offline && el >= 30 && el < 35) { await playerCtx.setOffline(true); console.log(`[player ${stamp()}] network OFF`); }
+	if (offline && el >= 55 && el < 60) { await playerCtx.setOffline(false); console.log(`[player ${stamp()}] network ON`); }
 	const s = await player.evaluate(() => {
 		const tel = window.__ccTelemetry, f = window.__cc.game.frame();
-		return { t: f.t.toFixed(1), score: f.score, saved: tel.live.saved, pending: tel.live.pending, recent: tel.live.recent.map((r) => r.outcome).slice(0, 4) };
+		return { t: f.t.toFixed(1), score: f.score, saved: tel.live.saved, pending: tel.live.pending, online: tel.live.online, recent: tel.live.recent.map((r) => r.outcome).slice(0, 4), made: tel.live.recent.length };
 	});
+	if (el >= 45 && el < 50) await player.screenshot({ path: '.shots/telemetry-play-live.png' });
 	const v = await viewerCount();
 	viewerLog.push({ at: stamp(), trials: v });
-	console.log(`[player ${stamp()}] game t=${s.t} score=${s.score} saved=${s.saved} pending=${s.pending} recent=${s.recent.join(', ')} | [viewer page] shows ${v} trials`);
+	console.log(`[player ${stamp()}] game t=${s.t} score=${s.score} online=${s.online} measured=${s.made} saved=${s.saved} pending=${s.pending} recent=${s.recent.join(', ')} | [viewer page] shows ${v} trials`);
 }
 
 const keys = await player.evaluate(async () => { await window.__ccTelemetry.endBlock(6000); return window.__ccTelemetry.keys; });

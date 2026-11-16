@@ -142,18 +142,19 @@ function participantId(source: Source): string {
 	return pid;
 }
 
-/** Free play: one session per tab, reused for 30 minutes of inactivity, one block per cue played. */
-function freePlaySession(mode: Mode): { key: string; blockIndex: number; fresh: boolean } {
+/**
+ * Free play: one session per tab, reused until 30 minutes without play, one block per cue played.
+ * `claim` takes the next block number (done when play actually starts).
+ */
+function freePlaySession(mode: Mode, claim: boolean): { key: string; blockIndex: number } {
 	const name = `cc.session.${mode}`;
 	let s: { key: string; blocks: number; at: number } | null = null;
 	try { s = JSON.parse(sessionStorage.getItem(name) ?? 'null'); } catch { /* ignore */ }
-	const fresh = !s || Date.now() - s.at > 30 * 60_000;
-	if (!s || fresh) s = { key: uid(), blocks: 0, at: Date.now() };
+	if (!s || Date.now() - s.at > 30 * 60_000) s = { key: uid(), blocks: 0, at: Date.now() };
 	const blockIndex = s.blocks;
-	s.blocks++;
-	s.at = Date.now();
+	if (claim) { s.blocks++; s.at = Date.now(); }
 	try { sessionStorage.setItem(name, JSON.stringify(s)); } catch { /* ignore */ }
-	return { key: s.key, blockIndex, fresh };
+	return { key: s.key, blockIndex };
 }
 
 function deviceInfo() {
@@ -180,9 +181,7 @@ const MOVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'K
 export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Telemetry {
 	const source = ctx.source ?? detectSource();
 	const pid = participantId(source);
-	const free = ctx.session ? null : freePlaySession(ctx.mode);
-	const sessionKey = ctx.session?.key ?? free!.key;
-	const blockIndex = ctx.blockIndex ?? free?.blockIndex ?? 0;
+	const sessionKey = ctx.session?.key ?? freePlaySession(ctx.mode, false).key;
 	const blockKey = uid();
 	const instance = uid();
 	const sound = ctx.sound ?? (() => true);
@@ -195,6 +194,8 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 	// ----- queue -----
 	let queue: Item[] = [];
 	let busy = false, retryTimer: ReturnType<typeof setTimeout> | null = null, destroyed = false;
+	// A write that hangs means Convex cannot be reached (a stalled socket does not always close).
+	let stuck = false;
 
 	function persist() {
 		const s = storage();
@@ -230,6 +231,7 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		try {
 			while (queue.length) {
 				const item = queue[0];
+				const watch = setTimeout(() => { stuck = true; live.online = false; }, 4000);
 				try {
 					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 					const res = await client.mutation(FNS[item.fn] as any, item.args as any);
@@ -245,6 +247,9 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 						retryTimer = setTimeout(() => { retryTimer = null; pump(); }, wait);
 						break;
 					}
+				} finally {
+					clearTimeout(watch);
+					stuck = false;
 				}
 				live.pending = queue.length;
 				persist();
@@ -267,11 +272,18 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 	const inputSeen = new Set<string>(), trialInput = new Set<string>();
 	adoptLeftovers();
 	enqueue('ensure', { pid, source, device: deviceInfo(), ...(ctx.nickname ? { nickname: ctx.nickname } : {}) });
-	enqueue('sessionStart', {
-		key: sessionKey, pid, mode: ctx.mode, source, cueOrder: ctx.session?.cueOrder ?? [], appVersion: APP_VERSION,
-		difficulty: ctx.difficulty ?? 'normal', sound: sound(), reducedMotion: reducedMotion(), inputType: 'none', viewport: viewport()
-	});
-	enqueue('blockStart', { key: blockKey, sessionKey, cue: ctx.cue, orderIndex: blockIndex });
+	// The session and block are opened with the first live frame, so a page that is opened and left
+	// without playing leaves no empty block behind.
+	let opened = false;
+	function open() {
+		opened = true;
+		const blockIndex = ctx.blockIndex ?? (ctx.session ? 0 : freePlaySession(ctx.mode, true).blockIndex);
+		enqueue('sessionStart', {
+			key: sessionKey, pid, mode: ctx.mode, source, cueOrder: ctx.session?.cueOrder ?? [], appVersion: APP_VERSION,
+			difficulty: ctx.difficulty ?? 'normal', sound: sound(), reducedMotion: reducedMotion(), inputType: inputLabel(inputSeen), viewport: viewport()
+		});
+		enqueue('blockStart', { key: blockKey, sessionKey, cue: ctx.cue, orderIndex: blockIndex });
+	}
 
 	// ----- measuring -----
 	const tracker = createTracker();
@@ -299,6 +311,7 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 
 	function onFrame(scene: Scene, g: Game) {
 		if (ended) return;
+		if (!opened) open();
 		game = g;
 		recorder.push(scene);
 		for (const t of tracker.onScene(scene)) store(t);
@@ -334,13 +347,13 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		trialInput.add(kind);
 		if (!inputSeen.has(kind)) {
 			inputSeen.add(kind);
-			enqueue('sessionUpdate', { key: sessionKey, inputType: inputLabel(inputSeen) });
+			if (opened) enqueue('sessionUpdate', { key: sessionKey, inputType: inputLabel(inputSeen) });
 		}
 	}
 
 	let beatBusy = false;
 	async function heartbeat() {
-		if (beatBusy || ended) return;
+		if (beatBusy || ended || !opened) return;
 		beatBusy = true;
 		try {
 			await client.mutation(api.presence.heartbeat, {
@@ -352,12 +365,13 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 	}
 	const beat = setInterval(heartbeat, 5000);
 	const conn = setInterval(() => {
-		try { live.online = client.connectionState().isWebSocketConnected; } catch { /* ignore */ }
+		try { live.online = !stuck && client.connectionState().isWebSocketConnected; } catch { /* ignore */ }
 	}, 1000);
 
 	function closeBlock() {
 		if (ended) return;
 		ended = true;
+		if (!opened) return;
 		for (const t of tracker.finish()) store(t);
 		enqueue('blockEnd', { key: blockKey, deaths: deathsBefore + (game?.deaths ?? 0), score: scoreBefore + lastScore });
 		client.mutation(api.presence.leave, { sessionKey }).catch(() => {});
@@ -390,12 +404,14 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 			while (queue.length && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
 		},
 		endSession() {
-			enqueue('sessionUpdate', { key: sessionKey, end: true });
+			if (opened) enqueue('sessionUpdate', { key: sessionKey, end: true });
 		},
 		rateBlock(clarity, distraction) {
+			if (!opened) open();
 			enqueue('rateBlock', { key: blockKey + ':rating', blockKey, clarity, distraction });
 		},
 		rateSession(a) {
+			if (!opened) open();
 			enqueue('rateSession', { key: sessionKey + ':rating', sessionKey, ...a });
 		},
 		destroy() {
