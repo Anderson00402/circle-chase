@@ -14,7 +14,8 @@
 	import { useConvexClient, useQuery } from 'convex-svelte';
 	import { api } from '#convex/_generated/api.js';
 	import { CUE_IDS } from '#lib/game/cues/index.ts';
-	import { OUTCOMES, OUTCOME_LABEL } from '#lib/telemetry/types.ts';
+	import { OUTCOMES } from '#lib/telemetry/types.ts';
+	import { OUTCOME_LABEL, outcomeColor } from '#lib/outcomes.ts';
 	import { FLAT_NOISE, levelsFor, PRESETS, type Preset } from '#lib/sim/model.ts';
 	import { runSimulation, type RunProgress } from '#lib/sim/writer.ts';
 	import { Badge, Button, CueChip, DataTable, Dialog, Field, Page, PageHeader, Panel, Segmented, Stat, cueListings } from '#lib/ui/index.ts';
@@ -106,11 +107,7 @@
 	const fmt = (n: number) => n.toLocaleString('en');
 	const secs = (ms: number) => (ms / 1000).toFixed(1);
 	const outcomeTotal = $derived(progress ? Object.values(progress.outcomes).reduce((a, b) => a + b, 0) : 0);
-	const OUTCOME_TONE: Record<string, string> = {
-		'caught': 'var(--bad)', 'catch': 'var(--ink-faint)', 'timely-retreat': 'var(--good)',
-		'overstayed': 'var(--warn)', 'early-retreat': 'color-mix(in srgb, var(--warn) 55%, var(--surface))',
-		'not-engaged': 'var(--rule-strong)', 'other': 'var(--rule)', 'interrupted': 'var(--surface-3)'
-	};
+	const OUTCOME_TONE = Object.fromEntries(OUTCOMES.map((o) => [o, outcomeColor(o)])) as Record<string, string>;
 	const listing = (id: string) => listings.find((l) => l.id === id)!;
 	const toggle = (id: string) => { chosen = chosen.includes(id) ? chosen.filter((c) => c !== id) : [...chosen, id]; };
 </script>

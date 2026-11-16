@@ -15,23 +15,8 @@ export type { Outcome, ChaseEnd, LegacyOutcome } from '#convex/lib/rules.ts';
 export { OUTCOMES, DECISIONS, RULES_VERSION } from '#convex/lib/rules.ts';
 import type { ChaseEnd, LegacyOutcome, Outcome } from '#convex/lib/rules.ts';
 
-/** Plain words for each outcome, for panels and dashboards. */
-export const OUTCOME_LABEL: Record<Outcome, string> = {
-	caught: 'Caught',
-	overstayed: 'Stayed too long',
-	'timely-retreat': 'Turned away in time',
-	'early-retreat': 'Turned away too early',
-	catch: 'Caught the ghost',
-	'not-engaged': 'Not engaged',
-	other: 'Other',
-	interrupted: 'Interrupted'
-};
-
-/** Label for any stored outcome, including classes of older rules. */
-export function outcomeLabel(o: Outcome | LegacyOutcome | string): string {
-	if (o === 'late-catch') return 'Late catch (old rules)';
-	return OUTCOME_LABEL[o as Outcome] ?? o;
-}
+/** Plain words for each outcome: the shared table in src/lib/outcomes.ts. */
+export { OUTCOME_LABEL, outcomeLabel } from '../outcomes';
 
 /** `quit`: the block ended (page closed, game restarted) while the power-up was still on. */
 export type TrialEndReason = PowerEndReason | 'quit';

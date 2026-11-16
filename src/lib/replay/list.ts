@@ -88,3 +88,12 @@ export function keyTime(m: Pick<Moment, 'outcome' | 'startedAt' | 'endedAt' | 't
 	if ((m.outcome === 'catch' || m.outcome === 'late-catch') && m.lastEatAt !== null) return m.lastEatAt + 0.05;
 	return m.endedAt + 0.15;
 }
+
+/**
+ * Link to a replay. `run` scopes it to one run (opened from that run's summary: "Back to run
+ * summary", Previous / Next through that run); `list` carries the replay list's filter and sort.
+ */
+export function replayHref(trialId: string, opts: { run?: string; list?: string } = {}): string {
+	if (opts.run) return `/replays/${trialId}?run=${encodeURIComponent(opts.run)}`;
+	return `/replays/${trialId}${opts.list ?? ''}`;
+}

@@ -1,11 +1,13 @@
 <script lang="ts">
 	/**
 	 * Play one case with the current participant: /play/<case> (study rules) or ?rules=arcade.
+	 * The end-of-run summary lives at /play/<case>?done=<run>, so Back and refresh find it again.
 	 *
 	 * Header: back to the console, the case (hidden in participant view), the participant, restart,
-	 * previous / next case, participant view, End run. End run closes the block and shows the run
-	 * summary; Next case goes to the suggested one. Keys: E end run, R restart, [ ] previous / next,
-	 * V participant view, Esc (paused or not started) console, N next case on the summary.
+	 * previous / next case, participant view, End run. Participant view (no panel, no case name) is
+	 * on whenever a run starts. End run lets the power-up in progress finish and its 3 s aftermath
+	 * play out, then shows the summary. Keys: E end run (again: end now), R restart, [ ] previous /
+	 * next, V participant view, Esc (paused or not started) console, N next case on the summary.
 	 */
 	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -16,11 +18,17 @@
 	import { CueChip, Kbd } from '#lib/ui/index.ts';
 	import RunBoard, { type RunEnd } from '#lib/study/RunBoard.svelte';
 	import RunSummary from '#lib/study/RunSummary.svelte';
-	import { ensureIfNamed, ensureParticipant, nextOrderIndex, persist, playHref, recordRun, run, suggestedNext, uid } from '#lib/study/run.svelte.ts';
+	import {
+		activeRun, endedLocally, ensureIfNamed, ensureParticipant, nextOrderIndex, playHref, recordRun, run, setActiveRun,
+		suggestedNext, summaryHref, uid
+	} from '#lib/study/run.svelte.ts';
+	import { MODE_LABEL } from '#lib/outcomes.ts';
 
 	const client = useConvexClient();
 	const cue = $derived(CUES.find((c) => c.id === page.params.cue) ?? null);
 	const rules = $derived<Mode>(page.url.searchParams.get('rules') === 'arcade' ? 'arcade' : 'study');
+	/** The run whose summary is shown, from the address. */
+	const done = $derived(page.url.searchParams.get('done'));
 
 	// An unknown case goes back to the console.
 	$effect(() => { if (!cue) goto('/', { replace: true }); });
@@ -28,42 +36,83 @@
 	/** A new run (block) for every case, rules change or restart. */
 	let blockKey = $state(uid());
 	let orderIndex = $state(nextOrderIndex());
-	let ended = $state<RunEnd | null>(null);
 	let ending = $state(false);
+	/** End run was pressed while a power-up (or its aftermath) was being measured: end when it is over. */
+	let finishing = $state<{ last: string | null } | null>(null);
+	let participantView = $state(true);
 	let board = $state<ReturnType<typeof RunBoard>>();
 	let lastRoute = '';
+	let firstRun = true;
+	let restarting = false;
 	$effect(() => {
-		const route = `${cue?.id}:${rules}`;
-		if (route !== lastRoute) { lastRoute = route; newRun(); }
+		const route = `${cue?.id}:${rules}:${done ?? ''}`;
+		if (route !== lastRoute) {
+			lastRoute = route;
+			if (!done) newRun();
+		}
 	});
 	function newRun() {
-		blockKey = uid();
-		orderIndex = nextOrderIndex();
-		ended = null;
+		// After a refresh, carry on in the run that was being played in this tab.
+		const a = firstRun ? activeRun() : null;
+		firstRun = false;
+		if (a && a.cue === cue?.id && a.rules === rules && run.p.runs.some((r) => r.blockKey === a.blockKey)) {
+			blockKey = a.blockKey;
+			orderIndex = a.orderIndex;
+		} else {
+			blockKey = uid();
+			orderIndex = nextOrderIndex();
+		}
 		ending = false;
+		finishing = null;
+		participantView = true;
 	}
 
-	const participantView = $derived(run.settings.participantView);
-	function toggleView() {
-		run.settings.participantView = !run.settings.participantView;
-		persist();
-	}
+	function toggleView() { participantView = !participantView; }
 
 	function started() {
 		if (!cue) return;
 		recordRun({ blockKey, cue: cue.id, mode: rules, orderIndex, startedAt: Date.now() });
+		setActiveRun({ blockKey, cue: cue.id, rules, orderIndex });
 		ensureParticipant(client);
 	}
 
-	async function endRun() {
-		if (!board || ending || ended) return;
+	/** End run: wait for the power-up being measured, unless it was already asked for (then end now). */
+	function endRun() {
+		if (!board || ending || done) return;
+		if (finishing) { finishing = null; finish(); return; }
+		const live = board.live();
+		if (live.readout && live.readout.state !== 'idle') { finishing = { last: live.recent[0]?.key ?? null }; return; }
+		finish();
+	}
+	async function finish() {
+		if (!board || ending) return;
 		ending = true;
 		await board.end();
 	}
+	// The trial in progress is closed when it is idle again or a new trial landed (a power-up cut short by another).
+	$effect(() => {
+		if (!finishing || !board) return;
+		const live = board.live();
+		if (!live.readout || live.readout.state === 'idle' || (live.recent[0]?.key ?? null) !== finishing.last) {
+			finishing = null;
+			finish();
+		}
+	});
+	/** Seconds of the aftermath still to watch; null while the power is on (that number would give the time left away). */
+	const finishLeft = $derived.by(() => {
+		if (!finishing || !board) return null;
+		const r = board.live().readout;
+		return r && r.state === 'after' && typeof r.left === 'number' ? Math.max(1, Math.ceil(3 + r.left)) : null;
+	});
+
 	function onended(r: RunEnd) {
 		ending = false;
-		if (!r.started) { goto('/'); return; } // nothing was played: nothing to summarise
-		ended = r;
+		finishing = null;
+		setActiveRun(null);
+		if (restarting) return; // Restart starts the next run in place
+		if (!r.started || !cue) { goto('/'); return; } // nothing was played: nothing to summarise
+		endedLocally.set(r.blockKey, r.recent);
+		goto(summaryHref(cue.id, r.blockKey, rules), { replace: true });
 	}
 
 	const idx = $derived(cue ? CUES.findIndex((c) => c.id === cue.id) : 0);
@@ -71,11 +120,15 @@
 	const nextInList = $derived(CUES[(idx + 1) % CUES.length]);
 	const suggested = $derived(suggestedNext([...run.p.runs.map((r) => r.cue), ...(cue ? [cue.id] : [])]));
 	const nextCase = $derived(suggested ?? nextInList);
+	/** Run number of the summary shown (from this machine's run sheet; the summary falls back to the server's). */
+	const doneNumber = $derived(done ? (run.p.runs.find((r) => r.blockKey === done)?.orderIndex ?? null) : null);
 
 	function go(id: string) { goto(playHref(id, rules)); }
 	async function restart() {
-		if (ended) { newRun(); return; }
-		if (board) { await board.end(); }
+		if (done) { if (cue) goto(playHref(cue.id, rules)); return; }
+		restarting = true;
+		try { if (board) await board.end(); } finally { restarting = false; }
+		setActiveRun(null);
 		newRun();
 	}
 
@@ -83,9 +136,10 @@
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
 		if ((e.target as HTMLElement).closest('input, textarea, select, dialog')) return;
 		const k = e.key.toLowerCase();
-		if (ended) {
+		if (done) {
 			if (k === 'n') { e.preventDefault(); go(nextCase.id); }
 			else if (e.key === 'Escape') { e.preventDefault(); goto('/'); }
+			else if (k === 'v') { e.preventDefault(); toggleView(); }
 			return;
 		}
 		if (k === 'e') { e.preventDefault(); endRun(); }
@@ -98,10 +152,12 @@
 	onMount(() => {
 		ensureIfNamed(client);
 		tick().then(() => (document.querySelector('.board canvas[tabindex="0"]') as HTMLElement | null)?.focus());
+		// Leaving the page inside the app ends the run (RunBoard closes it); a refresh does not run this.
+		return () => setActiveRun(null);
 	});
 </script>
 
-<svelte:head><title>{cue && !participantView ? `${cue.code} · ${cue.name}` : 'Run'} · Circle Chase</title></svelte:head>
+<svelte:head><title>{done ? 'Run summary' : 'Run'}{cue && !participantView ? ` · ${cue.code} ${cue.name}` : ''} · Circle Chase</title></svelte:head>
 <svelte:window {onkeydown} />
 
 {#if cue}
@@ -117,12 +173,12 @@
 				{:else}
 					<CueChip {cue} size="sm" />
 				{/if}
-				{#if rules === 'arcade'}<span class="tag">Arcade rules</span>{/if}
+				{#if rules === 'arcade'}<span class="tag">{MODE_LABEL.arcade}</span>{/if}
 			</div>
-			<span class="who" title="Participant (change it on the console)"><span class="dim">Participant</span> <strong class="num">{run.p.label || '-'}</strong> <span class="dim">run {orderIndex + 1}</span></span>
+			<span class="who" title="Participant (change it on the console)"><span class="dim">Participant</span> <strong class="num">{run.p.label || '-'}</strong>{#if !done}<span class="dim">run {orderIndex + 1}</span>{/if}</span>
 
 			<div class="tools" role="toolbar" aria-label="Run controls">
-				{#if !ended}
+				{#if !done}
 					<button class="tool" onclick={restart} title="Restart: end this run and start a new one of the same case (R)">Restart <Kbd>R</Kbd></button>
 				{/if}
 				<button class="tool" onclick={() => go(prev.id)} title="Previous case{participantView ? '' : `: ${prev.code} ${prev.name}`} ([)" aria-label="Previous case">
@@ -131,21 +187,29 @@
 				<button class="tool" onclick={() => go(nextInList.id)} title="Next case{participantView ? '' : `: ${nextInList.code} ${nextInList.name}`} (])" aria-label="Next case">
 					<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
 				</button>
-				<button class="tool" aria-pressed={participantView} onclick={toggleView} title="Participant view hides the measurement panel and the case name (V)">
+				<button class="tool" aria-pressed={participantView} onclick={toggleView} title="Participant view hides the measurement panel and the case name. On whenever a run starts (V)">
 					Participant view <Kbd>V</Kbd>
 				</button>
-				{#if !ended}
-					<button class="tool end" onclick={endRun} disabled={ending}>{ending ? 'Saving...' : 'End run'} <Kbd>E</Kbd></button>
+				{#if !done}
+					{#if finishing}
+						<span class="finishing" role="status">Measuring the last power-up...{finishLeft !== null ? ` ${finishLeft} s` : ''}</span>
+						<button class="tool" onclick={endRun} title="End now: the power-up in progress is not counted (E)">End now <Kbd>E</Kbd></button>
+					{:else}
+						<button class="tool end" onclick={endRun} disabled={ending} title="End run: a power-up in progress is measured to its end first (E)">{ending ? 'Saving...' : 'End run'} <Kbd>E</Kbd></button>
+					{/if}
 				{/if}
 			</div>
 		</header>
 
 		<div class="body">
-			{#if ended}
-				<RunSummary
-					{cue} blockKey={ended.blockKey} label={run.p.label} number={orderIndex + 1} recent={ended.recent}
-					hideCase={participantView} next={nextCase} onnext={() => go(nextCase.id)} onagain={newRun}
-				/>
+			{#if done}
+				{#key done}
+					<RunSummary
+						{cue} {rules} blockKey={done} label={run.p.label} number={doneNumber === null ? null : doneNumber + 1}
+						recent={endedLocally.get(done) ?? []} hideCase={participantView}
+						next={nextCase} onnext={() => go(nextCase.id)} onagain={() => go(cue.id)}
+					/>
+				{/key}
 			{:else}
 				{#key blockKey}
 					<RunBoard
@@ -199,6 +263,7 @@
 	.tool.end { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 	.tool.end :global(kbd) { background: transparent; color: inherit; border-color: currentColor; }
 	.tool:disabled { opacity: 0.6; cursor: default; }
+	.finishing { font-size: var(--text-sm); font-weight: 650; color: var(--accent); font-variant-numeric: tabular-nums; }
 	.body { flex: 1; min-height: 0; overflow: auto; padding: var(--space-3) var(--gutter); }
 	@media (max-width: 760px) {
 		.tool :global(kbd) { display: none; }

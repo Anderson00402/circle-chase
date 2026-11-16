@@ -8,7 +8,7 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
-import { isDecision } from './lib/rules';
+import { RULES_VERSION, isDecision } from './lib/rules';
 
 /** Stored on the session: who the runs are for and how the suggested order was picked. */
 export const runInfo = v.object({
@@ -104,22 +104,51 @@ export const session = query({
 	}
 });
 
+/**
+ * Why a trial of a run is not among the decisions the rates use, in plain words; null when it counts.
+ * Shown on the run summary so "not counted" always comes with a reason.
+ */
+export function notCountedReason(t: Pick<Doc<'trials'>, 'outcome' | 'inRates' | 'rulesVersion' | 'endReason' | 'after'>, current: number): string | null {
+	if (isDecision(t)) return null;
+	if ((t.rulesVersion ?? 1) !== current) return 'Recorded under older rules';
+	switch (t.endReason) {
+		case 'died': return 'Died while the power was on';
+		case 'cleared': return 'The level was cleared while the power was on';
+		case 'refreshed': return 'Another power dot was eaten while the power was on';
+		case 'quit': return 'The run ended while the power was on';
+	}
+	if (t.after?.cut === 'quit') return 'The run ended less than 3 s after the power ran out';
+	if (t.after?.cut === 'power') return 'A new power-up started less than 3 s after this one ended';
+	if (t.after?.cut === 'clear') return 'The level was cleared less than 3 s after the power ran out';
+	switch (t.outcome) {
+		case 'not-engaged': return 'Not chasing a ghost in the last 3 s';
+		case 'catch': return 'Ate the ghost: no decision about the end';
+		case 'other': return 'Chasing near the end, but no clear decision';
+	}
+	return t.inRates ? null : 'Not eligible for the rates';
+}
+
 /** One run for the end-of-run summary: tally, every trial (light) in order, and its rating. Null until the block exists. */
 export const block = query({
 	args: { blockKey: v.string() },
 	handler: async (ctx, { blockKey }) => {
 		const b = await ctx.db.query('blocks').withIndex('by_key', (i) => i.eq('key', blockKey)).unique();
 		if (!b) return null;
+		// In the order they were stored: a run resumed after a refresh numbers its trials from 0 again.
 		const trials = (await ctx.db.query('trials').withIndex('by_block', (i) => i.eq('blockId', b._id)).collect())
-			.sort((x, y) => x.trialIndex - y.trialIndex);
+			.sort((x, y) => x._creationTime - y._creationTime);
 		const r = await ctx.db.query('ratings').withIndex('by_block', (i) => i.eq('blockId', b._id)).first();
+		const s = await ctx.db.get(b.sessionId);
+		const p = await ctx.db.get(b.participantId);
 		return {
 			blockId: b._id, cue: b.cue, mode: b.mode, orderIndex: b.orderIndex, startedAt: b.startedAt, endedAt: b.endedAt ?? null,
-			deaths: b.deaths, score: b.score,
+			deaths: b.deaths, score: b.score, source: b.source,
+			label: s?.run?.participantLabel ?? p?.nickname ?? (p ? `P${String(p.number).padStart(2, '0')}` : null),
 			...tally(trials),
-			rows: trials.map((t) => ({
-				_id: t._id, trialIndex: t.trialIndex, outcome: t.outcome, engaged: t.engaged, counted: isDecision(t), total: t.total,
-				turnLeft: t.turnLeft, eats: t.eats.length, caught: t.after.caught, clipId: t.clipId ?? null
+			rows: trials.map((t, i) => ({
+				_id: t._id, n: i + 1, trialIndex: t.trialIndex, outcome: t.outcome, engaged: t.engaged, counted: isDecision(t), total: t.total,
+				turnLeft: t.turnLeft, eats: t.eats.length, caught: t.after.caught, clipId: t.clipId ?? null,
+				reason: notCountedReason(t, RULES_VERSION)
 			})),
 			clarity: r?.clarity ?? null, distraction: r?.distraction ?? null
 		};

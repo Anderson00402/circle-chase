@@ -3,15 +3,28 @@
 	import '@fontsource-variable/atkinson-hyperlegible-next/wght.css';
 	import '@fontsource-variable/jetbrains-mono/wght.css';
 	import '../app.css';
-	import { setupConvex } from 'convex-svelte';
+	import { setupConvex, useConvexClient } from 'convex-svelte';
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
 	import Mark from '#lib/ui/Mark.svelte';
+	import ConnectionDot from '#lib/ui/ConnectionDot.svelte';
+	import { watchConnection } from '#lib/ui/connection.svelte.ts';
+	import { getOutbox } from '#lib/study/outbox.svelte.ts';
 	import { DEV_NAV, NAV, isCurrent } from '#lib/ui/nav.ts';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
 	setupConvex(import.meta.env.PUBLIC_CONVEX_URL);
+	const client = useConvexClient();
+
+	// The shared connection state (top bar dot, "can't reach the database" on slow lists) and the
+	// run console's write outbox, started once for the whole app so writes left by an earlier page
+	// are sent even if the next page never writes.
+	// HOOK (Data plumbing): when outbox.svelte.ts exports startOutbox() and a status store, call
+	// startOutbox(client) here and pass its status to <ConnectionDot saving={...} />.
+	const outbox = getOutbox(client);
+	onMount(() => watchConnection(client));
 
 	/**
 	 * Full-height pages (the game, replays) get a shell exactly one screen tall: no footer, no page
@@ -66,6 +79,8 @@
 			</svg>
 			<span>Menu</span>
 		</button>
+
+		<span class="conn-slot"><ConnectionDot saving={outbox.state} /></span>
 
 		<nav id="site-nav" class:open={menuOpen} aria-label="Main">
 			<ul>
@@ -141,7 +156,7 @@
 		z-index: 40;
 		display: flex;
 		align-items: center;
-		gap: var(--space-5);
+		gap: var(--space-3) var(--space-5);
 		height: var(--bar-h);
 		flex-shrink: 0;
 		padding: 0 var(--space-4);
@@ -225,6 +240,10 @@
 		font-weight: 500;
 	}
 
+	.conn-slot {
+		order: 3;
+		display: inline-flex;
+	}
 	.menu-btn {
 		display: none;
 		align-items: center;
@@ -244,6 +263,11 @@
 	@media (max-width: 760px) {
 		.menu-btn {
 			display: inline-flex;
+			margin-left: 0;
+		}
+		.conn-slot {
+			order: 0;
+			margin-left: auto;
 		}
 		nav {
 			display: none;

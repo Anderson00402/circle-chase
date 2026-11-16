@@ -16,7 +16,7 @@
 	import CuePreview from '#lib/ui/CuePreview.svelte';
 	import { Button, CueChip, InfoTip, Kbd, Segmented, ROLE_LABEL } from '#lib/ui/index.ts';
 	import OutcomeBar from '#lib/study/OutcomeBar.svelte';
-	import { mixWords } from '#lib/study/outcomes.ts';
+	import { outcomeMix as mixWords } from '#lib/outcomes.ts';
 	import { ensureIfNamed, newParticipant, persist, playHref, reload, run, setLabel, suggestedNext } from '#lib/study/run.svelte.ts';
 
 	const client = useConvexClient();

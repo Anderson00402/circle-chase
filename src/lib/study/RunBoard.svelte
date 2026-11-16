@@ -76,6 +76,9 @@
 
 	export function restartGame() { gameRef?.restart(); }
 
+	/** What telemetry sees now (reactive): the play page waits on it to end a run without dropping a trial. */
+	export function live() { return tel.live; }
+
 	// Escape goes back to the console when the game is paused or has not started (no frames for a
 	// moment); otherwise the game's own Escape pauses it.
 	function onkey(e: KeyboardEvent) {

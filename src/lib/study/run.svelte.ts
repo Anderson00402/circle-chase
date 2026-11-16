@@ -60,9 +60,10 @@ function read(): Participant {
 	return fresh();
 }
 
+/** `participantView` is no longer read: participant view is on whenever a run starts. */
 export interface Settings { rules: Mode; selected: CueId; participantView: boolean }
 function readSettings(): Settings {
-	const d: Settings = { rules: 'study', selected: 'timer-bar', participantView: false };
+	const d: Settings = { rules: 'study', selected: 'timer-bar', participantView: true };
 	try { return { ...d, ...JSON.parse(localStorage.getItem(SETTINGS) ?? '{}') }; } catch { return d; }
 }
 
@@ -185,3 +186,27 @@ export const nextOrderIndex = () => run.p.runs.reduce((n, r) => Math.max(n, r.or
 
 /** Play page link for a case under the current rules. */
 export const playHref = (cue: string, rules: Mode = run.settings.rules) => `/play/${cue}${rules === 'arcade' ? '?rules=arcade' : ''}`;
+
+/** The end-of-run summary of a run: its own address, so Back and refresh find it again. */
+export const summaryHref = (cue: string, blockKey: string, rules: Mode | string = 'study') =>
+	`/play/${cue}?${rules === 'arcade' ? 'rules=arcade&' : ''}done=${encodeURIComponent(blockKey)}`;
+
+/**
+ * The run being played in this tab, kept in sessionStorage while it runs. A refresh finds it and
+ * carries on in the same run (same block) instead of starting a second one; leaving the page in the
+ * app or ending the run clears it.
+ */
+export interface ActiveRun { blockKey: string; cue: string; rules: Mode; orderIndex: number }
+const ACTIVE = 'cc.run.active';
+export function activeRun(): ActiveRun | null {
+	try { return JSON.parse(sessionStorage.getItem(ACTIVE) ?? 'null'); } catch { return null; }
+}
+export function setActiveRun(a: ActiveRun | null) {
+	try {
+		if (a) sessionStorage.setItem(ACTIVE, JSON.stringify(a));
+		else sessionStorage.removeItem(ACTIVE);
+	} catch { /* storage blocked: a refresh then starts a new run */ }
+}
+
+/** What this page measured in a run that just ended, for the summary until Convex has the rows. */
+export const endedLocally = new Map<string, import('../telemetry/client.svelte.ts').RecentTrial[]>();

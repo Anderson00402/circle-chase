@@ -2,11 +2,11 @@
  * Plain-words captions for a replay: what each outcome means, and one sentence telling what the
  * player did around the end of this power-up. Definitions follow docs/STUDY.md.
  */
-import type { LegacyOutcome, Outcome } from '../telemetry/types';
-import { OUTCOME_LABEL, outcomeLabel } from '../telemetry/types';
+import { OUTCOME_INFO, OUTCOME_LABEL, OUTCOME_ORDER, outcomeLabel, type AnyOutcome, type OutcomeTone } from '../outcomes';
+import type { Outcome } from '../telemetry/types';
 
-export { OUTCOME_LABEL, outcomeLabel };
-type Any = Outcome | LegacyOutcome;
+export { OUTCOME_LABEL, OUTCOME_ORDER, outcomeLabel };
+type Any = AnyOutcome;
 
 export const GHOST_NAME: Record<string, string> = {
 	hunter: 'Hunter',
@@ -16,34 +16,11 @@ export const GHOST_NAME: Record<string, string> = {
 };
 export const ghostName = (id: string | null | undefined) => (id ? (GHOST_NAME[id] ?? id) : null);
 
-/** What each outcome class means, in one short sentence (rules: convex/lib/rules.ts). */
-export const OUTCOME_MEANING: Record<Any, string> = {
-	caught: 'Was within 5 tiles of a ghost that had just turned dangerous when the power ran out, and was caught within 3 s: the cue did not warn in time.',
-	overstayed: 'Was still chasing when the power ran out (turned with less than 0.2 s left, after the end, or never), and was not caught.',
-	'timely-retreat': 'Turned away from the last chase with 0.2 to 2 s left: well timed.',
-	'early-retreat': 'Turned away with more than 2 s left while a ghost was still in reach: power wasted.',
-	catch: 'The last chase ended by eating the ghost and no chase followed. A catch shows no decision about the end, so it is in no rate.',
-	'not-engaged': 'Was not chasing in the last 3 s of the power.',
-	other: 'Was chasing near the end, but none of the classes fits.',
-	interrupted: 'The power did not run out by itself, so there is no end to judge.',
-	'late-catch': 'Classified by older rules that lacked a measure the current rules need. Left out of every rate.'
-};
+/** What each outcome class means, in one short sentence (from the shared table in src/lib/outcomes.ts). */
+export const OUTCOME_MEANING = Object.fromEntries(Object.values(OUTCOME_INFO).map((o) => [o.id, o.def])) as Record<Any, string>;
 
-export type Tone = 'good' | 'bad' | 'warn' | 'neutral';
-export const OUTCOME_TONE: Record<Any, Tone> = {
-	caught: 'bad',
-	overstayed: 'warn',
-	'timely-retreat': 'good',
-	'early-retreat': 'warn',
-	catch: 'neutral',
-	'not-engaged': 'neutral',
-	other: 'neutral',
-	interrupted: 'neutral',
-	'late-catch': 'neutral'
-};
-
-/** Outcomes in the order the list shows them. */
-export const OUTCOME_ORDER: Outcome[] = ['caught', 'overstayed', 'timely-retreat', 'early-retreat', 'catch', 'other', 'not-engaged', 'interrupted'];
+export type Tone = OutcomeTone;
+export const OUTCOME_TONE = Object.fromEntries(Object.values(OUTCOME_INFO).map((o) => [o.id, o.tone])) as Record<Any, Tone>;
 
 const s1 = (x: number) => (Math.round(x * 10) / 10).toFixed(1);
 const s2 = (x: number) => x.toFixed(2);
