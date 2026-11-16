@@ -13,7 +13,7 @@
 	import { api } from '#convex/_generated/api.js';
 	import { spread, wilson } from '#convex/lib/stats.ts';
 	import type { CueChannel } from '#lib/game/types.ts';
-	import { CueChip, EmptyState, InfoTip, Panel, Segmented, Select } from '#lib/ui/index.ts';
+	import { CueChip, EmptyState, InfoTip, Panel, Segmented } from '#lib/ui/index.ts';
 	import ForestChart, { type ForestRow } from '#lib/charts/ForestChart.svelte';
 	import Legend from '#lib/charts/Legend.svelte';
 	import LineChart, { type LineSeries } from '#lib/charts/LineChart.svelte';
@@ -21,9 +21,10 @@
 	import StackedBars from '#lib/charts/StackedBars.svelte';
 	import StripPlot, { type StripRow } from '#lib/charts/StripPlot.svelte';
 	import {
-		CHANNEL_LABEL, EARLY_COLOR, LATE_COLOR, CONDITIONS, condition, OUTCOMES, outcomeStyle, pct, pctRange, plural, ROLE_COLOR,
-		secs, WELL_COLOR, YARDSTICKS, type Condition
+		CHANNEL_LABEL, EARLY_COLOR, LATE_COLOR, CONDITIONS, condition, OUTCOMES, outcomeStyle, pct, pctRange, plural, secs,
+		WELL_COLOR, type Condition
 	} from '#lib/charts/encoding.ts';
+	import { outcomeLabel } from '#lib/outcomes.ts';
 	import { DEFS, OUTCOME_ORDER_NOTE } from './defs';
 	import { ENOUGH } from './insight';
 	import { inview } from './inview';
@@ -58,11 +59,28 @@
 	let showPoints = $state(false);
 	const points = useQuery(api.dashboard.points, () => (showPoints ? { ...filter } : 'skip'));
 	let stripView = $state<'turn' | 'wasted'>('turn');
+	type Pt = NonNullable<typeof points.data>[number];
+	const pointOf = (p: Pt, v: number) => ({
+		key: p.id,
+		v,
+		color: outcomeStyle(p.outcome).color,
+		href: p.clip ? `/replays/${p.id}` : undefined,
+		info: [
+			stripView === 'turn'
+				? ['Turned away', p.turnLeft === null ? 'never (still chasing at the end)' : `${p.turnLeft.toFixed(2)} s ${p.turnLeft >= 0 ? 'left' : 'after the end'}`]
+				: ['Power wasted', secs(p.wasted, 2)],
+			['Outcome', outcomeLabel(p.outcome)],
+			['Power length', secs(p.total)],
+			['Participant', p.p !== null ? `P${p.p}, power-up ${p.trialIndex + 1}` : '–']
+		] as [string, string][]
+	});
 	const pointRows = $derived.by((): StripRow[] => {
 		const pts = points.data ?? [];
 		return rows.map((r) => {
-			const mine = pts.filter((p) => p.cue === r.cond.id && (stripView === 'turn' ? p.turnLeft !== null : p.wasted !== null));
-			const vals = mine.map((p) => (stripView === 'turn' ? p.turnLeft! : p.wasted!));
+			const mine = pts.filter((p) => p.cue === r.cond.id);
+			const onAxis = mine.filter((p) => (stripView === 'turn' ? p.inRates && p.turnLeft !== null : p.wasted !== null));
+			const never = stripView === 'turn' ? mine.filter((p) => p.inRates && p.turnLeft === null) : [];
+			const vals = onAxis.map((p) => (stripView === 'turn' ? p.turnLeft! : p.wasted!));
 			const sp = spread(vals);
 			return {
 				id: r.cond.id,
@@ -72,70 +90,66 @@
 				median: sp.median,
 				q25: sp.q25,
 				q75: sp.q75,
-				points: mine.map((p) => ({
-					key: p.id,
-					v: stripView === 'turn' ? p.turnLeft! : p.wasted!,
-					color: outcomeStyle(p.outcome).color,
-					href: p.clip ? `/replays/${p.id}` : undefined,
-					info: [
-						[stripView === 'turn' ? 'Turned away' : 'Power wasted', stripView === 'turn' ? `${p.turnLeft!.toFixed(2)} s left` : secs(p.wasted, 2)],
-						['Outcome', outcomeStyle(p.outcome).label],
-						['Power length', secs(p.total)],
-						['Participant', p.p !== null ? `P${p.p}, power-up ${p.trialIndex + 1}` : '–']
-					] as [string, string][]
-				}))
+				points: onAxis.map((p) => pointOf(p, stripView === 'turn' ? p.turnLeft! : p.wasted!)),
+				extra: never.map((p) => pointOf(p, 0))
 			};
 		});
 	});
+	/** Axis fitted to the data, always showing the well-timed window and the end of the power. */
 	const turnDomain = $derived.by((): [number, number] => {
-		const vs = (points.data ?? []).map((p) => p.turnLeft).filter((v): v is number => v !== null);
-		const hi = Math.max(6, Math.ceil(Math.max(0, ...vs)));
-		const lo = Math.min(-2, Math.floor(Math.min(0, ...vs)));
+		const vs = (points.data ?? []).filter((p) => p.inRates).map((p) => p.turnLeft).filter((v): v is number => v !== null);
+		const hi = Math.max(2.5, Math.ceil(Math.max(0, ...vs) * 2) / 2);
+		const lo = Math.min(-0.5, Math.floor(Math.min(0, ...vs) * 2) / 2);
 		return [hi, lo];
 	});
 	const wastedDomain = $derived.by((): [number, number] => {
 		const vs = (points.data ?? []).map((p) => p.wasted).filter((v): v is number => v !== null);
-		return [0, Math.max(6, Math.ceil(Math.max(0, ...vs)))];
+		return [0, Math.max(3, Math.ceil(Math.max(0, ...vs)))];
 	});
+	const neverCount = $derived(pointRows.reduce((a, r) => a + (r.extra?.length ?? 0), 0));
 
-	// Approach curves --------------------------------------------------------------------------------
+	// Approach curves: small multiples, each condition against the timer bar ----------------------------
 	let showApproach = $state(false);
 	const approach = useQuery(api.dashboard.approach, () => (showApproach ? { ...filter } : 'skip'));
-	let approachView = $state<'dist' | 'chasing'>('dist');
-	let highlight = $state<string>('auto');
-	let hoverSeries = $state<string | null>(null);
-	/** By default compare the best-ranked idea with the yardsticks. */
-	const autoPick = $derived(
-		orderedRows(main.cues, 'rank').find((r) => !r.thin && r.cond.role === 'idea')?.cond.id ?? null
-	);
-	const focusId = $derived(hoverSeries ?? (highlight === 'auto' ? autoPick : highlight === 'off' ? null : highlight));
-	const approachSeries = $derived.by((): LineSeries[] => {
+	let approachView = $state<'chasing' | 'dist'>('chasing');
+	type ApproachCue = NonNullable<typeof approach.data>['cues'][number];
+	const lineOf = (c: ApproachCue, emphasis: boolean): LineSeries => {
+		const cond = condition(c.cue);
+		const pctOf = (xs: (number | null)[]) => xs.map((v) => (v === null ? null : v * 100));
+		return {
+			id: c.cue,
+			label: cond.code,
+			name: `${cond.code}. ${cond.name} (${plural(c.trials, 'power-up')})`,
+			color: cond.color,
+			dash: cond.dash,
+			values: approachView === 'dist' ? c.dist : pctOf(c.chasing),
+			...(approachView === 'chasing' && emphasis ? { lo: pctOf(c.chasingLo), hi: pctOf(c.chasingHi) } : {}),
+			n: approachView === 'dist' ? c.distN : c.chasingN,
+			emphasis,
+			faint: c.trials < ENOUGH
+		};
+	};
+	const multiples = $derived.by(() => {
 		const a = approach.data;
 		if (!a) return [];
-		return a.cues
-			.filter((c) => c.trials > 0)
-			.map((c) => {
-				const cond = condition(c.cue);
-				const emph = c.cue === focusId || (focusId !== null && (YARDSTICKS as readonly string[]).includes(c.cue));
-				return {
-					id: c.cue,
-					label: cond.code,
-					name: `${cond.code}. ${cond.name}`,
-					color: cond.color,
-					dash: cond.dash,
-					values: approachView === 'dist' ? c.dist : c.chasing.map((v) => (v === null ? null : v * 100)),
-					n: approachView === 'dist' ? c.distN : c.chasingN,
-					emphasis: focusId === null ? false : emph,
-					faint: c.trials < ENOUGH
-				};
+		const timer = a.cues.find((c) => c.cue === 'timer-bar') ?? null;
+		const ids = order === 'code' ? CONDITIONS.map((c) => c.id) : orderedRows(main.cues, 'rank').map((r) => r.cond.id);
+		return ids
+			.filter((id) => id !== 'timer-bar')
+			.map((id) => {
+				const c = a.cues.find((x) => x.cue === id) ?? null;
+				const series: LineSeries[] = [];
+				if (timer) series.push({ ...lineOf(timer, false), emphasis: false });
+				if (c) series.push(lineOf(c, true));
+				return { id, cond: condition(id), c, series };
 			});
 	});
 	const distMax = $derived(Math.max(6, ...(approach.data?.cues ?? []).flatMap((c) => c.dist.filter((v): v is number => v !== null))));
-	const highlightOptions = $derived([
-		{ value: 'auto', label: autoPick ? `Best ranked idea (${condition(autoPick).code})` : 'Best ranked idea' },
-		{ value: 'off', label: 'None, all equal' },
-		...CONDITIONS.map((c) => ({ value: c.id, label: `${c.code}. ${c.name}` }))
-	]);
+	const timerApproach = $derived(approach.data?.cues.find((c) => c.cue === 'timer-bar') ?? null);
+
+	// Said vs did (questionnaire answers come from their own query) -----------------------------------
+	let showRatings = $state(false);
+	const ratings = useQuery(api.dashboard.ratings, () => (showRatings ? { ...filter } : 'skip'));
 
 	// Learning ---------------------------------------------------------------------------------------
 	function learningSeries(b: Main['learning']['byTrial']): LineSeries[] {
@@ -164,26 +178,27 @@
 	const byBlock = $derived(main.learning.byBlock);
 
 	// Said vs did ------------------------------------------------------------------------------------
-	function ratingPoints(key: 'clarityCI' | 'distractionCI'): ScatterPoint[] {
+	function ratingPoints(key: 'clarity' | 'distraction'): ScatterPoint[] {
+		const byCue = new Map((ratings.data ?? []).map((r) => [r.cue, r]));
 		return main.cues
-			.filter((c) => c[key].n > 0 && c.wellTimed.rate !== null)
+			.filter((c) => (byCue.get(c.cue)?.[key].n ?? 0) > 0 && c.wellTimed.rate !== null)
 			.map((c) => {
 				const cond = condition(c.cue);
-				const r = c[key];
+				const r = byCue.get(c.cue)![key];
 				return {
 					id: c.cue, label: cond.code, name: cond.name, x: r.mean!, y: c.wellTimed.rate! * 100,
 					xlo: r.lo, xhi: r.hi, ylo: c.wellTimed.lo! * 100, yhi: c.wellTimed.hi! * 100,
 					color: cond.color, shape: cond.shape, thin: c.decisions < ENOUGH,
 					info: [
-						[key === 'clarityCI' ? 'Clarity' : 'Distraction', `${r.mean!.toFixed(1)} of 7 (${plural(r.n, 'answer')})`],
+						[key === 'clarity' ? 'Clarity' : 'Distraction', `${r.mean!.toFixed(1)} of 7 (${plural(r.n, 'answer')})`],
 						['Turned away in time', `${pct(c.wellTimed.rate)} of ${c.wellTimed.n}`],
 						['95% interval', pctRange(c.wellTimed.lo, c.wellTimed.hi)]
 					] as [string, string][]
 				};
 			});
 	}
-	const clarityPts = $derived(ratingPoints('clarityCI'));
-	const distractPts = $derived(ratingPoints('distractionCI'));
+	const clarityPts = $derived(ratingPoints('clarity'));
+	const distractPts = $derived(ratingPoints('distraction'));
 
 	// Where the signal lives -------------------------------------------------------------------------
 	const CHANNELS: CueChannel[] = ['hud', 'ghosts', 'player', 'maze', 'screen'];
@@ -261,7 +276,7 @@
 		<Panel
 			title={stripView === 'turn' ? 'When players quit the chase' : 'Power thrown away'}
 			sub={stripView === 'turn'
-				? 'Each dot is one counted power-up, coloured by its outcome. Box: middle half. Tick: median. Click a dot for its replay.'
+				? 'Every counted power-up is a dot, coloured by its outcome. Box: middle half. Tick: median. Never turned: still chasing when the power ended. Click a dot for its replay.'
 				: 'Seconds of power left after each early retreat. Box: middle half. Tick: median.'}
 		>
 			{#snippet actions()}
@@ -272,13 +287,15 @@
 					bind:value={stripView}
 				/>
 				<InfoTip term={stripView === 'turn' ? 'Turn-away time' : 'Wasted power'} align="end">
-					{stripView === 'turn' ? DEFS.turnAway : DEFS.wasted}
+					{stripView === 'turn' ? `${DEFS.turnAway} ${DEFS.neverTurned}` : DEFS.wasted}
 				</InfoTip>
 			{/snippet}
 			{#if !points.data}
-				<div class="loading">Loading every power-up…</div>
-			{:else if !points.data.length}
-				<EmptyState compact icon="chart" title="No turn-away times yet">They appear once players chase scared ghosts near the end of a power-up.</EmptyState>
+				<div class="loading tall">Loading every power-up…</div>
+			{:else if !points.data.some((p) => (stripView === 'turn' ? p.inRates : p.wasted !== null))}
+				<EmptyState compact icon="chart" title={stripView === 'turn' ? 'No counted power-ups yet' : 'No early retreats yet'}>
+					{stripView === 'turn' ? 'They appear once players chase scared ghosts near the end of a power-up.' : 'Wasted power is measured on early retreats.'}
+				</EmptyState>
 			{:else}
 				<div class="legend-row">
 					<Legend
@@ -292,17 +309,21 @@
 						domain={turnDomain}
 						window={{ from: 2, to: 0.2, label: 'well timed: 2 to 0.2 s left' }}
 						zero={{ label: 'power ends' }}
-						xLabel="Seconds of power left when the player turned away"
+						xLabel="Seconds of power left when the player turned away (negative: after the end)"
 						ends={['quit early', 'too late']}
-						format={(v) => (v === 0 ? '0' : v.toFixed(0))}
-						caption="Turn-away time of every counted power-up per condition"
+						format={(v) => (v === 0 ? '0' : Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1))}
+						rowHeight={46}
+						extraLabel="never turned"
+						caption="Turn-away time of every counted power-up per condition, with those that never turned in their own column"
 					/>
+					<p class="foot">{plural(neverCount, 'counted power-up')} never turned away (the column at the right).</p>
 				{:else}
 					<StripPlot
 						rows={pointRows}
 						domain={wastedDomain}
 						xLabel="Seconds of power wasted"
 						format={(v) => v.toFixed(0)}
+						rowHeight={40}
 						caption="Wasted power after every early retreat per condition"
 					/>
 				{/if}
@@ -312,62 +333,69 @@
 
 	<div use:inview={() => (showApproach = true)}>
 		<Panel
-			title={approachView === 'dist' ? 'How close players stay as the power runs out' : 'Who is still chasing as the power runs out'}
-			sub={approachView === 'dist'
-				? 'Mean path distance to the nearest scared ghost, counted power-ups. Players who read the signal close in, then pull away before 0.'
-				: 'Share of counted power-ups still closing in on a ghost. A good signal makes this drop inside the green window.'}
+			title={approachView === 'chasing' ? 'Who is still chasing as the power runs out' : 'How close players stay as the power runs out'}
+			sub={approachView === 'chasing'
+				? 'Each condition against the timer bar (blue), same axes. Share of counted power-ups still closing in on a ghost; band: 95% interval. A good signal makes the line drop inside the green window, before 0.'
+				: 'Each condition against the timer bar (blue), same axes. Median path distance to the nearest scared ghost. Players who read the signal pull away before 0.'}
 		>
 			{#snippet actions()}
 				<Segmented
 					label="Approach measure"
 					size="sm"
-					options={[{ value: 'dist', label: 'Distance' }, { value: 'chasing', label: 'Still chasing' }]}
+					options={[{ value: 'chasing', label: 'Still chasing' }, { value: 'dist', label: 'Distance' }]}
 					bind:value={approachView}
 				/>
 				<InfoTip term="Approach curves" align="end">{approachView === 'dist' ? DEFS.approach : DEFS.stillChasing}</InfoTip>
 			{/snippet}
-			<div class="approach-tools">
-				<Select size="sm" options={highlightOptions} bind:value={highlight} aria-label="Highlight a condition" />
-				<Legend
-					label="Line styles"
-					items={[
-						{ label: 'A No signal', color: ROLE_COLOR.reference, kind: 'line', dash: '5 4' },
-						{ label: 'B Classic blink', color: ROLE_COLOR.reference, kind: 'line', dash: '1.5 3.5' },
-						{ label: '0 Timer bar', color: ROLE_COLOR.baseline, kind: 'line' },
-						{ label: 'Ideas 1-10', color: ROLE_COLOR.idea, kind: 'line' }
-					]}
-				/>
-			</div>
 			{#if !approach.data}
-				<div class="loading">Averaging the 10 Hz series…</div>
-			{:else if !approachSeries.length}
+				<div class="loading tall">Averaging the 10 Hz series…</div>
+			{:else if !approach.data.cues.length}
 				<EmptyState compact icon="chart" title="No counted power-ups yet">The curves need counted power-ups.</EmptyState>
 			{:else}
-				<LineChart
-					x={approach.data.bins}
-					series={approachSeries}
-					xDomain={[6, -3]}
-					yDomain={approachView === 'dist' ? [0, Math.ceil(distMax)] : [0, 100]}
-					xLabel="Seconds of power left (negative: after the end)"
-					yLabel={approachView === 'dist' ? 'Tiles' : '% chasing'}
-					xFormat={(v) => String(v)}
-					yFormat={(v) => (approachView === 'dist' ? v.toFixed(0) : `${v.toFixed(0)}%`)}
-					xTitle={(v) => (v > 0 ? `${v} s left` : v === 0 ? 'Power ends' : `${-v} s after the end`)}
-					xTicks={[6, 5, 4, 3, 2, 1, 0, -1, -2, -3]}
-					window={{ from: 2, to: 0.2, label: 'well timed' }}
-					markers={[{ at: 0, label: 'power ends' }]}
-					minN={3}
-					height={320}
-					caption="Approach curves per condition"
-					onhoverseries={(id) => (hoverSeries = id)}
-				/>
-				<p class="foot">Points with fewer than 3 power-ups are not drawn. Faint lines: under {ENOUGH} counted power-ups. Hover a line to bring it forward.</p>
+				<p class="basis-note">
+					Only power-ups that lasted at least {approach.data.window.from} s, so every point of a curve rests on the same power-ups.
+					{#if approach.data.excluded.short}{plural(approach.data.excluded.short, 'shorter counted power-up')} left out.{/if}
+					{#if timerApproach}Timer bar: {plural(timerApproach.trials, 'power-up')} from {plural(timerApproach.people, 'person', 'people')}.{/if}
+				</p>
+				<div class="multiples">
+					{#each multiples as m (m.id)}
+						<figure class="mini" class:thin={!m.c || m.c.trials < ENOUGH}>
+							<figcaption>
+								<CueChip cue={m.cond} size="sm" compact />
+								<span class="mini-name">{m.cond.name}</span>
+								<span class="mini-n">{m.c ? `n ${m.c.trials}, ${m.c.people} ${m.c.people === 1 ? 'person' : 'people'}` : 'no data'}</span>
+							</figcaption>
+							{#if m.c}
+								<LineChart
+									x={approach.data.bins}
+									series={m.series}
+									xDomain={[approach.data.window.from, approach.data.window.to]}
+									yDomain={approachView === 'dist' ? [0, Math.ceil(distMax)] : [0, 100]}
+									xLabel="Seconds left"
+									yLabel={approachView === 'dist' ? 'Tiles' : '% chasing'}
+									xFormat={(v) => String(v)}
+									yFormat={(v) => (approachView === 'dist' ? v.toFixed(0) : `${v.toFixed(0)}%`)}
+									xTitle={(v) => (v > 0 ? `${v} s left` : v === 0 ? 'Power ends' : `${-v} s after the end`)}
+									xTicks={[4, 2, 0, -2]}
+									window={{ from: 2, to: 0.2, label: '' }}
+									markers={[{ at: 0, label: '' }]}
+									minN={3}
+									height={170}
+									caption="{m.cond.name} against the timer bar"
+								/>
+							{:else}
+								<p class="mini-empty">No counted power-ups of 4 s or more yet.</p>
+							{/if}
+						</figure>
+					{/each}
+				</div>
+				<p class="foot">Faint panels: under {ENOUGH} counted power-ups. Hover a panel for the values and n at each moment.</p>
 			{/if}
 		</Panel>
 	</div>
 
 	<div class="two">
-		<Panel title="Practice within a block" sub="All conditions together, by power-up number in its block.">
+		<Panel title="Practice within a run" sub="All conditions together, by power-up number within its run.">
 			{#snippet actions()}<InfoTip term="Learning" align="end">{DEFS.learning}</InfoTip>{/snippet}
 			{#if byTrial.some((b) => b.n > 0)}
 				<LineChart
@@ -375,44 +403,44 @@
 					series={learningSeries(byTrial)}
 					xDomain={[1, main.learning.maxTrialBucket]}
 					yDomain={[0, 100]}
-					xLabel="Power-up number within the block"
+					xLabel="Power-up number within the run"
 					yLabel="% of counted"
 					xFormat={(v) => (v === main.learning.maxTrialBucket ? `${v}+` : String(v))}
 					yFormat={(v) => `${v.toFixed(0)}%`}
 					xTitle={(v) => `Power-up ${v}${v === main.learning.maxTrialBucket ? ' and later' : ''}`}
 					xTicks={byTrial.map((b) => b.x)}
 					height={240}
-					caption="Turned away in time, too late and too early by power-up number within a block"
+					caption="Turned away in time, too late and too early by power-up number within a run"
 				/>
 				<p class="foot">Bands: 95% Wilson intervals (pooled over people). n per point in the tooltip.</p>
 			{:else}
 				<EmptyState compact icon="chart" title="No counted power-ups yet" />
 			{/if}
 		</Panel>
-		<Panel title="Practice across the session" sub="All conditions together, by block position (1 = first condition played).">
+		<Panel title="Practice across the session" sub="All conditions together, by run position in the session (1 = first condition played).">
 			{#snippet actions()}<InfoTip term="Learning" align="end">{DEFS.learning}</InfoTip>{/snippet}
-			{#if byBlock.length > 1}
+			{#if byBlock.length > 1 && byBlock.some((b) => b.n > 0)}
 				<LineChart
 					x={byBlock.map((b) => b.x)}
 					series={learningSeries(byBlock)}
 					xDomain={[1, Math.max(2, byBlock.length)]}
 					yDomain={[0, 100]}
-					xLabel="Block position in the session"
+					xLabel="Run position in the session"
 					yLabel="% of counted"
 					yFormat={(v) => `${v.toFixed(0)}%`}
-					xTitle={(v) => `Block ${v}`}
+					xTitle={(v) => `Run ${v} of the session`}
 					xTicks={byBlock.map((b) => b.x)}
 					height={240}
-					caption="Turned away in time, too late and too early by block position in the session"
+					caption="Turned away in time, too late and too early by run position in the session"
 				/>
 				<p class="foot">The counterbalanced order spreads practice evenly over the conditions.</p>
 			{:else}
-				<EmptyState compact icon="chart" title="Needs sessions with more than one block">Study sessions play one block per condition.</EmptyState>
+				<EmptyState compact icon="chart" title={byBlock.length > 1 ? 'No counted power-ups yet' : 'Needs sessions with more than one run'}>A full session plays one run per condition.</EmptyState>
 			{/if}
 		</Panel>
 	</div>
 
-	<div class="two">
+	<div class="two" use:inview={() => (showRatings = true)}>
 		<Panel title="Felt clear vs was well timed" sub="Each point is a condition: questionnaire clarity against measured well-timed rate.">
 			{#snippet actions()}<InfoTip term="Clarity" align="end">{DEFS.clarity}</InfoTip>{/snippet}
 			{#if clarityPts.length}
@@ -428,8 +456,8 @@
 				/>
 				<p class="foot">Whiskers: 95% intervals. If players' sense of clarity matched their play, points would rise to the right.</p>
 			{:else}
-				<EmptyState compact icon="study" title="No questionnaire answers yet">
-					Players rate each signal after its block in the study. Simulated players do not answer.
+				<EmptyState compact icon="study" title={ratings.data ? 'No questionnaire answers in this view yet' : 'Loading answers…'}>
+					{#if ratings.data}After each run the researcher can ask the two questions (1 to 7); answers show up here.{/if}
 				</EmptyState>
 			{/if}
 		</Panel>
@@ -448,7 +476,7 @@
 				/>
 				<p class="foot">The ideal signal sits top left: well timed and not in the way.</p>
 			{:else}
-				<EmptyState compact icon="study" title="No questionnaire answers yet" />
+				<EmptyState compact icon="study" title={ratings.data ? 'No questionnaire answers in this view yet' : 'Loading answers…'} />
 			{/if}
 		</Panel>
 	</div>
@@ -526,12 +554,47 @@
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: var(--space-5);
 	}
-	.approach-tools {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--space-3) var(--space-5);
+	.basis-note {
 		margin-bottom: var(--space-3);
+		color: var(--ink-dim);
+		font-size: var(--text-sm);
+	}
+	.multiples {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		gap: var(--space-4) var(--space-5);
+	}
+	.mini {
+		min-width: 0;
+		margin: 0;
+	}
+	.mini.thin {
+		opacity: 0.6;
+	}
+	.mini figcaption {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-bottom: 2px;
+		font-size: var(--text-sm);
+	}
+	.mini-name {
+		overflow: hidden;
+		color: var(--ink);
+		font-weight: 650;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.mini-n {
+		margin-left: auto;
+		color: var(--ink-faint);
+		font-size: var(--text-xs);
+		white-space: nowrap;
+	}
+	.mini-empty {
+		padding: var(--space-5) 0;
+		color: var(--ink-faint);
+		font-size: var(--text-sm);
 	}
 	.foot {
 		margin-top: var(--space-2);
@@ -542,6 +605,9 @@
 		padding: var(--space-6) 0;
 		color: var(--ink-faint);
 		text-align: center;
+	}
+	.loading.tall {
+		min-height: 420px;
 	}
 	.ch {
 		display: flex;

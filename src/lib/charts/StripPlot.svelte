@@ -14,6 +14,8 @@
 		id: string;
 		cond: Condition;
 		points: StripPoint[];
+		/** Points with no value on the axis (e.g. never turned away), drawn in their own lane at the right. */
+		extra?: StripPoint[];
 		median: number | null;
 		q25: number | null;
 		q75: number | null;
@@ -25,10 +27,13 @@
 <script lang="ts">
 	/**
 	 * Every trial as a point, one row per condition, with the middle half (box) and the median
-	 * (tick) drawn over it. An optional shaded window marks the ideal range, and a line marks zero.
-	 * Points are spread vertically by a hash of their key so they do not move when new data arrives.
-	 * Click a point to open its replay.
+	 * (tick) drawn over it. Points are laid out as a beeswarm: those that would overlap are stacked
+	 * outward from the row's centre line, squeezed together only when a row is very full, so the
+	 * shape of the distribution shows even with hundreds of points. An optional lane at the right
+	 * holds points with no value on the axis (`extra`, e.g. "never turned"). An optional shaded
+	 * window marks the ideal range, and a line marks zero. Click a point to open its replay.
 	 */
+	import { goto } from '$app/navigation';
 	import { hash01, ticks } from './encoding';
 	import { shapePath } from './shapes';
 	import Tooltip from './Tooltip.svelte';
@@ -49,9 +54,12 @@
 		names?: boolean;
 		/** Height of one row in px. */
 		rowHeight?: number;
+		/** Heading of the extra lane (shown when any row has extra points). */
+		extraLabel?: string;
 	}
 	let {
-		rows, domain, window = null, zero = null, xLabel, ends, format = (v) => v.toFixed(1), caption, names = true, rowHeight = 30
+		rows, domain, window = null, zero = null, xLabel, ends, format = (v) => v.toFixed(1), caption, names = true, rowHeight = 30,
+		extraLabel = ''
 	}: Props = $props();
 
 	let width = $state(0);
@@ -59,9 +67,12 @@
 	const GROUP_H = 26;
 	const narrow = $derived(width < 560);
 	const labelW = $derived(narrow ? 36 : names ? 170 : 44);
+	const hasExtra = $derived(rows.some((r) => (r.extra?.length ?? 0) > 0));
+	const extraW = $derived(hasExtra ? (narrow ? 44 : 76) : 0);
 	const padR = 14;
 	const top = 26;
-	const plotW = $derived(Math.max(60, width - labelW - padR));
+	const plotW = $derived(Math.max(60, width - labelW - padR - extraW - (hasExtra ? 12 : 0)));
+	const extraX = $derived(labelW + plotW + 12);
 
 	/** Vertical position of each row, leaving room for group captions. */
 	const layout = $derived.by(() => {
@@ -78,28 +89,75 @@
 	const clampV = (v: number) => Math.min(Math.max(v, Math.min(...domain)), Math.max(...domain));
 	const xticks = $derived(ticks(Math.min(...domain), Math.max(...domain), narrow ? 5 : 10));
 
-	let hover = $state<{ p: StripPoint; row: StripRow; x: number; y: number } | null>(null);
+	/** Dot radius: smaller when rows are dense. */
+	const R = $derived(ROW_H >= 44 ? 2.4 : 2.2);
+
+	/**
+	 * Beeswarm positions: points are binned by x into columns one dot wide and stacked outward from
+	 * the centre (0, +1, -1, +2, ...), in a stable order (hash of the key) so they do not jump when
+	 * new data arrives. A column taller than the row is squeezed to fit.
+	 */
+	function swarm(points: StripPoint[], cx: (p: StripPoint) => number, binW: number, h: number) {
+		const bins = new Map<number, StripPoint[]>();
+		for (const p of points) {
+			const b = Math.round(cx(p) / binW);
+			const list = bins.get(b) ?? [];
+			list.push(p);
+			bins.set(b, list);
+		}
+		const out = new Map<string, { x: number; dy: number }>();
+		const room = h / 2 - R - 2;
+		for (const [b, list] of bins) {
+			list.sort((p, q) => hash01(p.key) - hash01(q.key));
+			const half = Math.ceil((list.length - 1) / 2);
+			const gap = half > 0 ? Math.min(2 * R + 0.6, room / half) : 0;
+			list.forEach((p, i) => {
+				const k = Math.ceil(i / 2) * (i % 2 ? 1 : -1);
+				out.set(p.key, { x: b * binW, dy: k * gap });
+			});
+		}
+		return out;
+	}
+	const pos = $derived.by(() => {
+		const m = new Map<string, Map<string, { x: number; dy: number }>>();
+		for (const { row } of layout) {
+			m.set(row.id, swarm(row.points, (p) => x(clampV(p.v)), 2 * R + 0.8, ROW_H));
+			if (row.extra?.length) {
+				// The extra lane has no axis: spread its points over the lane width.
+				m.set(`${row.id}|extra`, swarm(row.extra, (p) => extraX + 6 + hash01(p.key) * (extraW - 12), 2 * R + 0.8, ROW_H));
+			}
+		}
+		return m;
+	});
+	const at = (row: StripRow, p: StripPoint, y: number, extra = false) => {
+		const q = pos.get(extra ? `${row.id}|extra` : row.id)?.get(p.key);
+		return { cx: q?.x ?? x(clampV(p.v)), cy: y + ROW_H / 2 + (q?.dy ?? 0) };
+	};
+
+	let hover = $state<{ p: StripPoint; row: StripRow; x: number; y: number; extra: boolean } | null>(null);
 
 	function pick(e: PointerEvent) {
 		const svg = e.currentTarget as SVGSVGElement;
 		const b = svg.getBoundingClientRect();
 		const mx = e.clientX - b.left, my = e.clientY - b.top;
-		let best: typeof hover = null, bestD = 10 * 10;
+		let best: typeof hover = null, bestD = 9 * 9;
 		for (const { row, y } of layout) {
 			if (my < y - 4 || my > y + ROW_H + 4) continue;
-			for (const p of row.points) {
-				const px = x(clampV(p.v)), py = y + 5 + hash01(p.key) * (ROW_H - 10);
-				const d = (px - mx) ** 2 + (py - my) ** 2;
-				if (d < bestD) {
-					bestD = d;
-					best = { p, row, x: px, y: py };
+			for (const [list, extra] of [[row.points, false], [row.extra ?? [], true]] as [StripPoint[], boolean][]) {
+				for (const p of list) {
+					const { cx, cy } = at(row, p, y, extra);
+					const d = (cx - mx) ** 2 + (cy - my) ** 2;
+					if (d < bestD) {
+						bestD = d;
+						best = { p, row, x: cx, y: cy, extra };
+					}
 				}
 			}
 		}
 		hover = best;
 	}
 	function open() {
-		if (hover?.p.href) location.assign(hover.p.href);
+		if (hover?.p.href) goto(hover.p.href);
 	}
 </script>
 
@@ -139,6 +197,10 @@
 				<text x={labelW} y={height - 2} class="end">{ends[0]}</text>
 				<text x={labelW + plotW} y={height - 2} text-anchor="end" class="end">{ends[1]}</text>
 			{/if}
+			{#if hasExtra}
+				<rect x={extraX} y={top - 6} width={extraW} height={height - top - 28} rx="4" fill="var(--surface-2, rgba(255,255,255,0.03))" />
+				<text x={extraX + extraW / 2} y={top - 12} text-anchor="middle" class="win-label">{narrow ? 'never' : extraLabel}</text>
+			{/if}
 
 			{#each layout as { row, y, gy } (row.id)}
 				{#if gy !== null}
@@ -153,35 +215,37 @@
 					{#if !narrow && names}
 						<text x={36} y={y + ROW_H / 2 + 4} class="name">{row.cond.name.length > 18 ? row.cond.name.slice(0, 17) + '…' : row.cond.name}</text>
 					{/if}
-					{#if !row.points.length}
-						<text x={labelW + 6} y={y + ROW_H / 2 + 4} class="none">no trials yet</text>
+					{#if !row.points.length && !row.extra?.length}
+						<text x={labelW + 6} y={y + ROW_H / 2 + 4} class="none">no counted power-ups yet</text>
 					{/if}
 					{#each row.points as p (p.key)}
-						<circle
-							cx={x(clampV(p.v))}
-							cy={y + 5 + hash01(p.key) * (ROW_H - 10)}
-							r="3"
-							fill={p.color ?? row.cond.color}
-							fill-opacity={row.thin ? 0.35 : 0.55}
-							stroke={hover?.p.key === p.key ? 'var(--ink)' : 'none'}
-							stroke-width="1.5"
-						/>
+						{@const c = at(row, p, y)}
+						<circle cx={c.cx} cy={c.cy} r={R} fill={p.color ?? row.cond.color} fill-opacity={row.thin ? 0.45 : 0.8}
+							stroke={hover?.p.key === p.key ? 'var(--ink)' : 'none'} stroke-width="1.5" />
 					{/each}
+					{#each row.extra ?? [] as p (p.key)}
+						{@const c = at(row, p, y, true)}
+						<circle cx={c.cx} cy={c.cy} r={R} fill={p.color ?? row.cond.color} fill-opacity={row.thin ? 0.45 : 0.8}
+							stroke={hover?.p.key === p.key ? 'var(--ink)' : 'none'} stroke-width="1.5" />
+					{/each}
+					{#if row.extra?.length && !narrow}
+						<text x={extraX + extraW - 4} y={y + 11} text-anchor="end" class="count">{row.extra.length}</text>
+					{/if}
 					{#if row.q25 !== null && row.q75 !== null}
 						<rect
 							x={Math.min(x(row.q25), x(row.q75))}
-							y={y + 6}
+							y={y + 4}
 							width={Math.max(1, Math.abs(x(row.q75) - x(row.q25)))}
-							height={ROW_H - 12}
+							height={ROW_H - 8}
 							rx="3"
 							fill="none"
 							stroke="var(--ink)"
-							stroke-opacity="0.55"
+							stroke-opacity="0.6"
 							stroke-width="1.2"
 						/>
 					{/if}
 					{#if row.median !== null}
-						<line x1={x(row.median)} x2={x(row.median)} y1={y + 3} y2={y + ROW_H - 3} stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round" />
+						<line x1={x(row.median)} x2={x(row.median)} y1={y + 2} y2={y + ROW_H - 2} stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round" />
 					{/if}
 				</g>
 			{/each}
@@ -206,7 +270,8 @@
 		overflow: visible;
 		font-family: var(--font-body);
 	}
-	.tick {
+	.tick,
+	.count {
 		fill: var(--ink-faint);
 		font-family: var(--font-mono);
 		font-size: 11px;

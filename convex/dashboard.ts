@@ -1,21 +1,105 @@
 /**
  * Read queries for the results dashboard (src/routes/dashboard). Everything is aggregated here so
  * the browser receives a few kilobytes, not every trial. The exceptions are `points` (one small row
- * per trial for the turn-away strip plots) and `approach` (series averaged per condition), which the
+ * per decision trial for the turn-away strip plots) and `approach` (curves per condition), which the
  * page fetches only for the view that shows them.
  *
- * Definitions are those of docs/STUDY.md and convex/lib/stats.ts; nothing here redefines a measure.
- * Every query takes the shared filter and defaults to human data.
+ * Speed: every query reads trial digests (convex/lib/digest.ts: one document per session with a
+ * compact row per trial), never trial rows or series. The backend costs about the same per document
+ * whatever its size, so a summary over 4,000 power-ups reads a few dozen digests instead of 4,000
+ * rows, and stays fast when it runs again after each new power-up.
+ *
+ * Definitions are those of docs/STUDY.md, convex/lib/stats.ts and convex/lib/compare.ts; nothing
+ * here redefines a measure. Every query takes the shared filter and defaults to human data. A
+ * simulated view is read one simulator run at a time (`run`; `OTHER_RUN` is simulated play that
+ * belongs to no run).
  */
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
-import { query, type QueryCtx } from './_generated/server';
-import { filterArgs, matches, scanTrials, type Filter } from './lib/filters';
-import { unpackSeries } from './lib/series';
-import { isDecision } from './lib/rules';
-import { decisionRates, summarize, type CueSummary, type Rate } from './lib/stats';
-import { blockRatings } from './summary';
+import { internalMutation, query, type QueryCtx } from './_generated/server';
+import { filterArgs, type Filter } from './lib/filters';
+import { CURVE_FROM, CURVE_STEP, curveOf, rebuildSessionDigest, type DigestRow } from './lib/digest';
+import { DECISIONS, isDecision, isLateCatch, RULES_VERSION } from './lib/rules';
+import { decisionRates, summarize, type CueSummary, type Rate, type TrialRow } from './lib/stats';
+import {
+	againstRef, allPairs, cellsOf, median, peopleNeeded, pooledSd, RATE_INDEX, rateHits, type Adjusted, type RateKey
+} from './lib/compare';
 import { mode, sourceFilter } from './validators';
+
+/** The `run` value for simulated play outside any simulator run. */
+export const OTHER_RUN = 'other';
+/** Conditions with fewer decision trials are not ranked or compared (docs/STUDY.md). */
+const ENOUGH = 10;
+const DECISION_SET = new Set<string>(DECISIONS);
+
+// ---------- reading ----------
+
+type Digest = Doc<'trialDigests'>;
+/** A digest row with its session's context. */
+export interface Row extends DigestRow {
+	participantId: Id<'participants'>;
+	sessionId: Id<'sessions'>;
+	p: number | null;
+	source: 'human' | 'bot';
+	mode: 'study' | 'arcade';
+}
+
+/** The digests a filter needs, picked by the narrowest index. */
+async function digests(ctx: QueryCtx, f: Filter): Promise<Digest[]> {
+	const src = f.source ?? 'human';
+	const from = f.from ?? 0, to = f.to ?? Number.MAX_SAFE_INTEGER;
+	const q = ctx.db.query('trialDigests');
+	const { sessionId, participantId, run } = f;
+	let ds: Digest[];
+	if (sessionId) ds = await q.withIndex('by_session', (i) => i.eq('sessionId', sessionId)).collect();
+	else if (run && run !== OTHER_RUN) ds = await q.withIndex('by_run', (i) => i.eq('simRun', run).gte('lastAt', from)).collect();
+	else if (participantId) ds = await q.withIndex('by_participant', (i) => i.eq('participantId', participantId).gte('lastAt', from)).collect();
+	else if (src !== 'all') ds = await q.withIndex('by_source', (i) => i.eq('source', src).gte('lastAt', from)).collect();
+	else ds = await q.collect();
+	return ds.filter((d) => (src === 'all' || d.source === src)
+		&& (!participantId || d.participantId === participantId)
+		&& (run === OTHER_RUN ? d.source === 'bot' && !d.simRun : !run || d.simRun === run)
+		&& d.lastAt >= from && d.firstAt <= to);
+}
+
+/** Rows of the filter, oldest first. */
+async function readRows(ctx: QueryCtx, f: Filter): Promise<{ rows: Row[]; digests: Digest[] }> {
+	const ds = await digests(ctx, f);
+	const from = f.from ?? 0, to = f.to ?? Number.MAX_SAFE_INTEGER;
+	const rows: Row[] = [];
+	for (const d of ds) {
+		for (const r of d.rows) {
+			const m = r.mode ?? d.mode;
+			if ((f.cue && r.cue !== f.cue) || (f.mode && m !== f.mode) || (!f.includePractice && r.practice) || r.createdAt < from || r.createdAt > to) continue;
+			rows.push({ ...r, participantId: d.participantId, sessionId: d.sessionId, p: d.participantNumber, source: d.source, mode: m });
+		}
+	}
+	rows.sort((a, b) => a.createdAt - b.createdAt);
+	return { rows, digests: ds };
+}
+
+const asTrial = (r: Row): TrialRow & { rulesVersion?: number } => ({
+	cue: r.cue, participantId: r.participantId, outcome: r.outcome, engaged: r.engaged, inRates: r.inRates,
+	rulesVersion: r.rulesVersion ?? undefined, lateCatch: isLateCatch(r), turnLeft: r.turnLeft, wasted: r.wasted, eats: [],
+	after: { nearMiss: r.nearMiss, caught: r.caught }
+});
+const decision = (r: Row) => isDecision({ outcome: r.outcome, inRates: r.inRates, rulesVersion: r.rulesVersion ?? undefined });
+
+/** Block ratings of the sessions behind a filter (by session index, so only the sessions in view are read). */
+async function ratingsOf(ctx: QueryCtx, f: Filter, ds: Digest[]): Promise<Doc<'ratings'>[]> {
+	const out: Doc<'ratings'>[] = [];
+	for (const d of ds) {
+		const rs = await ctx.db.query('ratings').withIndex('by_session', (i) => i.eq('sessionId', d.sessionId)).collect();
+		for (const r of rs) {
+			if (r.kind !== 'block' || (f.cue && r.cue !== f.cue)) continue;
+			if (r.createdAt < (f.from ?? 0) || r.createdAt > (f.to ?? Number.MAX_SAFE_INTEGER)) continue;
+			out.push(r);
+		}
+	}
+	return out;
+}
+
+// ---------- helpers ----------
 
 /** Rates over a group of decision trials (learning curves; Wilson intervals, all conditions pooled). */
 export interface Bucket {
@@ -27,8 +111,8 @@ export interface Bucket {
 	caught: Rate;
 }
 
-function bucket(x: number, rows: Doc<'trials'>[]): Bucket {
-	const r = decisionRates(rows, '', true);
+function bucket(x: number, rows: Row[]): Bucket {
+	const r = decisionRates(rows.map(asTrial), '', true);
 	return { x, n: r.wellTimed.n, wellTimed: r.wellTimed, tooLate: r.tooLate, tooEarly: r.tooEarly, caught: r.caught };
 }
 
@@ -51,147 +135,247 @@ function lite(s: CueSummary) {
 /** Learning curves are cut at this many trials in a block; later trials are pooled into the last bucket. */
 const MAX_TRIAL_BUCKET = 8;
 
+const r4 = (x: number | null) => (x === null ? null : Math.round(x * 10000) / 10000);
+/** A comparison as the page needs it (fractions rounded; p-values kept). */
+function slim(x: Adjusted) {
+	return { a: x.a, b: x.b, people: x.people, diff: r4(x.diff), lo: r4(x.lo), hi: r4(x.hi), p: x.p, pAdj: x.pAdj, clear: x.clear };
+}
+export type Comparison = ReturnType<typeof slim>;
+
+const COMPARED: RateKey[] = ['wellTimed', 'tooLate', 'tooEarly'];
+/** Smallest paired difference worth detecting (fraction) in the precision statement. */
+const TARGET_DIFF = 0.15;
+
 /**
- * Everything the top of the dashboard needs for one filter: totals, per-condition headline numbers
- * (rates over decision trials with participant-clustered intervals, outcome counts, catches,
- * turn-away spread, wasted power, ratings with their intervals), learning over trial number within
- * a block and over block position in the session.
+ * Breakdowns: counts of decision trials per condition and level of a factor ([n, well, late,
+ * early]), so the page can show where a factor matters, and say when the data cannot tell.
+ */
+const FACTORS = {
+	half: (r: Row) => (r.mode !== 'study' ? null : r.blockIndex < 6 ? 'Blocks 1-6' : 'Blocks 7-13'),
+	power: (r: Row) => (r.total < 6 ? 'Under 6 s' : '6 s or more'),
+	sound: (r: Row) => (r.sound ? 'Sound on' : 'Sound off'),
+	input: (r: Row) => r.inputType || 'unknown'
+} as const;
+type FactorKey = keyof typeof FACTORS;
+
+/**
+ * Everything the top of the dashboard needs for one filter: totals (with what is recorded but not
+ * counted, and why), per-condition headline numbers (rates over decision trials with
+ * participant-clustered intervals, outcome counts, catches, turn-away spread, wasted power),
+ * within-subject comparisons (paired differences against the timer bar and no signal, every pair
+ * Holm-adjusted), how precise this is, breakdowns, and learning over trials and blocks.
  */
 export const main = query({
 	args: filterArgs,
 	handler: async (ctx, f) => {
-		const trials = await scanTrials(ctx, f);
-		const ratings = await blockRatings(ctx, f);
-		const cues = [...new Set([...trials.map((t) => t.cue), ...ratings.map((r) => r.cue ?? '')].filter(Boolean))].sort();
+		const { rows } = await readRows(ctx, f);
+		const trials = rows.map(asTrial);
+		const cues = [...new Set(rows.map((r) => r.cue))].sort();
 		const byCue = cues.map((c) => {
-			const rs = ratings.filter((r) => r.cue === c);
-			const mine = trials.filter((t) => t.cue === c);
-			const s = summarize(c, mine, rs);
+			const mine = rows.filter((r) => r.cue === c);
+			const s = summarize(c, mine.map(asTrial), []);
 			// Outcomes of the decision trials only: their shares are exactly the rates.
 			const countedOutcomes: Record<string, number> = {};
-			for (const t of mine) if (isDecision(t)) countedOutcomes[t.outcome] = (countedOutcomes[t.outcome] ?? 0) + 1;
-			return {
-				...lite(s),
-				countedOutcomes,
-				clarityCI: ratingStats(rs.map((r) => r.clarity).filter((x): x is number => typeof x === 'number')),
-				distractionCI: ratingStats(rs.map((r) => r.distraction).filter((x): x is number => typeof x === 'number'))
-			};
+			for (const t of mine) if (decision(t)) countedOutcomes[t.outcome] = (countedOutcomes[t.outcome] ?? 0) + 1;
+			// Rules v3: early retreats that gave up on the chase very early, as a share of decision trials
+			// (null when no row carries the flag, i.e. before v3).
+			const flagged = mine.filter((t) => decision(t) && t.gaveUpEarly !== undefined);
+			const gaveUpEarly = flagged.length ? { k: flagged.filter((t) => t.gaveUpEarly).length, n: s.decisions } : null;
+			return { ...lite(s), countedOutcomes, gaveUpEarly };
 		});
+
+		// Within-subject comparisons on decision trials.
+		const decisions = rows.filter(decision);
+		const cells = cellsOf(decisions);
+		const ranked = byCue.filter((c) => c.decisions >= ENOUGH).map((c) => c.cue);
+		const versus = (ref: string) => Object.fromEntries(COMPARED.map((k) => [k, againstRef(cells, cues, ref, RATE_INDEX[k]).map(slim)])) as Record<RateKey, Comparison[]>;
+		const paired = { 'timer-bar': versus('timer-bar'), none: versus('none') };
+		const pairs = Object.fromEntries(COMPARED.map((k) => [k, allPairs(cells, ranked, RATE_INDEX[k]).map(slim)])) as Record<RateKey, Comparison[]>;
+
+		// How precise: decision trials per person and condition, interval width, people needed.
+		const perCell: number[] = [];
+		for (const byC of cells.values()) for (const c of byC.values()) perCell.push(c.n);
+		const vsTimer = againstRef(cells, cues, 'timer-bar', RATE_INDEX.wellTimed);
+		const halfWidths = vsTimer.filter((x) => x.lo !== null && x.hi !== null).map((x) => (x.hi! - x.lo!) / 2);
+		const sd = pooledSd(vsTimer);
+		const comparisons = Math.max(1, vsTimer.length || 12);
+		const precision = {
+			people: cells.size,
+			perPersonCondition: median(perCell),
+			halfWidth: r4(median(halfWidths)),
+			sd: r4(sd),
+			target: TARGET_DIFF,
+			comparisons,
+			needed: sd !== null && sd > 0 ? peopleNeeded(sd, TARGET_DIFF, 0.05 / comparisons) : null,
+			neededSingle: sd !== null && sd > 0 ? peopleNeeded(sd, TARGET_DIFF, 0.05) : null
+		};
+
+		// Breakdowns.
+		const breakdowns = {} as Record<FactorKey, { levels: string[]; counts: Record<string, Record<string, [number, number, number, number]>> }>;
+		for (const key of Object.keys(FACTORS) as FactorKey[]) {
+			const counts: Record<string, Record<string, [number, number, number, number]>> = {};
+			const levels = new Set<string>();
+			for (const r of decisions) {
+				const lv = FACTORS[key](r);
+				if (lv === null) continue;
+				levels.add(lv);
+				const h = rateHits(r.outcome);
+				for (const c of [r.cue, 'all']) {
+					const cell = ((counts[c] ??= {})[lv] ??= [0, 0, 0, 0]);
+					cell[0]++;
+					cell[1] += h[0];
+					cell[2] += h[1];
+					cell[3] += h[3];
+				}
+			}
+			breakdowns[key] = { levels: [...levels].sort(), counts };
+		}
 
 		// Learning: trial number within the block (1-based, last bucket pooled) and block position.
 		const byTrial: Bucket[] = [];
 		for (let i = 1; i <= MAX_TRIAL_BUCKET; i++) {
-			const rows = trials.filter((t) => (i < MAX_TRIAL_BUCKET ? t.trialIndex + 1 === i : t.trialIndex + 1 >= i));
-			byTrial.push(bucket(i, rows));
+			byTrial.push(bucket(i, rows.filter((t) => (i < MAX_TRIAL_BUCKET ? t.trialIndex + 1 === i : t.trialIndex + 1 >= i))));
 		}
-		const maxBlock = trials.reduce((m, t) => Math.max(m, t.blockIndex + 1), 0);
+		const maxBlock = rows.reduce((m, t) => Math.max(m, t.blockIndex + 1), 0);
 		const byBlock: Bucket[] = [];
-		for (let b = 1; b <= Math.min(maxBlock, 13); b++) byBlock.push(bucket(b, trials.filter((t) => t.blockIndex + 1 === b)));
+		for (let b = 1; b <= Math.min(maxBlock, 13); b++) byBlock.push(bucket(b, rows.filter((t) => t.blockIndex + 1 === b)));
 
-		const sessions = new Set(trials.map((t) => t.sessionId));
+		// What is recorded but not counted, and why: older rules, no decision about the end (by
+		// outcome), or a decision the player did not stay 3 s after.
+		const oldRules = rows.filter((r) => (r.rulesVersion ?? 1) !== RULES_VERSION).length;
+		const notCounted: Record<string, number> = {};
+		for (const r of rows) {
+			if (decision(r)) continue;
+			const why = (r.rulesVersion ?? 1) !== RULES_VERSION ? 'old-rules' : DECISION_SET.has(r.outcome) ? 'left-early' : r.outcome;
+			notCounted[why] = (notCounted[why] ?? 0) + 1;
+		}
 		return {
 			source: f.source ?? 'human',
+			run: f.run ?? null,
 			totals: {
-				trials: trials.length,
-				engaged: trials.filter((t) => t.engaged).length,
-				inRates: trials.filter((t) => t.inRates).length,
-				decisions: trials.filter(isDecision).length,
-				participants: new Set(trials.map((t) => t.participantId)).size,
-				sessions: sessions.size,
-				ratings: ratings.length,
-				firstAt: trials.length ? trials[0].createdAt : null,
-				lastAt: trials.length ? trials[trials.length - 1].createdAt : null
+				trials: rows.length,
+				engaged: rows.filter((t) => t.engaged).length,
+				inRates: trials.filter((t) => t.rulesVersion === RULES_VERSION && t.inRates).length,
+				decisions: decisions.length,
+				oldRules,
+				notCounted,
+				participants: new Set(rows.map((t) => t.participantId)).size,
+				sessions: new Set(rows.map((t) => t.sessionId)).size,
+				firstAt: rows.length ? rows[0].createdAt : null,
+				lastAt: rows.length ? rows[rows.length - 1].createdAt : null
 			},
-			all: lite(summarize('all', trials, ratings)),
+			all: lite(summarize('all', trials, [])),
 			cues: byCue,
+			ranked,
+			paired,
+			pairs,
+			precision,
+			breakdowns,
 			learning: { byTrial, byBlock, maxTrialBucket: MAX_TRIAL_BUCKET }
 		};
 	}
 });
 
-async function participantNumbers(ctx: QueryCtx, ids: Iterable<Id<'participants'>>) {
-	const out = new Map<string, { number: number; nickname: string | null }>();
-	for (const id of new Set(ids)) {
-		const p = await ctx.db.get(id);
-		if (p) out.set(id, { number: p.number, nickname: p.nickname ?? null });
+/** Questionnaire answers per condition (clarity, distraction) with 95% intervals. */
+export const ratings = query({
+	args: filterArgs,
+	handler: async (ctx, f) => {
+		const ds = await digests(ctx, f);
+		const rs = await ratingsOf(ctx, f, ds);
+		const cues = [...new Set(rs.map((r) => r.cue ?? '').filter(Boolean))].sort();
+		const num = (xs: (number | undefined)[]) => xs.filter((x): x is number => typeof x === 'number');
+		return cues.map((cue) => {
+			const mine = rs.filter((r) => r.cue === cue);
+			return { cue, clarity: ratingStats(num(mine.map((r) => r.clarity))), distraction: ratingStats(num(mine.map((r) => r.distraction))) };
+		});
 	}
-	return out;
-}
+});
 
 /**
- * One small row per trial that has a turn-away time (decision trials) or wasted power, for strip
- * plots where every trial is a point you can hover and open as a replay.
+ * One small row per decision trial (turn-away time, or "never turned" when the last chase was still
+ * running), and per early retreat its wasted power, for strip plots where every trial is a point you
+ * can hover and open as a replay.
  */
 export const points = query({
 	args: filterArgs,
 	handler: async (ctx, f) => {
-		const trials = (await scanTrials(ctx, f)).filter((t) => (isDecision(t) && t.turnLeft !== null) || t.wasted !== null);
-		const people = await participantNumbers(ctx, trials.map((t) => t.participantId));
-		return trials.map((t) => ({
-			id: t._id,
-			cue: t.cue,
-			outcome: t.outcome,
-			inRates: isDecision(t),
-			turnLeft: isDecision(t) ? t.turnLeft : null,
-			wasted: t.wasted,
-			total: t.total,
-			p: people.get(t.participantId)?.number ?? null,
-			trialIndex: t.trialIndex,
-			at: t.createdAt,
-			clip: !!t.clipId
+		const { rows } = await readRows(ctx, f);
+		return rows.filter((r) => decision(r) || r.wasted !== null).map((r) => ({
+			id: r.id,
+			cue: r.cue,
+			outcome: r.outcome,
+			inRates: decision(r),
+			turnLeft: decision(r) ? r.turnLeft : null,
+			wasted: r.wasted,
+			total: r.total,
+			p: r.p,
+			trialIndex: r.trialIndex,
+			at: r.createdAt,
+			clip: r.clip
 		}));
 	}
 });
 
-/** Time-left grid of the approach curves: 6 s before the end to 3 s after, in 0.25 s steps. */
-const GRID_FROM = 6, GRID_TO = -3, GRID_STEP = 0.25;
+/** Plotted window of the approach curves: from 4 s left (every study power-up lasts at least 4 s) to 3 s after the end. */
+const APPROACH_FROM = 4, APPROACH_TO = -3;
 
 /**
- * Approach curves (STUDY.md "Series"): for each condition, the mean path distance to the nearest
- * scared ghost (after the end: to the ghosts that were scared when it ran out) and the share of
- * trials still chasing, against time left on the power. Only decision trials (the ones in the rates).
+ * Approach curves (STUDY.md "Series") for decision trials whose power lasted at least as long as
+ * the plotted window, so every point of a curve rests on the same power-ups and the mix of power
+ * lengths cannot bend it. Per condition and time left: the share still chasing (with a Wilson
+ * interval) and the median path distance to the nearest scared ghost (after the end: to the ghosts
+ * that were scared when it ran out).
  */
 export const approach = query({
 	args: filterArgs,
 	handler: async (ctx, f) => {
-		const trials = (await scanTrials(ctx, f)).filter(isDecision);
+		const { rows } = await readRows(ctx, f);
+		const k0 = Math.round((CURVE_FROM - APPROACH_FROM) / CURVE_STEP);
+		const k1 = Math.round((CURVE_FROM - APPROACH_TO) / CURVE_STEP);
 		const bins: number[] = [];
-		for (let x = GRID_FROM; x >= GRID_TO - 1e-9; x -= GRID_STEP) bins.push(Math.round(x * 100) / 100);
-		const idx = (left: number) => Math.round((GRID_FROM - left) / GRID_STEP);
-		const acc = new Map<string, { trials: number; dSum: number[]; dN: number[]; cSum: number[]; cN: number[] }>();
-		for (const t of trials) {
-			let a = acc.get(t.cue);
-			if (!a) {
-				a = { trials: 0, dSum: bins.map(() => 0), dN: bins.map(() => 0), cSum: bins.map(() => 0), cN: bins.map(() => 0) };
-				acc.set(t.cue, a);
-			}
-			a.trials++;
-			const s = unpackSeries(t.series);
-			// One value per trial and bin: the sample nearest the bin centre.
-			const seen = new Set<number>();
-			for (let i = 0; i < s.t.length; i++) {
-				const k = idx(s.left[i]);
-				if (k < 0 || k >= bins.length || seen.has(k)) continue;
-				seen.add(k);
-				const d = s.dist[i];
-				if (d !== null) {
-					a.dSum[k] += d;
-					a.dN[k]++;
+		for (let k = k0; k <= k1; k++) bins.push(Math.round((CURVE_FROM - k * CURVE_STEP) * 100) / 100);
+		const dec = rows.filter(decision);
+		const short = dec.filter((r) => r.total < APPROACH_FROM - 1e-6).length;
+		const curves = new Map(dec.map((r) => [r.id, curveOf(r)]));
+		const missing = dec.filter((r) => r.total >= APPROACH_FROM - 1e-6 && !curves.get(r.id)).length;
+		const acc = new Map<string, { n: number; people: Set<string>; c: number[]; cN: number[]; d: number[][] }>();
+		for (const r of dec) {
+			const cv = curves.get(r.id);
+			if (r.total < APPROACH_FROM - 1e-6 || !cv) continue;
+			let a = acc.get(r.cue);
+			if (!a) acc.set(r.cue, (a = { n: 0, people: new Set(), c: bins.map(() => 0), cN: bins.map(() => 0), d: bins.map(() => []) }));
+			a.n++;
+			a.people.add(r.participantId);
+			for (let k = k0; k <= k1; k++) {
+				const i = k - k0;
+				if (cv.chasing[k] >= 0) {
+					a.cN[i]++;
+					a.c[i] += cv.chasing[k];
 				}
-				a.cSum[k] += s.chasing[i] ? 1 : 0;
-				a.cN[k]++;
+				if (cv.dist[k] >= 0) a.d[i].push(cv.dist[k] / 10);
 			}
 		}
-		const r2 = (x: number) => Math.round(x * 100) / 100;
+		const r2 = (x: number) => Math.round(x * 1000) / 1000;
+		const wil = (k: number, n: number) => {
+			if (!n) return [null, null] as const;
+			const z = 1.96, p = k / n, den = 1 + (z * z) / n;
+			const mid = (p + (z * z) / (2 * n)) / den, half = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / den;
+			return [r2(Math.max(0, mid - half)), r2(Math.min(1, mid + half))] as const;
+		};
 		return {
 			bins,
+			window: { from: APPROACH_FROM, to: APPROACH_TO },
+			excluded: { short, missing },
 			cues: [...acc.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([cue, a]) => ({
 				cue,
-				trials: a.trials,
-				dist: a.dSum.map((s, i) => (a.dN[i] ? r2(s / a.dN[i]) : null)),
-				distN: a.dN,
-				chasing: a.cSum.map((s, i) => (a.cN[i] ? r2(s / a.cN[i]) : null)),
-				chasingN: a.cN
+				trials: a.n,
+				people: a.people.size,
+				chasing: a.c.map((s, i) => (a.cN[i] ? r2(s / a.cN[i]) : null)),
+				chasingLo: a.c.map((s, i) => wil(s, a.cN[i])[0]),
+				chasingHi: a.c.map((s, i) => wil(s, a.cN[i])[1]),
+				chasingN: a.cN,
+				dist: a.d.map((xs) => (xs.length ? r2(median(xs)!) : null)),
+				distN: a.d.map((xs) => xs.length)
 			}))
 		};
 	}
@@ -201,48 +385,48 @@ export const approach = query({
 export const recent = query({
 	args: { ...filterArgs, limit: v.optional(v.number()) },
 	handler: async (ctx, { limit = 25, ...f }) => {
-		const src = f.source ?? 'human';
-		const t = ctx.db.query('trials');
-		const base = f.participantId
-			? t.withIndex('by_participant', (i) => i.eq('participantId', f.participantId!))
-			: src !== 'all' && f.cue
-				? t.withIndex('by_source_cue', (i) => i.eq('source', src).eq('cue', f.cue!))
-				: src !== 'all'
-					? t.withIndex('by_source_created', (i) => i.eq('source', src))
-					: t.withIndex('by_created');
-		const rows: Doc<'trials'>[] = [];
-		for await (const r of base.order('desc')) {
-			if (matches(r, f)) rows.push(r);
-			if (rows.length >= Math.min(limit, 200)) break;
+		const ds = await digests(ctx, f);
+		// Only the newest digests can hold the newest trials.
+		ds.sort((a, b) => b.lastAt - a.lastAt);
+		const n = Math.min(limit, 200);
+		const out: Row[] = [];
+		for (const d of ds) {
+			if (out.length >= n && d.lastAt < out[out.length - 1].createdAt) break;
+			for (const r of d.rows) {
+				const m = r.mode ?? d.mode;
+				if ((f.cue && r.cue !== f.cue) || (f.mode && m !== f.mode) || (!f.includePractice && r.practice)) continue;
+				if (r.createdAt < (f.from ?? 0) || r.createdAt > (f.to ?? Number.MAX_SAFE_INTEGER)) continue;
+				out.push({ ...r, participantId: d.participantId, sessionId: d.sessionId, p: d.participantNumber, source: d.source, mode: m });
+			}
+			out.sort((a, b) => b.createdAt - a.createdAt);
+			out.length = Math.min(out.length, n);
 		}
-		const people = await participantNumbers(ctx, rows.map((r) => r.participantId));
-		return rows.map((r) => ({
-			id: r._id,
+		return out.map((r) => ({
+			id: r.id,
 			at: r.createdAt,
 			cue: r.cue,
 			mode: r.mode,
 			source: r.source,
 			outcome: r.outcome,
 			engaged: r.engaged,
-			inRates: isDecision(r),
+			inRates: decision(r),
+			oldRules: (r.rulesVersion ?? 1) !== RULES_VERSION,
 			total: r.total,
 			turnLeft: r.turnLeft,
 			wasted: r.wasted,
-			eats: r.eats.length,
-			caught: r.after.caught,
+			caught: r.caught,
 			trialIndex: r.trialIndex,
 			blockIndex: r.blockIndex,
 			fps: r.fps,
-			p: people.get(r.participantId)?.number ?? null,
-			nickname: people.get(r.participantId)?.nickname ?? null,
-			clip: !!r.clipId
+			p: r.p,
+			clip: r.clip
 		}));
 	}
 });
 
 /**
  * Sessions with data-quality columns (frame rate, sound, input, completion) for the participants
- * view. Frame rate and engaged counts come from the session's trials.
+ * view. Trial columns come from the session's digest; questionnaire counts from its ratings.
  */
 export const sessions = query({
 	args: filterArgs,
@@ -255,44 +439,43 @@ export const sessions = query({
 				: ctx.db.query('sessions').withIndex('by_source_started', (i) => i.eq('source', src));
 		const rows = (await q.order('desc').take(400)).filter((s) => (src === 'all' || s.source === src)
 			&& (!f.mode || s.mode === f.mode)
-			&& s.startedAt >= (f.from ?? 0) && s.startedAt <= (f.to ?? Number.MAX_SAFE_INTEGER)
+			&& (f.run === OTHER_RUN ? s.source === 'bot' && !s.sim : !f.run || s.sim?.run === f.run)
+			&& (s.lastActiveAt ?? s.startedAt) >= (f.from ?? 0) && s.startedAt <= (f.to ?? Number.MAX_SAFE_INTEGER)
 			&& s.trials > 0).slice(0, 100);
-		const people = await participantNumbers(ctx, rows.map((s) => s.participantId));
 		const out = [];
 		for (const s of rows) {
-			// Warm-up rounds are left out, as everywhere else.
-			const blocks = (await ctx.db.query('blocks').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect()).filter((b) => !b.practice);
-			const trials = (await ctx.db.query('trials').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect()).filter((t) => !t.practice);
+			const d = await ctx.db.query('trialDigests').withIndex('by_session', (i) => i.eq('sessionId', s._id)).unique();
+			const trials = (d?.rows ?? []).filter((t) => !t.practice);
 			const fps = trials.map((t) => t.fps).filter((x) => x > 0);
 			const ratings = await ctx.db.query('ratings').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect();
+			const firstWithClip = trials.find((t) => t.clip);
 			out.push({
 				id: s._id,
-				p: people.get(s.participantId)?.number ?? null,
-				nickname: people.get(s.participantId)?.nickname ?? null,
+				p: d?.participantNumber ?? (await ctx.db.get(s.participantId))?.number ?? null,
 				participantId: s.participantId,
+				label: s.run?.participantLabel ?? null,
 				mode: s.mode,
 				source: s.source,
 				startedAt: s.startedAt,
 				lastActiveAt: s.lastActiveAt,
 				endedAt: s.endedAt ?? null,
 				planned: s.cueOrder.length,
-				blocksPlayed: blocks.filter((b) => b.trialCount > 0).length,
+				blocksPlayed: new Set(trials.map((t) => t.blockIndex)).size,
 				trials: trials.length,
 				engaged: trials.filter((t) => t.engaged).length,
-				inRates: trials.filter(isDecision).length,
+				inRates: trials.filter((t) => isDecision({ outcome: t.outcome, inRates: t.inRates, rulesVersion: t.rulesVersion ?? undefined })).length,
+				clips: trials.filter((t) => t.clip).length,
+				firstClip: firstWithClip?.id ?? null,
 				fpsMean: fps.length ? Math.round(fps.reduce((a, b) => a + b, 0) / fps.length) : null,
 				fpsMin: fps.length ? Math.round(Math.min(...fps)) : null,
 				lowFps: fps.filter((x) => x < 50).length,
 				sound: s.sound,
 				reducedMotion: s.reducedMotion,
 				inputType: s.inputType,
-				viewport: s.viewport,
 				appVersion: s.appVersion,
 				blockRatings: ratings.filter((r) => r.kind === 'block').length,
 				finalRating: ratings.some((r) => r.kind === 'session'),
-				sim: s.sim ? { preset: s.sim.preset, run: s.sim.run } : null,
-				abandonedBlocks: blocks.filter((b) => b.abandoned).length,
-				pausedSeconds: Math.round(blocks.reduce((a, b) => a + (b.pausedSeconds ?? 0), 0))
+				sim: s.sim ? { preset: s.sim.preset, run: s.sim.run } : null
 			});
 		}
 		return out;
@@ -301,18 +484,37 @@ export const sessions = query({
 
 /**
  * What the filter controls offer: trial counts per source and mode (from the session counters, so
- * this stays cheap) and the participants that have trials.
+ * this stays cheap), the participants that have trials, and the simulator runs (newest first; a
+ * run is complete when every session in it played every planned condition).
  */
 export const facets = query({
-	args: { source: v.optional(sourceFilter), mode: v.optional(mode) },
+	args: { source: v.optional(sourceFilter), mode: v.optional(mode), run: v.optional(v.string()) },
 	handler: async (ctx, a) => {
 		const sessions = await ctx.db.query('sessions').collect();
 		const counts = { human: { study: 0, arcade: 0 }, bot: { study: 0, arcade: 0 } };
 		const perParticipant = new Map<string, number>();
+		const runs = new Map<string, { run: string; preset: string; sessions: number; trials: number; startedAt: number; lastAt: number; complete: boolean }>();
+		const other = { sessions: 0, trials: 0, lastAt: 0 };
 		for (const s of sessions) {
 			counts[s.source][s.mode] += s.trials;
+			if (s.source === 'bot' && s.trials > 0) {
+				if (s.sim) {
+					const r = runs.get(s.sim.run) ?? { run: s.sim.run, preset: s.sim.preset, sessions: 0, trials: 0, startedAt: s.startedAt, lastAt: 0, complete: true };
+					r.sessions++;
+					r.trials += s.trials;
+					r.startedAt = Math.min(r.startedAt, s.startedAt);
+					r.lastAt = Math.max(r.lastAt, s.lastActiveAt);
+					r.complete &&= s.blocks >= s.cueOrder.length;
+					runs.set(s.sim.run, r);
+				} else {
+					other.sessions++;
+					other.trials += s.trials;
+					other.lastAt = Math.max(other.lastAt, s.lastActiveAt);
+				}
+			}
 			const src = a.source ?? 'human';
-			if ((src === 'all' || s.source === src) && (!a.mode || s.mode === a.mode) && s.trials > 0)
+			const inRun = src !== 'human' && a.run ? (a.run === OTHER_RUN ? !s.sim : s.sim?.run === a.run) : true;
+			if ((src === 'all' || s.source === src) && (!a.mode || s.mode === a.mode) && s.trials > 0 && inRun)
 				perParticipant.set(s.participantId, (perParticipant.get(s.participantId) ?? 0) + s.trials);
 		}
 		const participants = [];
@@ -321,7 +523,7 @@ export const facets = query({
 			if (p) participants.push({ id: p._id, number: p.number, nickname: p.nickname ?? null, source: p.source, trials });
 		}
 		participants.sort((x, y) => x.number - y.number);
-		return { counts, participants };
+		return { counts, participants, runs: [...runs.values()].sort((x, y) => y.startedAt - x.startedAt), other };
 	}
 });
 
@@ -351,39 +553,26 @@ function spearman(xs: number[], ys: number[]): number | null {
 }
 
 /**
- * Planted vs recovered, for one simulator run (default: the newest). For every condition: the
- * awareness noise and distraction the simulator planted (convex/sim.ts), and what the real pipeline
- * measured from the bots' play. If the instrument works, the well-timed rate falls as planted noise
- * rises (a negative rank correlation), the too-late and too-early rates rise with it, and the flat
- * preset shows no clear differences.
+ * Planted vs recovered, for one simulator run. For every condition: the awareness noise and
+ * distraction the simulator planted (convex/sim.ts), and what the real pipeline measured from the
+ * bots' play. If the instrument works, the well-timed rate falls as planted noise rises (a negative
+ * rank correlation), the too-late and too-early rates rise with it, and the flat preset shows no
+ * clear differences.
  */
 export const simCheck = query({
-	args: { run: v.optional(v.string()) },
+	args: { run: v.string() },
 	handler: async (ctx, a) => {
-		const bot = await ctx.db.query('sessions').withIndex('by_source_started', (i) => i.eq('source', 'bot')).order('desc').collect();
-		const runs = new Map<string, { run: string; preset: string; sessions: number; startedAt: number }>();
-		for (const s of bot) {
-			if (!s.sim) continue;
-			const r = runs.get(s.sim.run) ?? { run: s.sim.run, preset: s.sim.preset, sessions: 0, startedAt: s.startedAt };
-			r.sessions++;
-			r.startedAt = Math.min(r.startedAt, s.startedAt);
-			runs.set(s.sim.run, r);
-		}
-		const runList = [...runs.values()].sort((x, y) => y.startedAt - x.startedAt);
-		const run = a.run && runs.has(a.run) ? a.run : runList[0]?.run;
-		if (!run) return { runs: runList, run: null, preset: null, cues: [], rho: null, trials: 0, participants: 0 };
-		const sessions = bot.filter((s) => s.sim?.run === run);
+		const sessions = (await ctx.db.query('sessions').withIndex('by_source_started', (i) => i.eq('source', 'bot')).collect())
+			.filter((s) => s.sim?.run === a.run);
+		if (!sessions.length) return null;
 		const planted = new Map<string, { noise: number; distraction: number }>();
-		const trials: Doc<'trials'>[] = [];
-		const ratings: Doc<'ratings'>[] = [];
-		for (const s of sessions) {
-			for (const p of s.sim!.planted) planted.set(p.cue, { noise: p.noise, distraction: p.distraction });
-			trials.push(...(await ctx.db.query('trials').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect()).filter((t) => !t.practice));
-			ratings.push(...(await ctx.db.query('ratings').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect()).filter((r) => r.kind === 'block'));
-		}
+		for (const s of sessions) for (const p of s.sim!.planted) planted.set(p.cue, { noise: p.noise, distraction: p.distraction });
+		const f: Filter = { source: 'bot', run: a.run };
+		const { rows, digests: ds } = await readRows(ctx, f);
+		const ratings = await ratingsOf(ctx, f, ds);
 		const cues = [...planted.entries()].map(([cue, p]) => {
 			const rs = ratings.filter((r) => r.cue === cue);
-			const sm = summarize(cue, trials.filter((t) => t.cue === cue), rs);
+			const sm = summarize(cue, rows.filter((t) => t.cue === cue).map(asTrial), rs);
 			return {
 				cue, plantedNoise: p.noise, plantedDistraction: p.distraction,
 				inRates: sm.decisions, trials: sm.trials, participants: sm.decisionParticipants, interval: sm.interval,
@@ -394,11 +583,9 @@ export const simCheck = query({
 		const ok = cues.filter((c) => c.wellTimed.rate !== null);
 		const rhoOf = (get: (c: (typeof ok)[number]) => number | null) => spearman(ok.map((c) => c.plantedNoise), ok.map((c) => get(c) ?? 0));
 		return {
-			runs: runList,
-			run,
-			preset: runs.get(run)!.preset,
+			run: a.run,
+			preset: sessions[0].sim!.preset,
 			cues,
-			rho: rhoOf((c) => c.wellTimed.rate),
 			rhos: {
 				wellTimed: rhoOf((c) => c.wellTimed.rate),
 				tooLate: rhoOf((c) => c.tooLate.rate),
@@ -407,9 +594,23 @@ export const simCheck = query({
 				turnMedian: rhoOf((c) => c.turnMedian),
 				clarity: rhoOf((c) => c.clarity.mean)
 			},
-			trials: trials.length,
-			participants: new Set(trials.map((t) => t.participantId)).size
+			trials: rows.length,
+			participants: new Set(rows.map((t) => t.participantId)).size
 		};
+	}
+});
+
+/**
+ * Rebuild the trial digests from the trial rows, a page of sessions at a time (run it until
+ * `isDone`): `npx convex run dashboard:rebuildDigests '{"cursor": null}'`. Only writes digests.
+ */
+export const rebuildDigests = internalMutation({
+	args: { cursor: v.union(v.string(), v.null()), batch: v.optional(v.number()) },
+	handler: async (ctx, { cursor, batch = 4 }) => {
+		const page = await ctx.db.query('sessions').paginate({ cursor, numItems: batch });
+		let rows = 0;
+		for (const s of page.page) rows += await rebuildSessionDigest(ctx, s._id);
+		return { cursor: page.continueCursor, isDone: page.isDone, sessions: page.page.length, rows };
 	}
 });
 

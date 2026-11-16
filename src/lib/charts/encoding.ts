@@ -11,7 +11,7 @@
  * (all pairs: CVD distance 15.5, normal-vision 18.1, every colour above 3:1). Grey is neutral on
  * purpose: the references are yardsticks, not contenders.
  *
- * Outcomes: first the four decisions (the rates' denominator), in the order time runs: turned away
+ * Outcomes (labels and colours from src/lib/outcomes.ts): first the four decisions (the rates' denominator), in the order time runs: turned away
  * too early (violet), in time (green), stayed too long (amber), caught (red, so the worst failure
  * sits against the right edge of every bar). Then the power-ups outside the rates in greys: caught
  * the ghost (no decision about the end), other (hatched), not engaged, interrupted (hatched).
@@ -22,6 +22,7 @@
 import { CUES } from '#lib/game/cues/index.ts';
 import type { Cue, CueChannel } from '#lib/game/types.ts';
 import { cueListings } from '#lib/ui/cues.ts';
+import { OUTCOME_INFO, OUTCOME_ORDER, outcomeInfo } from '#lib/outcomes.ts';
 
 export type Role = Cue['role'];
 export type Shape = 'diamond' | 'square' | 'circle';
@@ -90,43 +91,41 @@ export interface OutcomeStyle {
 	id: OutcomeId;
 	label: string;
 	color: string;
-	/** Hatched fill (other, interrupted): a second channel besides colour. */
+	/** Hatched fill (other, cut short): a second channel besides colour. */
 	hatch: boolean;
 	/** A decision outcome: part of the rates' denominator. */
 	inRates: boolean;
-	/** One-line definition (docs/STUDY.md). */
+	/** One-line definition. */
 	def: string;
 }
 
-export const OUTCOMES: OutcomeStyle[] = [
-	{ id: 'early-retreat', label: 'Turned away too early', color: 'var(--o-early)', hatch: false, inRates: true,
-		def: 'Turned away with more than 2 s left while a ghost was still reachable: power wasted.' },
-	{ id: 'timely-retreat', label: 'Turned away in time', color: 'var(--o-well)', hatch: false, inRates: true,
-		def: 'Turned away from the last chase with 0.2 to 2 s left. Well timed.' },
-	{ id: 'overstayed', label: 'Stayed too long', color: 'var(--o-overstayed)', hatch: false, inRates: true,
-		def: 'Still chasing when the power ended (turned with less than 0.2 s left, after the end, or never), and not caught.' },
-	{ id: 'caught', label: 'Caught', color: 'var(--o-caught)', hatch: false, inRates: true,
-		def: 'Within 5 tiles of a ghost that had just turned dangerous when the power ended, and caught by one within 3 s.' },
-	{ id: 'catch', label: 'Caught the ghost', color: 'var(--o-other)', hatch: false, inRates: false,
-		def: 'The last chase ended by eating the ghost and no chase followed. Shows no decision about the end, so it is in no rate.' },
-	{ id: 'other', label: 'Other', color: 'var(--o-other)', hatch: true, inRates: false,
-		def: 'Engaged, but none of the classes fits. Left out of the rates.' },
-	{ id: 'not-engaged', label: 'Not engaged', color: 'var(--o-idle)', hatch: false, inRates: false,
-		def: 'No chase in the last 3 s of the power. Kept, but left out of the rates.' },
-	{ id: 'interrupted', label: 'Interrupted', color: 'var(--o-idle)', hatch: true, inRates: false,
-		def: 'Died during the power, cleared the level, or left the page. Never counts toward the rates.' }
-];
+/**
+ * Outcome styles for charts. Labels, definitions and colours come from the shared vocabulary
+ * (src/lib/outcomes.ts); only the hatching is a chart matter.
+ */
+export const OUTCOMES: OutcomeStyle[] = (OUTCOME_ORDER as OutcomeId[]).map((id) => ({
+	id,
+	label: OUTCOME_INFO[id].label,
+	color: OUTCOME_INFO[id].color,
+	hatch: id === 'other' || id === 'interrupted',
+	inRates: OUTCOME_INFO[id].decision,
+	def: OUTCOME_INFO[id].def
+}));
 
 export const OUTCOME_BY_ID = new Map(OUTCOMES.map((o) => [o.id, o]));
 export function outcomeStyle(id: string): OutcomeStyle {
-	return OUTCOME_BY_ID.get(id as OutcomeId) ?? OUTCOME_BY_ID.get('other')!; // older classes (late-catch) recede as other
+	const known = OUTCOME_BY_ID.get(id as OutcomeId);
+	if (known) return known;
+	// Older classes (late-catch) and unknown ones recede like "other", under their own label.
+	return { ...OUTCOME_BY_ID.get('other')!, id: 'other', label: outcomeInfo(id).label, def: outcomeInfo(id).def };
 }
 
-/** Colours for rate charts (learning): the same as the outcome they count. */
-export const WELL_COLOR = 'var(--o-well)';
-export const LATE_COLOR = 'var(--o-overstayed)';
-export const EARLY_COLOR = 'var(--o-early)';
-export const CAUGHT_COLOR = 'var(--o-caught)';
+/** Colours for rate charts and rate numbers: the same as the outcome they count (too late: stayed too long). */
+export const WELL_COLOR = OUTCOME_INFO['timely-retreat'].color;
+export const LATE_COLOR = OUTCOME_INFO.overstayed.color;
+export const EARLY_COLOR = OUTCOME_INFO['early-retreat'].color;
+export const CAUGHT_COLOR = OUTCOME_INFO.caught.color;
+export const RATE_COLOR = { wellTimed: WELL_COLOR, tooLate: LATE_COLOR, tooEarly: EARLY_COLOR, caught: CAUGHT_COLOR } as const;
 
 // Formatting, shared so every number on the page reads the same way.
 

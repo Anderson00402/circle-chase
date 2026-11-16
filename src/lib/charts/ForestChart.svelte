@@ -18,6 +18,8 @@
 		group?: string;
 		/** Extra line for the tooltip. */
 		note?: string;
+		/** Text in place of a value when a column has nothing counted (default "no trials"). */
+		empty?: string;
 	}
 	export interface ForestRef {
 		id: string;
@@ -45,6 +47,8 @@
 	 * estimate with its 95% interval on a fixed 0-100% scale, plus vertical yardstick lines (the
 	 * references and the timer bar) so "is this above no signal / the blink / the timer bar?" can be
 	 * read straight off the page. Rows are buttons: activate one to select that condition.
+	 * When the chart is narrow (a phone), it shows one column at a time with a picker above, so each
+	 * plot keeps a readable width.
 	 */
 	import type { Snippet } from 'svelte';
 	import { pct, pctRange } from './encoding';
@@ -68,6 +72,9 @@
 	let boxW = $state(0);
 	let hover = $state<{ row: ForestRow; col: ForestColumn; x: number; y: number } | null>(null);
 	let plotW = $state(0);
+	let active = $state(0);
+	const narrow = $derived(boxW > 0 && boxW < 600 && columns.length > 1);
+	const shown = $derived(narrow ? [columns[Math.min(active, columns.length - 1)]] : columns);
 
 	function move(e: PointerEvent, row: ForestRow, col: ForestColumn) {
 		if (!box) return;
@@ -84,13 +91,20 @@
 	}
 </script>
 
-<div class="forest" bind:this={box} bind:clientWidth={boxW} style:--cols={columns.length}>
+<div class="forest" class:narrow bind:this={box} bind:clientWidth={boxW}>
+	{#if narrow}
+		<div class="picker" role="group" aria-label="Column shown">
+			{#each columns as col, i (col.key)}
+				<button type="button" class:on={i === active} aria-pressed={i === active} onclick={() => (active = i)}>{col.title}</button>
+			{/each}
+		</div>
+	{/if}
 	<table>
 		<caption class="visually-hidden">{caption}</caption>
 		<thead>
 			<tr>
 				<th scope="col" class="lab"><span class="visually-hidden">Condition</span></th>
-				{#each columns as col (col.key)}
+				{#each shown as col (col.key)}
 					<th scope="col" class="plot-h">
 						<div class="col-title">
 							{col.title}
@@ -112,7 +126,7 @@
 		<tbody>
 			{#each rows as row (row.id)}
 				{#if row.group}
-					<tr class="group"><td colspan={1 + columns.length * 2}>{row.group}</td></tr>
+					<tr class="group"><td colspan={1 + shown.length * 2}>{row.group}</td></tr>
 				{/if}
 				<tr
 					class="row"
@@ -124,7 +138,7 @@
 					aria-label={onselect ? `Show details for ${row.cond.name}` : undefined}
 				>
 					<th scope="row" class="lab">{@render label(row)}</th>
-					{#each columns as col (col.key)}
+					{#each shown as col (col.key)}
 						{@const v = row.values[col.key]}
 						<td
 							class="plot"
@@ -160,7 +174,7 @@
 								<span class="num rate">{pct(v.rate)}</span>
 								<span class="num kn">{v.k}/{v.n}</span>
 							{:else}
-								<span class="none">no trials</span>
+								<span class="none">{row.empty ?? 'no trials'}</span>
 							{/if}
 						</td>
 					{/each}
@@ -365,53 +379,39 @@
 		font-size: 11px;
 	}
 	.none {
+		display: block;
 		color: var(--ink-faint);
-		font-size: var(--text-xs);
+		font-size: 11px;
+		line-height: 1.15;
+		white-space: normal;
 	}
 
-	/* Narrow screens: the label gets its own line above the plots. */
-	@media (max-width: 640px) {
-		table,
-		tbody {
-			display: block;
-		}
-		thead {
-			display: block;
-		}
-		thead tr,
-		.row {
-			display: grid;
-			grid-template-columns: repeat(var(--cols), minmax(0, 1fr) 42px);
-			align-items: center;
-		}
-		.group {
-			display: block;
-		}
-		.group td {
-			display: block;
-		}
-		thead .lab {
-			display: none;
-		}
-		.row .lab {
-			grid-column: 1 / -1;
-			width: auto;
-			padding-top: 6px;
-		}
-		.val-h,
-		.val {
-			width: auto;
-		}
-		.row > :first-child,
-		.row > :last-child {
-			border-radius: 0;
-		}
-		.track,
-		.axis {
-			margin: 0 6px;
-		}
-		.rate {
-			font-size: var(--text-xs);
-		}
+	/* Narrow: one column at a time, picked above the chart. */
+	.picker {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-bottom: var(--space-3);
+	}
+	.picker button {
+		padding: 4px 10px;
+		border: 1px solid var(--rule);
+		border-radius: 999px;
+		background: none;
+		color: var(--ink-dim);
+		font-size: var(--text-xs);
+		cursor: pointer;
+	}
+	.picker button.on {
+		border-color: var(--ink-dim);
+		background: var(--surface-3);
+		color: var(--ink);
+	}
+	.narrow .lab {
+		width: 40%;
+	}
+	.narrow .val-h,
+	.narrow .val {
+		width: 64px;
 	}
 </style>

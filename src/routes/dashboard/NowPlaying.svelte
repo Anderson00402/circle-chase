@@ -1,5 +1,8 @@
 <script lang="ts">
-	/** A strip saying who is playing right now (from presence heartbeats) and when the last power-up arrived. */
+	/**
+	 * A strip saying who is playing right now (from presence heartbeats) and when the last power-up
+	 * arrived. Shows only players of the page's data source: no simulated players in the human view.
+	 */
 	import { useQuery } from 'convex-svelte';
 	import { api } from '#convex/_generated/api.js';
 	import { Badge } from '#lib/ui/index.ts';
@@ -8,10 +11,11 @@
 	interface Props {
 		lastAt: number | null;
 		now: number;
+		source: 'human' | 'bot';
 	}
-	let { lastAt, now }: Props = $props();
+	let { lastAt, now, source }: Props = $props();
 	const playing = useQuery(api.presence.nowPlaying, {});
-	const rows = $derived(playing.data ?? []);
+	const rows = $derived((playing.data ?? []).filter((r) => r.source === source));
 	const fresh = $derived(lastAt !== null && now - lastAt < 60_000);
 </script>
 
@@ -22,13 +26,13 @@
 			{rows.length} playing now:
 			{#each rows.slice(0, 4) as r, i (r.sessionKey)}
 				<span class="p">
-					{condition(r.cue).code} {condition(r.cue).name}{#if r.powerLeft > 0}<span class="pow"> (power {r.powerLeft.toFixed(0)} s)</span>{/if}{#if r.source === 'bot'} <Badge tone="sim">sim</Badge>{/if}{i < Math.min(rows.length, 4) - 1 ? ',' : ''}
+					{condition(r.cue).code} {condition(r.cue).name}{#if r.source === 'bot'} <Badge tone="sim">sim</Badge>{/if}{i < Math.min(rows.length, 4) - 1 ? ',' : ''}
 				</span>
 			{/each}
 			{#if rows.length > 4}<span class="p">and {rows.length - 4} more</span>{/if}
 		</span>
 	{:else}
-		<span class="who">Nobody is playing right now. The page updates by itself when someone does.</span>
+		<span class="who">{source === 'bot' ? 'No simulated players running right now.' : 'Nobody is playing right now. The page updates by itself when someone does.'}</span>
 	{/if}
 	{#if lastAt}<span class="last" class:fresh>Last power-up {ago(lastAt, now)}</span>{/if}
 </div>
@@ -49,9 +53,6 @@
 	}
 	.p {
 		color: var(--ink);
-	}
-	.pow {
-		color: var(--ink-faint);
 	}
 	.last {
 		margin-left: auto;

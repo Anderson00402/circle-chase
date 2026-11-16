@@ -4,6 +4,7 @@
 	import { api } from '#convex/_generated/api.js';
 	import { Badge, CueChip, DataTable, EmptyState } from '#lib/ui/index.ts';
 	import { ago, condition, outcomeStyle } from '#lib/charts/encoding.ts';
+	import { outcomeLabel } from '#lib/outcomes.ts';
 	import RoleMark from '#lib/charts/RoleMark.svelte';
 	import { DEFS } from './defs';
 	import type { DashFilter } from './types';
@@ -24,7 +25,7 @@
 		{ key: 'at', label: 'When', width: '104px' },
 		{ key: 'p', label: 'Who', width: '108px' },
 		...(hideCue ? [] : [{ key: 'cue', label: 'Condition' }]),
-		{ key: 'outcome', label: 'Outcome', info: 'See "How this is measured" for the outcome classes.' },
+		{ key: 'outcome', label: 'Outcome', info: 'See "How this is measured" for the outcome classes. Not counted: no decision about the end, the player left during the 3 s after, or recorded before the current rules.' },
 		{ key: 'turn', label: 'Turned away', unit: 's left', numeric: true, info: DEFS.turnAway, width: '120px' },
 		{ key: 'total', label: 'Power', unit: 's', numeric: true, width: '76px' },
 		{ key: 'replay', label: 'Replay', width: '84px' }
@@ -54,8 +55,8 @@
 				{@const o = outcomeStyle(r.outcome)}
 				<span class="outcome">
 					<RoleMark shape="square" color={o.color} size={10} hollow={o.hatch} />
-					{o.label}
-					{#if !r.inRates}<span class="dim">(not counted)</span>{/if}
+					{outcomeLabel(r.outcome)}
+					{#if !r.inRates}<span class="dim">{r.oldRules ? '(older rules: not counted)' : o.inRates ? '(left before the end: not counted)' : '(not counted)'}</span>{/if}
 				</span>
 			{:else if c.key === 'turn'}
 				<span class="num">{r.turnLeft === null ? '–' : r.turnLeft.toFixed(2)}</span>

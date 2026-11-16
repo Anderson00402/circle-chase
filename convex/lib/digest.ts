@@ -52,6 +52,8 @@ export const digestRow = v.object({
 	clip: v.boolean(),
 	caught: v.boolean(),
 	nearMiss: v.boolean(),
+	/** Rules v3: an early retreat that gave up on the chase very early (docs/STUDY.md). Absent before v3. */
+	gaveUpEarly: v.optional(v.boolean()),
 	/** The trial's own rules mode (a console session can mix study and arcade runs). */
 	mode: v.optional(mode),
 	/**
@@ -59,10 +61,7 @@ export const digestRow = v.object({
 	 * nearest scared ghost in tenths of a tile (-1: no target; -2: no sample) and whether the player
 	 * was chasing (1, 0; -1: no sample). About 135 bytes. Absent when the series is missing.
 	 */
-	curve: v.optional(v.bytes()),
-	/** Legacy unpacked curve (first digests only; rebuilt away). */
-	dist: v.optional(v.array(v.number())),
-	chasing: v.optional(v.array(v.number()))
+	curve: v.optional(v.bytes())
 });
 export type DigestRow = Infer<typeof digestRow>;
 
@@ -111,9 +110,7 @@ export function unpackCurve(buf: ArrayBuffer): Curve {
 
 /** The curve of a digest row, if it has one (packed or legacy). */
 export function curveOf(r: DigestRow): Curve | null {
-	if (r.curve) return unpackCurve(r.curve);
-	if (r.dist && r.chasing) return { dist: r.dist, chasing: r.chasing };
-	return null;
+	return r.curve ? unpackCurve(r.curve) : null;
 }
 
 /**
@@ -139,7 +136,7 @@ export function binCurve(packed: ArrayBuffer): Curve {
 
 /** The digest row of a stored trial. `packed`: its series (null: none; undefined: keep `keep`'s curve). */
 export function rowOf(t: Doc<'trials'>, packed?: ArrayBuffer | null, keep?: DigestRow): DigestRow {
-	const kept = packed === undefined && keep ? (keep.curve ?? (keep.dist && keep.chasing ? packCurve({ dist: keep.dist, chasing: keep.chasing }) : undefined)) : undefined;
+	const kept = packed === undefined ? keep?.curve : undefined;
 	const curve = packed ? packCurve(binCurve(packed)) : kept;
 	return {
 		id: t._id,
@@ -162,6 +159,7 @@ export function rowOf(t: Doc<'trials'>, packed?: ArrayBuffer | null, keep?: Dige
 		caught: t.after.caught,
 		nearMiss: t.after.nearMiss,
 		mode: t.mode,
+		...(t.gaveUpEarly !== undefined ? { gaveUpEarly: t.gaveUpEarly } : {}),
 		...(curve ? { curve } : {})
 	};
 }

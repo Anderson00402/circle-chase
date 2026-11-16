@@ -1,34 +1,42 @@
 <script lang="ts">
 	/**
-	 * Results dashboard. Top-down: the answer (takeaway and ranking), why (the evidence), explore
-	 * (one condition, live feed, participants and data quality, export), and how it is measured.
-	 * Every number comes from a live Convex query, so the page moves while someone plays. Human data
-	 * is the default; simulated data is a separate, labelled view. Filters live in the URL.
+	 * Results dashboard. Top-down: the answer (takeaway and ranking), within people (paired
+	 * differences, precision, breakdowns), why (the evidence), explore (one condition, live feed,
+	 * participants and data quality, export), and how it is measured. Every number comes from a live
+	 * Convex query, so the page moves while someone plays. Human data is the default; simulated data
+	 * is a separate, labelled view that shows one simulator run at a time. Filters live in the URL.
 	 */
 	import '#lib/charts/tokens.css';
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { useQuery } from 'convex-svelte';
 	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, replaceState } from '$app/navigation';
 	import { api } from '#convex/_generated/api.js';
 	import type { Id } from '#convex/_generated/dataModel.js';
-	import { Badge, Button, EmptyState, Page, PageHeader, Panel, Segmented, Select } from '#lib/ui/index.ts';
-	import { CONDITIONS } from '#lib/charts/encoding.ts';
+	import { Badge, Button, EmptyState, Page, PageHeader, Panel, Segmented, Select, slow } from '#lib/ui/index.ts';
+	import { MODE_LABEL } from '#lib/outcomes.ts';
+	import { ago, plural } from '#lib/charts/encoding.ts';
 	import Answer from './Answer.svelte';
 	import Detail from './Detail.svelte';
 	import Method from './Method.svelte';
 	import NowPlaying from './NowPlaying.svelte';
+	import Paired from './Paired.svelte';
 	import Recent from './Recent.svelte';
 	import Sessions from './Sessions.svelte';
 	import SimCheck from './SimCheck.svelte';
 	import Why from './Why.svelte';
 	import { DEFS } from './defs';
-	import type { DashFilter, ModeSel, RowOrder, SourceSel } from './types';
+	import { inview } from './inview';
+	import type { DashFilter, ModeSel, RowOrder, RunInfo, SourceSel } from './types';
+
+	/** The run choice for simulated play outside any simulator run (matches convex/dashboard.ts OTHER_RUN). */
+	const OTHER_RUN = 'other';
 
 	// Filter state, read once from the URL and written back on change.
 	const q = page.url.searchParams;
 	const pick = <T extends string>(v: string | null, ok: readonly T[], d: T): T => (ok.includes(v as T) ? (v as T) : d);
-	let source = $state<SourceSel>(pick(q.get('data'), ['human', 'bot', 'all'], 'human'));
+	let source = $state<SourceSel>(pick(q.get('data'), ['human', 'bot'], 'human'));
+	let run = $state<string>(q.get('run') ?? '');
 	let mode = $state<ModeSel>(pick(q.get('mode'), ['study', 'arcade', 'both'], 'both'));
 	let participant = $state<string>(q.get('p') ?? 'all');
 	let period = $state<string>(pick(q.get('period'), ['all', 'today', '7d', '30d'], 'all'));
@@ -46,17 +54,32 @@
 			: p === '7d' ? Date.now() - 7 * 864e5 : p === '30d' ? Date.now() - 30 * 864e5 : undefined);
 	});
 
+	const simulated = $derived(source === 'bot');
+	const facets = useQuery(api.dashboard.facets, () => ({
+		source, ...(mode !== 'both' ? { mode } : {}), ...(simulated && run ? { run } : {})
+	}));
+	const runs = $derived<RunInfo[]>(facets.data?.runs ?? []);
+	const otherPlay = $derived(facets.data?.other ?? { sessions: 0, trials: 0, lastAt: 0 });
+	/** The run shown: the URL's, or by default the newest complete run (else the newest, else other play). */
+	const defaultRun = $derived(runs.find((r) => r.complete)?.run ?? runs[0]?.run ?? (otherPlay.trials ? OTHER_RUN : ''));
+	const activeRun = $derived(simulated ? (run || defaultRun) : '');
+	const runInfo = $derived(runs.find((r) => r.run === activeRun) ?? null);
+
 	const filter = $derived<DashFilter>({
 		source,
+		...(activeRun ? { run: activeRun } : {}),
 		...(mode !== 'both' ? { mode } : {}),
 		...(participant !== 'all' ? { participantId: participant as Id<'participants'> } : {}),
 		...(from !== undefined ? { from } : {})
 	});
+	/** Simulated view waits for the run list, so it never shows every run pooled for a moment. */
+	const ready = $derived(!simulated || facets.data !== undefined);
 
 	$effect(() => {
 		const u = new URL(page.url.href);
 		const set = (k: string, v: string, d: string) => (v === d ? u.searchParams.delete(k) : u.searchParams.set(k, v));
 		set('data', source, 'human');
+		set('run', simulated ? run : '', '');
 		set('mode', mode, 'both');
 		set('p', participant, 'all');
 		set('period', period, 'all');
@@ -66,8 +89,8 @@
 		if (u.search !== untrack(() => page.url.search)) replaceState(u, {});
 	});
 
-	const main = useQuery(api.dashboard.main, () => filter, { keepPreviousData: true });
-	const facets = useQuery(api.dashboard.facets, () => ({ source, ...(mode !== 'both' ? { mode } : {}) }));
+	const main = useQuery(api.dashboard.main, () => (ready ? filter : 'skip'), { keepPreviousData: true });
+	const loadingSlow = slow(() => main.isLoading);
 
 	// A clock for "x s ago" labels and the live strip. Not game time: this is page chrome.
 	let now = $state(Date.now());
@@ -79,18 +102,17 @@
 	const counts = $derived(facets.data?.counts);
 	const n = (src: 'human' | 'bot', m?: 'study' | 'arcade') =>
 		counts ? (m ? counts[src][m] : counts[src].study + counts[src].arcade) : undefined;
-	const srcCount = (s: SourceSel) => (s === 'all' ? (n('human') ?? 0) + (n('bot') ?? 0) : n(s));
 	const modeCount = (m: ModeSel) => {
 		if (!counts) return undefined;
-		const srcs: ('human' | 'bot')[] = source === 'all' ? ['human', 'bot'] : [source];
-		return srcs.reduce((a, s) => a + (m === 'both' ? n(s)! : n(s, m)!), 0);
+		if (simulated) return undefined; // per run, not per source: the run label says the size
+		return m === 'both' ? n('human') : n('human', m);
 	};
 
 	const participantOptions = $derived([
 		{ value: 'all', label: 'Everyone' },
 		...(facets.data?.participants ?? []).map((p) => ({
 			value: p.id,
-			label: `P${p.number}${p.nickname ? ` ${p.nickname}` : ''}${p.source === 'bot' ? ' (sim)' : ''}, ${p.trials}`
+			label: `P${p.number}${p.nickname ? ` ${p.nickname}` : ''}, ${p.trials}`
 		}))
 	]);
 	const periodOptions = [
@@ -99,8 +121,15 @@
 		{ value: '7d', label: 'Last 7 days' },
 		{ value: '30d', label: 'Last 30 days' }
 	];
+	const presetWord = (p: string) => (p === 'flat' ? 'Flat' : p === 'planted' ? 'Planted' : p);
+	const runOptions = $derived([
+		...runs.map((r) => ({
+			value: r.run,
+			label: `${presetWord(r.preset)} run, ${plural(r.sessions, 'player')}, ${plural(r.trials, 'power-up')}, ${ago(r.startedAt, now)}${r.complete ? '' : ' (unfinished)'}`
+		})),
+		...(otherPlay.trials ? [{ value: OTHER_RUN, label: `Other simulated play, ${plural(otherPlay.trials, 'power-up')}` }] : [])
+	]);
 
-	const simulated = $derived(source !== 'human');
 	const data = $derived(main.data);
 	const empty = $derived(data !== undefined && data.totals.trials === 0);
 
@@ -110,15 +139,56 @@
 		document.getElementById('detail')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
 	}
 
+	function setSource(s: SourceSel) {
+		source = s;
+		participant = 'all';
+	}
+	function setRun(r: string) {
+		run = r;
+		participant = 'all';
+	}
+
+	// Coming back from a replay: the page loads its data again, so the browser's own scroll restore
+	// lands too high. Remember the position per URL and restore it once the results are drawn.
+	const scrollKey = () => `dash-scroll:${page.url.search}`;
+	let restoreTo = $state<number | null>(null);
+	beforeNavigate((nav) => {
+		if (nav.to?.url.pathname === page.url.pathname) return;
+		try { sessionStorage.setItem(scrollKey(), String(Math.round(scrollY))); } catch { /* storage may be off */ }
+	});
+	afterNavigate((nav) => {
+		if (nav.type !== 'popstate' && nav.type !== 'enter') return;
+		try {
+			const y = Number(sessionStorage.getItem(scrollKey()));
+			if (y > 0) restoreTo = y;
+		} catch { /* storage may be off */ }
+	});
+	$effect(() => {
+		if (restoreTo === null || !data) return;
+		const y = restoreTo;
+		restoreTo = null;
+		// Two frames: one for the results to render, one for the panels below them to take their size.
+		tick().then(() => requestAnimationFrame(() => requestAnimationFrame(() => scrollTo({ top: y, behavior: 'instant' }))));
+	});
+
 	const site = import.meta.env.PUBLIC_CONVEX_SITE_URL ?? 'http://127.0.0.1:3211';
-	const exportHref = (fmt: 'csv' | 'json') => {
+	const exportHref = (file: string) => {
 		const p = new URLSearchParams({ source });
+		if (filter.run) p.set('run', filter.run);
 		if (filter.mode) p.set('mode', filter.mode);
 		if (filter.participantId) p.set('participantId', filter.participantId);
 		if (filter.from) p.set('from', String(filter.from));
-		return `${site}/export/trials.${fmt}?${p}`;
+		return `${site}/export/${file}?${p}`;
 	};
 	const filtersActive = $derived(mode !== 'both' || participant !== 'all' || period !== 'all');
+	function clearFilters() {
+		mode = 'both';
+		participant = 'all';
+		period = 'all';
+	}
+
+	// Heavy lower sections subscribe only once they come near the screen.
+	let showSessions = $state(false);
 </script>
 
 <svelte:head><title>Dashboard · Circle Chase</title></svelte:head>
@@ -130,8 +200,13 @@
 		lead="Do players know when the power-up is about to run out, and which signal tells them best? Updated live as people play."
 	>
 		{#snippet actions()}
-			<Button size="sm" variant="quiet" href={exportHref('csv')}>Download CSV</Button>
-			<Button size="sm" variant="quiet" href={exportHref('json')}>JSON</Button>
+			<div class="downloads" role="group" aria-label="Download the data in this view">
+				<span class="dl-label">Download</span>
+				<Button size="sm" variant="quiet" href={exportHref('trials.csv')}>Power-ups CSV</Button>
+				<Button size="sm" variant="quiet" href={exportHref('trials.json')}>JSON</Button>
+				<Button size="sm" variant="quiet" href={exportHref('ratings.csv')}>Answers CSV</Button>
+				<Button size="sm" variant="quiet" href={exportHref('blocks.csv')}>Runs CSV</Button>
+			</div>
 		{/snippet}
 	</PageHeader>
 
@@ -142,22 +217,32 @@
 				label="Data source"
 				size="sm"
 				options={[
-					{ value: 'human', label: 'Humans', hint: srcCount('human') },
-					{ value: 'bot', label: 'Simulated', hint: srcCount('bot') },
-					{ value: 'all', label: 'Both', hint: srcCount('all') }
+					{ value: 'human', label: 'Humans', hint: n('human') },
+					{ value: 'bot', label: 'Simulated', hint: n('bot') }
 				]}
-				bind:value={source}
+				value={source}
+				onchange={(v: SourceSel) => setSource(v)}
 			/>
 		</div>
+		{#if simulated}
+			<div class="f run">
+				<span class="f-label">Run</span>
+				{#if runOptions.length}
+					<Select size="sm" options={runOptions} value={activeRun} onchange={(e) => setRun(e.currentTarget.value)} aria-label="Simulator run" />
+				{:else}
+					<span class="dim">{facets.data ? 'No simulator runs yet' : 'Loading runs…'}</span>
+				{/if}
+			</div>
+		{/if}
 		<div class="f">
-			<span class="f-label">Mode</span>
+			<span class="f-label">Rules</span>
 			<Segmented
-				label="Game mode"
+				label="Rules"
 				size="sm"
 				options={[
 					{ value: 'both', label: 'All', hint: modeCount('both') },
-					{ value: 'study', label: 'Study', hint: modeCount('study') },
-					{ value: 'arcade', label: 'Free play', hint: modeCount('arcade') }
+					{ value: 'study', label: MODE_LABEL.study, hint: modeCount('study') },
+					{ value: 'arcade', label: MODE_LABEL.arcade, hint: modeCount('arcade') }
 				]}
 				bind:value={mode}
 			/>
@@ -171,64 +256,78 @@
 			<Select size="sm" options={periodOptions} bind:value={period} aria-label="Period" />
 		</div>
 		{#if filtersActive}
-			<button class="reset" type="button" onclick={() => ((mode = 'both'), (participant = 'all'), (period = 'all'))}>Clear filters</button>
+			<button class="reset" type="button" onclick={clearFilters}>Clear filters</button>
 		{/if}
 		<nav class="jump" aria-label="Sections">
-			<a href="#top-answer">Answer</a><a href="#why">Why</a><a href="#explore">Explore</a><a href="#method">Method</a>
+			<a href="#top-answer">Answer</a><a href="#within">Within people</a><a href="#why">Why</a><a href="#explore">Explore</a><a href="#method">Method</a>
 		</nav>
 	</div>
 
 	<div class="live">
-		<NowPlaying lastAt={data?.totals.lastAt ?? null} {now} />
+		<NowPlaying lastAt={data?.totals.lastAt ?? null} {now} source={simulated ? 'bot' : 'human'} />
 	</div>
 
 	{#if simulated}
 		<div class="sim-banner" role="note">
 			<Badge tone="sim">Simulated</Badge>
 			<p>
-				{#if source === 'bot'}
-					You are looking at simulated players only.
-				{:else}
-					Human and simulated players are mixed in this view.
+				{#if activeRun === OTHER_RUN}
+					Simulated play outside any simulator run (bots started by hand or by tests), kept apart from the runs.
+				{:else if runInfo}
+					One simulator run: {presetWord(runInfo.preset).toLowerCase()}
+					{runInfo.preset === 'flat' ? '(every condition given the same awareness)' : '(each condition given its own awareness level)'},
+					{plural(runInfo.sessions, 'simulated player')}, {plural(runInfo.trials, 'power-up')}{runInfo.complete ? '' : ', unfinished'}.
 				{/if}
 				{DEFS.simulated}
 			</p>
-			<button type="button" onclick={() => (source = 'human')}>Back to humans</button>
+			<button type="button" onclick={() => setSource('human')}>Back to humans</button>
 		</div>
 	{/if}
 
 	{#if !data}
-		<div class="loading" aria-busy="true">Loading results…</div>
+		<div class="loading" aria-busy="true">{loadingSlow.current ? "Can't reach the database. Results appear when it is back." : 'Loading results…'}</div>
 	{:else if empty}
 		<div class="empty">
-			<EmptyState icon="chart" title={source === 'human' ? 'No human power-ups yet' : 'No power-ups in this view'}>
-				{#if source === 'human' && (srcCount('bot') ?? 0) > 0}
-					Nobody has played {filtersActive ? 'in this filter ' : ''}yet, so there is nothing to compare. Simulated players have
-					{srcCount('bot')} power-ups you can explore to see how the page works; they are kept apart and clearly labelled.
+			<EmptyState icon="chart" title={source === 'human' ? (filtersActive ? 'No human power-ups in this filter' : 'No human power-ups yet') : 'No power-ups in this run or filter'}>
+				{#if source === 'human' && !filtersActive}
+					Run a case from the run console and results appear here as the participant plays. Until then, the simulated view
+					shows how every panel works on {plural(n('bot') ?? 0, 'simulated power-up')}.
 				{:else if filtersActive}
 					Nothing matches the filters. Clear them to see everything.
 				{:else}
 					Results appear here as soon as someone plays a power-up.
 				{/if}
 				{#snippet actions()}
-					{#if source === 'human' && (srcCount('bot') ?? 0) > 0}
-						<Button variant="primary" onclick={() => (source = 'bot')}>Show simulated data</Button>
+					{#if source === 'human' && (n('bot') ?? 0) > 0 && !filtersActive}
+						<Button variant="primary" onclick={() => setSource('bot')}>Show simulated data</Button>
 					{/if}
 					{#if filtersActive}
-						<Button variant="quiet" onclick={() => ((mode = 'both'), (participant = 'all'), (period = 'all'))}>Clear filters</Button>
+						<Button variant="quiet" onclick={clearFilters}>Clear filters</Button>
 					{/if}
-					<Button variant="quiet" href="/study">Take the study</Button>
+					{#if source === 'human'}<Button variant="quiet" href="/">Go to the run console</Button>{/if}
 				{/snippet}
 			</EmptyState>
 		</div>
 	{:else}
 		<div id="top-answer" class="anchor">
-			<Answer main={data} {selected} onselect={select} {simulated} />
+			<Answer main={data} {selected} onselect={select} {simulated} run={runInfo} otherRun={activeRun === OTHER_RUN}>
+				{#snippet uncounted()}
+					{#if source === 'human' && data.totals.decisions === 0 && (n('bot') ?? 0) > 0}
+						<p class="hint">
+							Nothing here counts yet, so there is no answer to show. <button type="button" onclick={() => setSource('bot')}>See the page on simulated data</button>.
+						</p>
+					{/if}
+				{/snippet}
+			</Answer>
 		</div>
 
-		{#if source === 'bot'}
-			<SimCheck main={data} {filter} />
+		{#if simulated && activeRun && activeRun !== OTHER_RUN}
+			<SimCheck run={activeRun} preset={runInfo?.preset ?? null} main={data} />
 		{/if}
+
+		<div id="within" class="anchor">
+			<Paired main={data} {order} {selected} onselect={select} />
+		</div>
 
 		<div id="why" class="anchor">
 			<Why main={data} {filter} bind:order {selected} onselect={select} />
@@ -247,9 +346,15 @@
 			<Panel title="Latest power-ups" sub="Updates live. Watch opens the replay of that power-up." flush>
 				<Recent {filter} {now} />
 			</Panel>
-			<Panel title="Participants and sessions" sub="Who played, how much, and how trustworthy the data is." flush>
-				<Sessions {filter} {now} onparticipant={(id) => (participant = id)} />
-			</Panel>
+			<div use:inview={() => (showSessions = true)}>
+				<Panel title="Participants and sessions" sub="Who played, how much, and how trustworthy the data is. Replays opens that session's power-ups." flush>
+					{#if showSessions}
+						<Sessions {filter} {now} onparticipant={(id) => (participant = id)} />
+					{:else}
+						<div class="loading small">Loading sessions…</div>
+					{/if}
+				</Panel>
+			</div>
 		</section>
 	{/if}
 
@@ -262,6 +367,17 @@
 	:global(.dash) {
 		/* Charts and chips share one baseline blue on this page (see src/lib/charts/tokens.css). */
 		--role-baseline: var(--chart-baseline);
+	}
+	.downloads {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 2px var(--space-1);
+	}
+	.dl-label {
+		margin-right: var(--space-1);
+		color: var(--ink-faint);
+		font-size: var(--text-xs);
 	}
 	.filters {
 		position: sticky;
@@ -281,10 +397,18 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
+		min-width: 0;
+	}
+	.f.run :global(select) {
+		max-width: min(420px, 70vw);
 	}
 	.f-label {
 		color: var(--ink-faint);
 		font-size: var(--text-xs);
+	}
+	.dim {
+		color: var(--ink-faint);
+		font-size: var(--text-sm);
 	}
 	.reset {
 		padding: 0;
@@ -331,18 +455,26 @@
 		color: var(--ink);
 		font-size: var(--text-sm);
 	}
-	.sim-banner button {
+	.sim-banner button,
+	.hint button {
 		padding: 0;
 		border: 0;
 		background: none;
 		color: var(--focus);
-		font-size: var(--text-sm);
+		font: inherit;
 		cursor: pointer;
+	}
+	.hint {
+		color: var(--ink-dim);
+		font-size: var(--text-sm);
 	}
 	.loading {
 		padding: var(--space-8) 0;
 		color: var(--ink-faint);
 		text-align: center;
+	}
+	.loading.small {
+		padding: var(--space-6) 0;
 	}
 	.empty {
 		margin-bottom: var(--space-7);
@@ -350,6 +482,7 @@
 	.anchor {
 		scroll-margin-top: 72px;
 	}
+	#within,
 	#why,
 	.explore {
 		margin-top: var(--space-8);
@@ -365,7 +498,7 @@
 	.method-wrap {
 		margin-top: var(--space-8);
 	}
-	@media (max-width: 860px) {
+	@media (max-width: 1100px) {
 		.jump {
 			display: none;
 		}

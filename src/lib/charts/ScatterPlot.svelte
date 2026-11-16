@@ -55,6 +55,45 @@
 	const yt = $derived(ticks(yDomain[0], yDomain[1], 4));
 	let hover = $state<ScatterPoint | null>(null);
 
+	/**
+	 * Label positions: each code goes to the first of eight spots around its point that does not
+	 * overlap a label already placed or another point's marker (mono 11px: about 7 px per character).
+	 * When every spot is taken the label is left out (the tooltip still names the point).
+	 */
+	const labels = $derived.by(() => {
+		const boxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
+		const marks = points.map((p) => ({ x: sx(p.x), y: sy(p.y) }));
+		const hit = (b: { x0: number; y0: number; x1: number; y1: number }) =>
+			boxes.some((o) => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0)
+			|| marks.some((m) => m.x > b.x0 - 5 && m.x < b.x1 + 5 && m.y > b.y0 - 5 && m.y < b.y1 + 5);
+		const spots: [number, number, 'start' | 'end' | 'middle'][] = [
+			[8, -6, 'start'], [8, 12, 'start'], [-8, -6, 'end'], [-8, 12, 'end'], [0, -10, 'middle'], [0, 20, 'middle'], [14, 3, 'start'], [-14, 3, 'end']
+		];
+		const out = new Map<string, { x: number; y: number; anchor: 'start' | 'end' | 'middle' } | null>();
+		// Place thick (enough data) points first so their labels win.
+		for (const p of [...points].sort((a, b) => Number(!!a.thin) - Number(!!b.thin))) {
+			const w = p.label.length * 7 + 2, cx = sx(p.x), cy = sy(p.y);
+			let placed: { x: number; y: number; anchor: 'start' | 'end' | 'middle' } | null = null;
+			for (const [dx, dy, anchor] of spots) {
+				const x = cx + dx, y = cy + dy;
+				const x0 = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2;
+				const b = { x0, y0: y - 10, x1: x0 + w, y1: y + 2 };
+				if (b.x0 < pad.l - 4 || b.x1 > pad.l + W + 12 || b.y0 < 0 || b.y1 > pad.t + H + 4) continue;
+				const own = marks.findIndex((m) => m.x === cx && m.y === cy);
+				const saved = marks.splice(own, 1);
+				const bad = hit(b);
+				marks.splice(own, 0, ...saved);
+				if (!bad) {
+					placed = { x, y, anchor };
+					boxes.push(b);
+					break;
+				}
+			}
+			out.set(p.id, placed);
+		}
+		return out;
+	});
+
 	function move(e: PointerEvent) {
 		const b = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
 		const mx = e.clientX - b.left, my = e.clientY - b.top;
@@ -99,7 +138,9 @@
 						stroke={p.thin ? p.color : 'var(--surface)'}
 						stroke-width={p.thin ? 1.6 : 2}
 					/>
-					<text x={sx(p.x) + 8} y={sy(p.y) - 6} class="lab">{p.label}</text>
+					{#if labels.get(p.id)}
+						<text x={labels.get(p.id)!.x} y={labels.get(p.id)!.y} text-anchor={labels.get(p.id)!.anchor} class="lab">{p.label}</text>
+					{/if}
 				</g>
 			{/each}
 		</svg>

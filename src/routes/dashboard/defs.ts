@@ -18,19 +18,30 @@ export const DEFS = {
 		'Caught, out of counted power-ups: within 5 tiles of a ghost that had just turned dangerous when the power ended, and caught by one within 3 s. The worst part of "too late". Lower is better.',
 	tooEarly:
 		'Turned away with more than 2 s left while a ghost was still reachable, out of counted power-ups. Lower is better: the player wasted power because they could not tell how much was left.',
+	gaveUpEarly:
+		'Turned away too early and gave up on the chase very early (rules version 3, docs/STUDY.md): a part of the too-early rate, shown as a share of counted power-ups.',
 	catches:
 		'Caught the ghost: the last chase ended by eating the ghost and no chase followed. Eating a ghost shows the player was chasing, not whether they knew the time left (a lucky late catch looks the same), so catches are in no rate. Shown as a share of engaged power-ups; a late catch is one with 1.5 s or less left.',
 	interval:
-		'95% interval, clustered by participant: we resample people (not single power-ups) 2,000 times, because one person\'s power-ups are alike. Conditions with fewer than 3 people use a 95% Wilson interval instead. Wide bars mean little data. We call a difference clear only when two intervals do not overlap.',
+		'95% interval, clustered by participant: we resample people (not single power-ups) 2,000 times, because one person\'s power-ups are alike. Conditions with fewer than 3 people use a 95% Wilson interval instead. Wide bars mean little data. Two separate intervals are not how differences are judged here: see "clear" below.',
+	clear:
+		'A difference between two conditions is called clear only when it holds inside each person and survives the adjustment for making many comparisons at once. For each pair, every person who played both gives one number: their rate under one minus their rate under the other. A t-test over those people gives the p-value. Holm\'s method then adjusts the p-values of a whole family together (all 78 pairs of the 13 conditions, or the 12 comparisons against the timer bar), so the chance of even one false "clear" in the family stays at 5%. With 78 pairs, about four would look different by luck alone at the usual 5% level; the adjustment removes them.',
+	paired:
+		'For each person who played both conditions: their rate under the condition minus their rate under the yardstick. The point is the average over those people; the bar is its 95% interval (a t interval over people, so one person\'s many power-ups count once). "Clear" means the difference survives Holm\'s adjustment for every comparison in the chart.',
+	precision:
+		'People needed: the number of people for an 80% chance of finding a true 15-point difference from the timer bar, at the 5% level shared over the 12 comparisons against it (and for one planned comparison in brackets). It uses the spread of the person-by-person differences seen so far, so it already reflects how many counted power-ups each person gives; more counted power-ups per person (longer runs) would lower it.',
 	notEnough: 'Conditions with fewer than 10 counted power-ups are shown faint and hollow and are never ranked.',
 	turnAway:
 		'Time left on the power when the player stopped closing in for good (the moment they were closest before quitting the last chase), over counted power-ups. Negative when they only turned after the power had ended. 0.2 to 2 s is the well-timed window; 0.5 to 1 s is ideal.',
 	wasted: 'Seconds of power left unused after an early retreat (turned away with more than 2 s left while a ghost was still reachable).',
 	approach:
-		'For counted power-ups, the path distance in tiles to the nearest scared ghost (after the end: to the ghosts that were scared when it ran out), averaged per condition, against time left. Sampled 10 times a second.',
-	stillChasing: 'Share of counted power-ups in which the player was still closing in on a scared ghost at that moment.',
+		'For counted power-ups whose power lasted at least 4 s, so every point rests on the same power-ups: the median path distance in tiles to the nearest scared ghost (after the end: to the ghosts that were scared when it ran out), against time left. Sampled 10 times a second.',
+	stillChasing:
+		'Share of counted power-ups (power of at least 4 s) in which the player was still closing in on a scared ghost at that moment, with a 95% Wilson band. A good signal makes the curve drop inside the well-timed window, before the power ends.',
+	neverTurned:
+		'Counted power-ups where the last chase was still running when the power ended and the player never turned away (stayed too long or caught). They have no turn-away time, so they get their own column.',
 	learning:
-		'Well-timed and too-late rates by the power-up\'s number within its block (all conditions together), and by the block\'s position in the session, with Wilson intervals. A rising well-timed line means players improve with practice; the counterbalanced order spreads that evenly over the conditions.',
+		'Well-timed and too-late rates by the power-up\'s number within its run (all conditions together), and by the run\'s position in the session, with Wilson intervals. A rising well-timed line means players improve with practice; the counterbalanced order spreads that evenly over the conditions. Per condition, see "Does it depend on how it was played?".',
 	clarity: 'After each block: "I could tell when the power was about to run out", 1 (not at all) to 7 (completely). Mean with a 95% interval.',
 	distraction: 'After each block: "The signal got in the way of playing", 1 to 7. Lower is better.',
 	channel:
@@ -45,7 +56,7 @@ export const OUTCOME_ORDER_NOTE =
 	'Each engaged power-up is judged by how its last chase ended. Caught comes first (caught within 3 s and within 5 tiles of a ghost that just turned dangerous when the power ended). Then: ate the ghost (caught the ghost, no decision), still chasing at the end (stayed too long), turned 0.2 to 2 s before the end (in time), turned earlier with a ghost in reach (too early). Other, not engaged and interrupted cover the rest.';
 
 export const DESIGN = [
-	'Within-subject: each participant plays one 90 s block per condition, in a counterbalanced order (balanced Latin square), so practice does not favour any condition.',
+	'Within-subject: each participant plays one run of each condition, in a counterbalanced order (balanced Latin square), so practice does not favour any condition. Conditions are compared inside each person.',
 	'Each power-up lasts a random 4 to 8 s, so only the signal can tell how much is left; power dots grow back and lives are unlimited, giving many power-ups per block.',
 	'After each block players rate clarity and distraction (1-7); behaviour around the end of every power-up is measured automatically.'
 ];

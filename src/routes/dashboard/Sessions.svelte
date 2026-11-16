@@ -7,6 +7,7 @@
 	import { api } from '#convex/_generated/api.js';
 	import { Badge, DataTable, EmptyState } from '#lib/ui/index.ts';
 	import { ago, plural } from '#lib/charts/encoding.ts';
+	import { modeLabel } from '#lib/outcomes.ts';
 	import { DEFS } from './defs';
 	import type { DashFilter } from './types';
 
@@ -17,8 +18,10 @@
 	}
 	let { filter, now, onparticipant }: Props = $props();
 	const sessions = useQuery(api.dashboard.sessions, () => ({
-		source: filter.source, mode: filter.mode, participantId: filter.participantId, from: filter.from
+		source: filter.source, mode: filter.mode, participantId: filter.participantId, from: filter.from, run: filter.run
 	}));
+	/** The replay list filtered to this participant (replays show one person's power-ups, newest first). */
+	const replaysHref = (r: Row) => `/replays?${new URLSearchParams({ ...(r.source !== 'human' ? { source: r.source } : {}), ...(r.p !== null ? { p: String(r.p) } : {}) })}`;
 	type Row = NonNullable<typeof sessions.data>[number];
 	const rows = $derived(sessions.data ?? []);
 
@@ -43,13 +46,14 @@
 	const columns = [
 		{ key: 'p', label: 'Who', width: '84px' },
 		{ key: 'when', label: 'Started', width: '96px' },
-		{ key: 'mode', label: 'Mode', width: '88px' },
-		{ key: 'blocks', label: 'Blocks', numeric: true, info: 'Blocks with at least one power-up, out of the conditions planned for the session.', width: '84px' },
+		{ key: 'mode', label: 'Rules', width: '108px' },
+		{ key: 'blocks', label: 'Runs', numeric: true, info: 'Runs (conditions played) with at least one power-up, out of the conditions planned for the session.', width: '84px' },
 		{ key: 'trials', label: 'Power-ups', numeric: true, info: 'All power-ups (counted toward the rates).', width: '100px' },
 		{ key: 'fps', label: 'Frame rate', unit: 'fps', numeric: true, info: DEFS.fps, width: '110px' },
 		{ key: 'sound', label: 'Sound', width: '70px' },
 		{ key: 'input', label: 'Input', width: '90px' },
-		{ key: 'ratings', label: 'Answers', info: 'Block questionnaires answered, and whether the final question was answered.', width: '90px' }
+		{ key: 'ratings', label: 'Answers', info: 'Questionnaires answered after runs, and whether the final question was answered.', width: '90px' },
+		{ key: 'replays', label: 'Replays', info: 'Power-ups with a stored replay. Opens the replay list for this participant.', width: '96px' }
 	];
 </script>
 
@@ -58,7 +62,7 @@
 {:else}
 	<ul class="quality" aria-label="Data quality">
 		<li><b class="num">{quality.people}</b> {quality.people === 1 ? 'person' : 'people'}, <b class="num">{quality.sessions}</b> {quality.sessions === 1 ? 'session' : 'sessions'}</li>
-		<li><b class="num">{quality.complete}</b> of {quality.study} study {quality.study === 1 ? 'session' : 'sessions'} played every condition</li>
+		<li><b class="num">{quality.complete}</b> of {quality.study} {quality.study === 1 ? 'session' : 'sessions'} under study rules played every condition</li>
 		<li>Sound on in <b class="num">{quality.soundOn}</b> of {quality.sessions}</li>
 		<li>
 			Input:
@@ -81,12 +85,12 @@
 	>
 		{#snippet cell(r: Row, c)}
 			{#if c.key === 'p'}
-				<span class="num">P{r.p ?? '?'}</span>
+				<span class="num">{r.label ?? `P${r.p ?? '?'}`}</span>
 				{#if r.source === 'bot'}<Badge tone="sim">sim</Badge>{/if}
 			{:else if c.key === 'when'}
 				<span class="dim" title={new Date(r.startedAt).toLocaleString('en-GB')}>{ago(r.startedAt, now)}</span>
 			{:else if c.key === 'mode'}
-				{r.mode === 'study' ? 'Study' : 'Free play'}
+				{modeLabel(r.mode)}
 			{:else if c.key === 'blocks'}
 				<span class="num">{r.blocksPlayed}{r.planned ? ` / ${r.planned}` : ''}</span>
 			{:else if c.key === 'trials'}
@@ -99,10 +103,14 @@
 				{r.inputType}
 			{:else if c.key === 'ratings'}
 				<span class="num">{r.blockRatings}{r.finalRating ? ' + final' : ''}</span>
+			{:else if c.key === 'replays'}
+				{#if r.clips}
+					<a class="link" href={replaysHref(r)} onclick={(e) => e.stopPropagation()}>{r.clips} replays</a>
+				{:else}<span class="dim">none</span>{/if}
 			{/if}
 		{/snippet}
 	</DataTable>
-	<p class="foot">Click a session to filter the whole page to that participant.</p>
+	<p class="foot">Click a session to filter the whole page to that participant. Replays opens their power-ups in the replay list.</p>
 {/if}
 
 <style>
@@ -127,6 +135,11 @@
 	}
 	.bad {
 		color: var(--warn);
+	}
+	.link {
+		color: var(--focus);
+		font-weight: 650;
+		white-space: nowrap;
 	}
 	.foot {
 		padding: var(--space-2) var(--space-5) var(--space-4);

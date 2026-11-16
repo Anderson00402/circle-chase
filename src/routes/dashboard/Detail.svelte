@@ -8,13 +8,12 @@
 	import { api } from '#convex/_generated/api.js';
 	import { spread } from '#convex/lib/stats.ts';
 	import { Badge, Button, CueChip, EmptyState, Select, Stat } from '#lib/ui/index.ts';
+	import { outcomeLabel } from '#lib/outcomes.ts';
 	import LineChart, { type LineSeries } from '#lib/charts/LineChart.svelte';
 	import StackedBars from '#lib/charts/StackedBars.svelte';
-	import StripPlot from '#lib/charts/StripPlot.svelte';
+	import StripPlot, { type StripPoint } from '#lib/charts/StripPlot.svelte';
 	import Legend from '#lib/charts/Legend.svelte';
-	import {
-		CONDITIONS, condition, OUTCOMES, outcomeStyle, pct, pctRange, plural, secs, YARDSTICKS
-	} from '#lib/charts/encoding.ts';
+	import { CONDITIONS, condition, OUTCOMES, outcomeStyle, pct, pctRange, plural, RATE_COLOR, secs } from '#lib/charts/encoding.ts';
 	import { CUES } from '#lib/game/cues/index.ts';
 	import { DEFS } from './defs';
 	import { ENOUGH } from './insight';
@@ -34,55 +33,66 @@
 	const info = $derived(CUES.find((c) => c.id === cue));
 	const s = $derived(main.cues.find((c) => c.cue === cue) ?? null);
 	const thin = $derived((s?.decisions ?? 0) < ENOUGH);
-	const yard = (id: string) => main.cues.find((c) => c.cue === id && c.decisions >= ENOUGH) ?? null;
 
+	/** Paired difference against a yardstick, inside each person: "+12 pts vs 0 (95% -3 to +27, 18 people)". */
 	function vs(key: 'wellTimed' | 'tooLate' | 'tooEarly'): string | undefined {
-		if (!s || s[key].rate === null) return undefined;
-		const parts = YARDSTICKS.filter((y) => y !== cue).map((y) => {
-			const r = yard(y);
-			if (!r || r[key].rate === null) return null;
-			const d = Math.round((s[key].rate! - r[key].rate!) * 100);
-			return `${d >= 0 ? '+' : ''}${d} vs ${condition(y).code}`;
+		const parts = (['timer-bar', 'none'] as const).filter((y) => y !== cue).map((y) => {
+			const c = main.paired[y][key].find((x) => x.a === cue);
+			if (!c || c.diff === null) return null;
+			const f = (x: number) => `${x > 0 ? '+' : ''}${Math.round(x * 100)}`;
+			const ci = c.lo !== null && c.hi !== null ? `95% ${f(c.lo)} to ${f(c.hi)}, ` : '';
+			return `${f(c.diff)} pts vs ${condition(y).code} (${ci}${c.people} ${c.people === 1 ? 'person' : 'people'}${c.clear ? ', clear' : ''})`;
 		}).filter(Boolean);
-		return parts.length ? `${parts.join(', ')} (points)` : undefined;
+		return parts.length ? parts.join('; ') : undefined;
 	}
 
 	let seen = $state(false);
 	const cueFilter = $derived({ ...filter, cue });
 	const points = useQuery(api.dashboard.points, () => (seen ? cueFilter : 'skip'));
-	// Approach curves for this condition and the yardsticks (one query over the filter; the server
-	// returns only per-condition averages).
+	// Approach curves of every condition (shared with the evidence section's query) and ratings.
 	const approach = useQuery(api.dashboard.approach, () => (seen ? { ...filter } : 'skip'));
+	const ratings = useQuery(api.dashboard.ratings, () => (seen ? { ...filter } : 'skip'));
+	const rating = $derived(ratings.data?.find((r) => r.cue === cue) ?? null);
 
 	const strip = $derived.by(() => {
-		const pts = (points.data ?? []).filter((p) => p.turnLeft !== null);
-		const sp = spread(pts.map((p) => p.turnLeft!));
+		const all = (points.data ?? []).filter((p) => p.inRates);
+		const pt = (p: (typeof all)[number]): StripPoint => ({
+			key: p.id, v: p.turnLeft ?? 0, color: outcomeStyle(p.outcome).color,
+			href: p.clip ? `/replays/${p.id}` : undefined,
+			info: [
+				['Turned away', p.turnLeft === null ? 'never (still chasing at the end)' : `${p.turnLeft.toFixed(2)} s ${p.turnLeft >= 0 ? 'left' : 'after the end'}`],
+				['Outcome', outcomeLabel(p.outcome)],
+				['Power length', secs(p.total)], ['Participant', p.p !== null ? `P${p.p}, power-up ${p.trialIndex + 1}` : '–']
+			]
+		});
+		const onAxis = all.filter((p) => p.turnLeft !== null);
+		const sp = spread(onAxis.map((p) => p.turnLeft!));
 		return [{
 			id: cue, cond, thin, median: sp.median, q25: sp.q25, q75: sp.q75,
-			points: pts.map((p) => ({
-				key: p.id, v: p.turnLeft!, color: outcomeStyle(p.outcome).color,
-				href: p.clip ? `/replays/${p.id}` : undefined,
-				info: [
-					['Turned away', `${p.turnLeft!.toFixed(2)} s left`], ['Outcome', outcomeStyle(p.outcome).label],
-					['Power length', secs(p.total)], ['Participant', p.p !== null ? `P${p.p}, power-up ${p.trialIndex + 1}` : '–']
-				] as [string, string][]
-			}))
+			points: onAxis.map(pt), extra: all.filter((p) => p.turnLeft === null).map(pt)
 		}];
+	});
+	const stripDomain = $derived.by((): [number, number] => {
+		const vs = strip[0].points.map((p) => p.v);
+		return [Math.max(2.5, Math.ceil(Math.max(0, ...vs) * 2) / 2), Math.min(-0.5, Math.floor(Math.min(0, ...vs) * 2) / 2)];
 	});
 	const lines = $derived.by((): LineSeries[] => {
 		const a = approach.data;
 		if (!a) return [];
+		const pctOf = (xs: (number | null)[]) => xs.map((v) => (v === null ? null : v * 100));
 		return a.cues
-			.filter((c) => c.cue === cue || (YARDSTICKS as readonly string[]).includes(c.cue))
+			.filter((c) => c.cue === cue || c.cue === 'timer-bar')
+			.sort((x) => (x.cue === cue ? 1 : -1))
 			.map((c) => {
 				const k = condition(c.cue);
+				const mine = c.cue === cue;
 				return {
-					id: c.cue, label: k.code, name: `${k.code}. ${k.name}`, color: k.color, dash: k.dash,
-					values: c.dist, n: c.distN, emphasis: c.cue === cue, faint: c.trials < ENOUGH
+					id: c.cue, label: k.code, name: `${k.code}. ${k.name} (${plural(c.trials, 'power-up')})`, color: k.color, dash: k.dash,
+					values: pctOf(c.chasing), n: c.chasingN, emphasis: mine, faint: c.trials < ENOUGH,
+					...(mine ? { lo: pctOf(c.chasingLo), hi: pctOf(c.chasingHi) } : {})
 				};
 			});
 	});
-	const distMax = $derived(Math.max(6, ...lines.flatMap((l) => l.values.filter((v): v is number => v !== null))));
 	const options = CONDITIONS.map((c) => ({ value: c.id, label: `${c.code}. ${c.name}` }));
 </script>
 
@@ -99,27 +109,36 @@
 		<EmptyState compact icon="chart" title="No power-ups for {cond.name} in this filter yet" />
 	{:else}
 		<div class="stats">
-			<Stat label="Turned away in time" value={pct(s.wellTimed.rate)} interval="95% {pctRange(s.wellTimed.lo, s.wellTimed.hi)}"
-				sub="{s.wellTimed.k} of {s.wellTimed.n} counted" delta={vs('wellTimed')} info="{DEFS.wellTimed} {DEFS.interval}" tone={thin ? 'ink' : 'good'} />
-			<Stat label="Too late" value={pct(s.tooLate.rate)} interval="95% {pctRange(s.tooLate.lo, s.tooLate.hi)}"
-				sub="{s.tooLate.k} of {s.tooLate.n}; caught {s.caught.k} ({pct(s.caught.rate)}, 95% {pctRange(s.caught.lo, s.caught.hi)})" delta={vs('tooLate')} info="{DEFS.tooLate} {DEFS.caught}" tone={thin ? 'ink' : 'bad'} />
-			<Stat label="Too early" value={pct(s.tooEarly.rate)} interval="95% {pctRange(s.tooEarly.lo, s.tooEarly.hi)}"
-				sub="{s.tooEarly.k} of {s.tooEarly.n} counted" delta={vs('tooEarly')} info={DEFS.tooEarly} tone={thin ? 'ink' : 'warn'} />
+			<div class="rate" style:--c={RATE_COLOR.wellTimed}>
+				<Stat label="Turned away in time" value={pct(s.wellTimed.rate)} interval="95% {pctRange(s.wellTimed.lo, s.wellTimed.hi)}"
+					sub="{s.wellTimed.k} of {s.wellTimed.n} counted" delta={vs('wellTimed')} info="{DEFS.wellTimed} {DEFS.interval} {DEFS.paired}" />
+			</div>
+			<div class="rate" style:--c={RATE_COLOR.tooLate}>
+				<Stat label="Too late" value={pct(s.tooLate.rate)} interval="95% {pctRange(s.tooLate.lo, s.tooLate.hi)}"
+					sub="{s.tooLate.k} of {s.tooLate.n}; caught {s.caught.k} ({pct(s.caught.rate)}, 95% {pctRange(s.caught.lo, s.caught.hi)})" delta={vs('tooLate')} info="{DEFS.tooLate} {DEFS.caught}" />
+			</div>
+			<div class="rate" style:--c={RATE_COLOR.tooEarly}>
+				<Stat label="Too early" value={pct(s.tooEarly.rate)} interval="95% {pctRange(s.tooEarly.lo, s.tooEarly.hi)}"
+					sub="{s.tooEarly.k} of {s.tooEarly.n} counted" delta={vs('tooEarly')} info={DEFS.tooEarly} />
+			</div>
+			{#if s.gaveUpEarly}
+				<Stat label="Gave up very early" value={pct(s.gaveUpEarly.k / Math.max(1, s.gaveUpEarly.n))} sub="{s.gaveUpEarly.k} of {s.gaveUpEarly.n} counted; part of too early" info={DEFS.gaveUpEarly} />
+			{/if}
 			<Stat label="Caught the ghost" value={pct(s.catches.share)} sub="{plural(s.catches.n, 'catch', 'catches')} of {s.inRates} engaged, {s.catches.late} late; in no rate" info={DEFS.catches} />
 			<Stat label="Turn-away, median" value={s.turnAway.median === null ? null : s.turnAway.median.toFixed(2)} unit="s left"
 				sub={s.turnAway.n ? `middle half ${s.turnAway.q25?.toFixed(1)} to ${s.turnAway.q75?.toFixed(1)} s, n ${s.turnAway.n}` : 'no turn-aways'} info={DEFS.turnAway} />
 			<Stat label="Wasted power, mean" value={s.wasted.mean === null ? null : s.wasted.mean.toFixed(1)} unit="s"
 				sub={plural(s.wasted.n, 'early retreat')} info={DEFS.wasted} />
-			<Stat label="Clarity" value={s.clarityCI.mean === null ? null : s.clarityCI.mean.toFixed(1)} unit="/ 7"
-				sub={s.clarityCI.n ? `${plural(s.clarityCI.n, 'answer')}, 95% ${s.clarityCI.lo?.toFixed(1)}-${s.clarityCI.hi?.toFixed(1)}` : 'no answers yet'} info={DEFS.clarity} />
-			<Stat label="Distraction" value={s.distractionCI.mean === null ? null : s.distractionCI.mean.toFixed(1)} unit="/ 7"
-				sub={s.distractionCI.n ? `${plural(s.distractionCI.n, 'answer')}, 95% ${s.distractionCI.lo?.toFixed(1)}-${s.distractionCI.hi?.toFixed(1)}` : 'no answers yet'} info={DEFS.distraction} />
+			<Stat label="Clarity" value={rating?.clarity.mean == null ? null : rating.clarity.mean.toFixed(1)} unit="/ 7"
+				sub={rating?.clarity.n ? `${plural(rating.clarity.n, 'answer')}, 95% ${rating.clarity.lo?.toFixed(1)}-${rating.clarity.hi?.toFixed(1)}` : ratings.data ? 'no answers yet' : 'loading'} info={DEFS.clarity} />
+			<Stat label="Distraction" value={rating?.distraction.mean == null ? null : rating.distraction.mean.toFixed(1)} unit="/ 7"
+				sub={rating?.distraction.n ? `${plural(rating.distraction.n, 'answer')}, 95% ${rating.distraction.lo?.toFixed(1)}-${rating.distraction.hi?.toFixed(1)}` : ratings.data ? 'no answers yet' : 'loading'} info={DEFS.distraction} />
 		</div>
 		<p class="basis">
 			{plural(s.trials, 'power-up')} from {plural(s.participants, 'participant')}: {s.engaged} engaged, {s.decisions} counted
 			(decisions, from {plural(s.decisionParticipants, 'participant')}), {plural(s.catches.n, 'catch', 'catches')} ({s.catches.late} late),
 			{plural(s.nearMisses, 'near miss', 'near misses')}. Intervals: {s.interval === 'bootstrap' ? 'clustered by participant' : 'Wilson (under 3 people)'}.{#if s.oldRules}
-				{plural(s.oldRules, 'power-up')} scored by older rules {s.oldRules === 1 ? 'is' : 'are'} left out.{/if}
+				{plural(s.oldRules, 'power-up')} recorded before the current rules {s.oldRules === 1 ? 'is' : 'are'} not counted.{/if}
 		</p>
 
 		<h3>How its power-ups end</h3>
@@ -139,13 +158,14 @@
 				{#if points.data}
 					<StripPlot
 						rows={strip}
-						domain={[Math.max(6, Math.ceil(Math.max(0, ...strip[0].points.map((p) => p.v)))), -2]}
+						domain={stripDomain}
 						window={{ from: 2, to: 0.2, label: 'well timed' }}
 						zero={{ label: 'power ends' }}
 						xLabel="Seconds left when the player turned away"
-						format={(v) => v.toFixed(0)}
+						format={(v) => (Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1))}
 						names={false}
-						rowHeight={64}
+						rowHeight={72}
+						extraLabel="never turned"
 						caption="Turn-away times of {cond.name}"
 					/>
 				{:else}
@@ -153,24 +173,25 @@
 				{/if}
 			</div>
 			<div>
-				<h3>Distance to the ghost, against the yardsticks</h3>
+				<h3>Still chasing as the power runs out, against the timer bar</h3>
 				{#if lines.length}
 					<LineChart
 						x={approach.data!.bins}
 						series={lines}
-						xDomain={[6, -3]}
-						yDomain={[0, Math.ceil(distMax)]}
+						xDomain={[approach.data!.window.from, approach.data!.window.to]}
+						yDomain={[0, 100]}
 						xLabel="Seconds of power left"
-						yLabel="Tiles"
-						xTicks={[6, 4, 2, 0, -2]}
+						yLabel="% chasing"
+						xTicks={[4, 3, 2, 1, 0, -1, -2, -3]}
 						xTitle={(v) => (v > 0 ? `${v} s left` : v === 0 ? 'Power ends' : `${-v} s after`)}
-						yFormat={(v) => v.toFixed(0)}
+						yFormat={(v) => `${v.toFixed(0)}%`}
 						window={{ from: 2, to: 0.2, label: 'well timed' }}
 						markers={[{ at: 0, label: 'end' }]}
 						minN={3}
 						height={230}
-						caption="Approach curve of {cond.name} with the yardsticks"
+						caption="Share still chasing under {cond.name} and the timer bar"
 					/>
+					<p class="foot">Power-ups of 4 s or more. Band: 95% interval.</p>
 				{:else}
 					<p class="loading">{approach.data ? 'No counted power-ups yet.' : 'Loading…'}</p>
 				{/if}
@@ -212,9 +233,15 @@
 		gap: var(--space-4) var(--space-5);
 		margin-top: var(--space-2);
 	}
-	.basis {
+	.basis,
+	.foot {
 		color: var(--ink-faint);
 		font-size: var(--text-xs);
+	}
+	/* The three rates carry their outcome colour (as in every chart) as a bar at the left. */
+	.rate {
+		padding-left: var(--space-3);
+		border-left: 3px solid var(--c);
 	}
 	h3 {
 		margin-top: var(--space-4);

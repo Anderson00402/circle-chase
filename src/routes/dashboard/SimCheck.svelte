@@ -6,49 +6,41 @@
 	 */
 	import { useQuery } from 'convex-svelte';
 	import { api } from '#convex/_generated/api.js';
-	import { Badge, CueChip, InfoTip, Panel, Select } from '#lib/ui/index.ts';
+	import { Badge, CueChip, InfoTip, Panel } from '#lib/ui/index.ts';
 	import ForestChart, { type ForestRow } from '#lib/charts/ForestChart.svelte';
 	import ScatterPlot, { type ScatterPoint } from '#lib/charts/ScatterPlot.svelte';
-	import { ago, condition, pct, pctRange, plural } from '#lib/charts/encoding.ts';
-	import { clearlyAbove, ENOUGH } from './insight';
-	import type { DashFilter, Main } from './types';
+	import { condition, pct, pctRange, plural } from '#lib/charts/encoding.ts';
+	import { ENOUGH } from './insight';
+	import type { Main } from './types';
 
 	interface Props {
+		/** The simulator run the whole page shows. */
+		run: string;
+		preset: string | null;
+		/** The page's results for this run (for the adjusted pair comparisons). */
 		main: Main;
-		filter: DashFilter;
 	}
-	let { main: _main, filter: _filter }: Props = $props();
+	let { run, preset, main }: Props = $props();
 
-	let run = $state<string>('latest');
-	const check = useQuery(api.dashboard.simCheck, () => (run === 'latest' ? {} : { run }), { keepPreviousData: true });
-	const d = $derived(check.data);
-	const runOptions = $derived([
-		{ value: 'latest', label: 'Newest run' },
-		...(d?.runs ?? []).map((r) => ({ value: r.run, label: `${r.preset}, ${plural(r.sessions, 'session')}, ${ago(r.startedAt)}` }))
-	]);
+	const check = useQuery(api.dashboard.simCheck, () => ({ run }), { keepPreviousData: true });
+	const d = $derived(check.data && check.data.run === run ? check.data : null);
 
-	const flat = $derived(d?.preset === 'flat');
+	const flat = $derived((d?.preset ?? preset) === 'flat');
 	const enough = $derived((d?.cues ?? []).filter((c) => c.inRates >= ENOUGH));
-	/** Pairs of conditions whose intervals do not overlap: what "a difference" looks like on this page. */
-	const clearPairs = $derived.by(() => {
-		let k = 0;
-		const cs = enough;
-		for (let i = 0; i < cs.length; i++)
-			for (let j = 0; j < cs.length; j++) if (i !== j && clearlyAbove(cs[i].wellTimed, cs[j].wellTimed)) k++;
-		return { k, of: (cs.length * (cs.length - 1)) / 2 };
-	});
+	/** Pairs that differ clearly on the well-timed rate after Holm's adjustment (paired within players). */
+	const clearPairs = $derived({ k: main.pairs.wellTimed.filter((c) => c.clear).length, of: main.pairs.wellTimed.length });
 	const verdict = $derived.by(() => {
-		if (!d || !d.run) return '';
+		if (!d) return '';
 		if (enough.length < 2) return `Not enough simulated power-ups yet to judge (${enough.length} conditions with ${ENOUGH} or more counted).`;
 		if (flat)
 			return clearPairs.k === 0
-				? 'Flat run: every condition was given the same awareness, and no two conditions differ clearly. The pipeline does not invent differences.'
-				: `Flat run: every condition was given the same awareness, yet ${clearPairs.k} of ${clearPairs.of} pairs differ clearly. Some is chance; many would mean the measure is biased by something other than awareness.`;
+				? `Flat run: every condition was given the same awareness, and none of the ${clearPairs.of} pairs of conditions differs clearly once the comparisons are adjusted. The pipeline does not invent differences.`
+				: `Flat run: every condition was given the same awareness, yet ${clearPairs.k} of ${clearPairs.of} pairs differ clearly even after adjusting for the number of comparisons. That should happen in under 5% of flat runs; check the measure for a bias that is not awareness.`;
 		const rho = d.rhos.wellTimed;
 		if (rho === null) return '';
 		const strength = rho <= -0.8 ? 'closely' : rho <= -0.5 ? 'roughly' : rho < 0 ? 'only weakly' : 'not';
 		const r = (x: number | null) => (x === null ? '–' : x.toFixed(2));
-		return `Planted run: the measured well-timed rate follows the planted awareness ${strength} (rank correlation ${rho.toFixed(2)}; -1 would be a perfect recovery). Too late ${r(d.rhos.tooLate)}, too early ${r(d.rhos.tooEarly)} (+1 would be perfect for these). ${clearPairs.k} of ${clearPairs.of} pairs of conditions differ clearly on the well-timed rate.`;
+		return `Planted run: the measured well-timed rate follows the planted awareness ${strength} (rank correlation ${rho.toFixed(2)}; -1 would be a perfect recovery). Too late ${r(d.rhos.tooLate)}, too early ${r(d.rhos.tooEarly)} (+1 would be perfect for these). ${clearPairs.k} of ${clearPairs.of} pairs differ clearly after adjustment: with ${plural(d.participants, 'simulated player')}, the order is recovered before single pairs separate.`;
 	});
 
 	const rows = $derived<ForestRow[]>((d?.cues ?? []).map((c) => ({
@@ -82,7 +74,6 @@
 				<p class="eyebrow"><Badge tone="sim">Simulated</Badge> Instrument check</p>
 				<h2 id="sim-h">Does the pipeline find what was planted?</h2>
 			</div>
-			<Select size="sm" options={runOptions} bind:value={run} aria-label="Simulator run" />
 		</div>
 		<p class="explain">
 			The simulator gives its bots a declared awareness of the time left for each condition (the planted "noise": how wrong they
@@ -96,8 +87,6 @@
 		</p>
 		{#if !d}
 			<p class="dim">Loading…</p>
-		{:else if !d.run}
-			<p class="dim">No simulator runs yet. Start one at <a href="/dev/simulate">/dev/simulate</a>.</p>
 		{:else}
 			<p class="verdict">{verdict}</p>
 			<p class="dim">{plural(d.trials, 'power-up')} from {plural(d.participants, 'simulated participant')} in this run.</p>
@@ -187,9 +176,6 @@
 	.dim {
 		color: var(--ink-faint);
 		font-size: var(--text-sm);
-	}
-	.dim a {
-		color: var(--focus);
 	}
 	/* Stacked: the forest has three rate columns and needs the full width. */
 	.two {
