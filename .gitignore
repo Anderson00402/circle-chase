@@ -1,3 +1,4 @@
 tools/node_modules/
 .rec-*.html
 .DS_Store
+media/baseline.gif
