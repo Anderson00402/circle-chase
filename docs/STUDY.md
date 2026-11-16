@@ -29,16 +29,20 @@ One **trial** = one power-up, from eating the power dot until 3 s after the powe
 
 ## Design
 
-- **Within-subject.** In study mode a participant plays one block per cue. Block order is
-  counterbalanced (balanced Latin square row picked by participant number, or a seeded shuffle for
-  shorter sessions) so no cue always benefits from practice.
-- **Random power length.** In study mode each power-up lasts a random 4-8 s. With a fixed length
-  players would simply learn the rhythm; with a random one the cue is the only way to know.
-- **Many trials.** Power dots grow back after 12 s and lives are unlimited, so a 90 s block gives
-  several trials and a death never ends the session (deaths are still recorded).
-- **Self-report.** After each block: "I could tell when the power was about to run out" and "The
-  signal got in the way of playing", both 1-7. At the end: pick the clearest and the least clear.
-- Arcade mode also records trials (fixed lengths, real lives), tagged `mode: 'arcade'`.
+- **Run by a researcher.** The researcher picks a case on the run console and the participant
+  plays it; one run of one case is a **block**. There is no self-serve wizard and no practice
+  round. A participant label ("P07") ties the runs of one person into a session.
+- **Within-subject, counterbalanced by suggestion.** The console suggests the next case from a
+  counterbalanced order (balanced Latin square row picked by participant number), so no case
+  always benefits from practice. The researcher may override it; the actual order is recorded.
+- **Random power length.** Under study rules each power-up lasts a random 4-8 s. With a fixed
+  length players would simply learn the rhythm; with a random one the cue is the only way to know.
+- **Many comparable trials.** Under study rules power dots grow back after 12 s, only one
+  power-up runs at a time, lives are unlimited and the maze and speeds never change, so a
+  1-2 minute run gives several comparable trials (deaths are still recorded).
+- **Self-report, optional.** After a run the researcher can ask: "I could tell when the power was
+  about to run out" and "The signal got in the way of playing", both 1-7.
+- Arcade rules (fixed power lengths, real lives, levels) also record trials, tagged `mode: 'arcade'`.
 - Simulated players (bots) may be used to exercise the pipeline. Their data is tagged
   `source: 'bot'` and is **never** mixed with human data by default: a bot cannot see a cue, so
   bot results say nothing about which cue is better.

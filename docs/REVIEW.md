@@ -1,5 +1,8 @@
 # Review rubric
 
+The app is an internal tool for the researchers running the study: judge it as a focused
+instrument (pick a case, play it, read the data, watch replays), not as a public website.
+
 After the first full build, the app is scored in five categories, 1-10 each, by reviewers who did
 not write the code. Work continues in rounds until **every category is at least 7**.
 
@@ -7,7 +10,8 @@ Anchors, the same for every category:
 
 - **3**: present but broken or confusing in normal use.
 - **5**: works, but rough; you would have to explain or apologise while demoing it.
-- **7**: solid; a professor could use it unaided and nothing embarrassing happens. The bar.
+- **7**: solid; a researcher could run a session with it unaided and show it to a professor, and
+  nothing embarrassing happens. The bar.
 - **9**: exceptional; people ask how it was made.
 
 A reviewer scores what they can demonstrate: every score comes with evidence (what they did, what
@@ -35,7 +39,7 @@ Do the thirteen conditions do their job as stimuli?
 - One signal per condition (only classic blink blinks); the base game never leaks the time left.
 - Readable in every maze theme, with several ghosts, when ghosts are eaten, at small sizes, with
   reduced motion; sound cues respect mute.
-- The gallery lets someone see and compare all of them in a minute.
+- The run console's case picker lets someone see and compare all of them in a minute.
 
 ## 3. Data collection
 
@@ -43,8 +47,10 @@ Would you trust the numbers?
 
 - Every measure in `docs/STUDY.md` is recorded as defined; outcome classes match what actually
   happened when you watch the replay of the same trial.
-- Study mode runs a participant through counterbalanced blocks with random power lengths, collects
-  ratings, and cannot lose data on refresh, tab close or a dropped connection.
+- A run is easy to operate: pick a case, play, end the run, see what was measured; runs are tied
+  to a participant label, the suggested order is counterbalanced, power lengths are random under
+  study rules, optional ratings are saved, and nothing is lost on refresh, tab close or a dropped
+  connection.
 - Context is complete (cue, order, sound, input, frame rate, version, human vs bot).
 - Data arrives in Convex in real time; export works; test coverage on the tracker's edge cases.
 
@@ -67,5 +73,6 @@ Can you watch the moment a player misjudged the timer, and is the whole thing a 
   timeline marks power start, eats, the turn-away, the end and a death; the distance chart moves
   with the playhead; finding interesting moments is easy (filters, worst and best first).
 - From any trial or chart you can jump to its replay.
-- Navigation is obvious, pages load without errors, empty states explain themselves, the home page
-  says what this is, it works at laptop and phone widths, keyboard accessible, consistent design.
+- The run console is focused: selecting a case and starting it takes seconds, with no clutter.
+- Navigation is obvious, pages load without errors, empty states explain themselves, it works at
+  laptop width (and degrades sensibly on a phone), keyboard accessible, consistent design.
