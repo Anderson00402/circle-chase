@@ -34,7 +34,7 @@ describe('paired differences', () => {
 		expect(r.p).toBeCloseTo(2 ** -5, 9); // same difference in all 6: the sign-test p
 		expect(r.lo).toBeCloseTo(0.5, 6);
 	});
-	it('gives no interval below 3 people', () => {
+	it('gives no interval below 5 people', () => {
 		const t = [...rows('p1', 'x', 2, 3), ...rows('p1', 'y', 1, 3), ...rows('p2', 'x', 2, 3), ...rows('p2', 'y', 1, 3)];
 		const r = paired(cellsOf(t), 'x', 'y', 0);
 		expect(r.people).toBe(2);

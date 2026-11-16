@@ -166,10 +166,10 @@ export function insight(stats: CondStats[], named: (id: string) => Named, allIds
 		const byCount = (mp: Map<string, number>) => [...mp.entries()].sort((a, b) => b[1] - a[1] || ranked.indexOf(a[0]) - ranked.indexOf(b[0]));
 		const behind = byCount(losses).filter(([id]) => !wins.has(id));
 		const ahead = byCount(wins).filter(([id]) => !losses.has(id));
-		const part = (xs: [string, number][]) => list(xs.slice(0, 4).map(([id, k]) => `${label(id)} (${k})`)) + (xs.length > 4 ? ` and ${xs.length - 4} more` : '');
+		const part = (xs: [string, number][], word: string) => list(xs.slice(0, 4).map(([id, k]) => `${label(id)}, ${word} ${k}`)) + (xs.length > 4 ? ` and ${xs.length - 4} more` : '');
 		details.push(`${separated.k} of ${m} pairs differ clearly (paired within people, adjusted for ${m} comparisons).`
-			+ (ahead.length ? ` Clearly ahead of at least one other: ${part(ahead)}.` : '')
-			+ (behind.length ? ` Clearly behind at least one other: ${part(behind)}.` : '')
+			+ (ahead.length ? ` Clearly ahead of at least one other: ${part(ahead, 'ahead of')}.` : '')
+			+ (behind.length ? ` Clearly behind at least one other: ${part(behind, 'behind')}.` : '')
 			+ ' Every other pair could be chance.');
 	}
 

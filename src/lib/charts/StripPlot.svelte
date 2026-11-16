@@ -124,7 +124,8 @@
 			m.set(row.id, swarm(row.points, (p) => x(clampV(p.v)), 2 * R + 0.8, ROW_H));
 			if (row.extra?.length) {
 				// The extra lane has no axis: spread its points over the lane width.
-				m.set(`${row.id}|extra`, swarm(row.extra, (p) => extraX + 6 + hash01(p.key) * (extraW - 12), 2 * R + 0.8, ROW_H));
+				// Its count sits at the right, so the points keep clear of it.
+				m.set(`${row.id}|extra`, swarm(row.extra, (p) => extraX + 6 + hash01(p.key) * (extraW - (narrow ? 12 : 30)), 2 * R + 0.8, ROW_H));
 			}
 		}
 		return m;
@@ -229,7 +230,7 @@
 							stroke={hover?.p.key === p.key ? 'var(--ink)' : 'none'} stroke-width="1.5" />
 					{/each}
 					{#if row.extra?.length && !narrow}
-						<text x={extraX + extraW - 4} y={y + 11} text-anchor="end" class="count">{row.extra.length}</text>
+						<text x={extraX + extraW - 4} y={y + ROW_H / 2 + 4} text-anchor="end" class="count">{row.extra.length}</text>
 					{/if}
 					{#if row.q25 !== null && row.q75 !== null}
 						<rect

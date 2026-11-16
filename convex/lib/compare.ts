@@ -144,8 +144,8 @@ export function cellsOf(decisions: { participantId: string; cue: string; outcome
 
 // ---------- paired differences ----------
 
-/** Fewer paired people than this: no interval and no test. */
-export const PAIR_MIN_PEOPLE = 3;
+/** Fewer paired people than this: no interval and no test (a t-test on 3 or 4 people is too fragile). */
+export const PAIR_MIN_PEOPLE = 5;
 
 export interface Paired {
 	a: string;

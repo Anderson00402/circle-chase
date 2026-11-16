@@ -53,7 +53,7 @@
 					info: c
 						? ([
 							[`Difference in ${RATE_WORD[rate]}`, pts(c.diff)],
-							['95% interval (over people)', c.lo === null ? 'needs 3 people' : `${pts(c.lo)} to ${pts(c.hi)}`],
+							['95% interval (over people)', c.lo === null ? 'needs 5 people' : `${pts(c.lo)} to ${pts(c.hi)}`],
 							['People who played both', String(c.people)],
 							['p, this comparison alone', pv(c.p)],
 							[`p, adjusted for ${family.length} comparisons`, pv(c.pAdj)],
@@ -98,7 +98,7 @@
 			}));
 			const thin = bd.levels.some((lv) => (cells[lv]?.[0] ?? 0) < ENOUGH);
 			return {
-				id, cond: id === 'all' ? all : condition(id), thin, values,
+				id, cond: id === 'all' ? all : condition(id), thin, values, empty: 'none counted',
 				group: i === 1 ? 'Per condition' : undefined,
 				note: bd.levels.map((lv) => `${lv}: ${cells[lv]?.[0] ?? 0} counted`).join('; ')
 			};
@@ -149,7 +149,7 @@
 				{#if clearOnes.length}
 					Clear: {clearOnes.map((r) => `${r.cond.code} ${r.cond.name} (${pts(r.diff)})`).join(', ')}. Everything else could be chance.
 				{:else}
-					No condition differs clearly from the {refName} on this rate yet. Hollow points: fewer than 3 people played both, so there is no interval.
+					No condition differs clearly from the {refName} on this rate yet. Hollow points: fewer than 5 people played both, so there is no interval or test.
 				{/if}
 			</p>
 		{/if}

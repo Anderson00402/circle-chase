@@ -381,6 +381,7 @@
 									markers={[{ at: 0, label: '' }]}
 									minN={3}
 									height={170}
+									endLabels={false}
 									caption="{m.cond.name} against the timer bar"
 								/>
 							{:else}

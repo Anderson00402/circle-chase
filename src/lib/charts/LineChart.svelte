@@ -52,17 +52,19 @@
 		/** Minimum n for a point to be drawn (thin bins are skipped). */
 		minN?: number;
 		onhoverseries?: (id: string | null) => void;
+		/** Draw each line's label at its right end (off for small multiples, whose caption names them). */
+		endLabels?: boolean;
 	}
 	let {
 		x, series, xDomain, yDomain, xLabel, yLabel,
 		xFormat = (v) => String(v), yFormat = (v) => String(v), xTitle = (v) => xFormat(v), xTicks,
-		window = null, markers = [], height = 280, caption, minN = 1, onhoverseries
+		window = null, markers = [], height = 280, caption, minN = 1, onhoverseries, endLabels = true
 	}: Props = $props();
 
 	let width = $state(0);
 	const narrow = $derived(width < 520);
 	// Room on the right for the end labels (mono, about 7 px per character).
-	const pad = $derived({ l: 44, r: 14 + 7 * Math.max(2, ...series.map((s) => s.label.length)), t: 22, b: 44 });
+	const pad = $derived({ l: 44, r: endLabels ? 14 + 7 * Math.max(2, ...series.map((s) => s.label.length)) : 10, t: 22, b: 44 });
 	const W = $derived(Math.max(80, width - pad.l - pad.r));
 	const H = $derived(height - pad.t - pad.b);
 	const sx = (v: number) => pad.l + ((v - xDomain[0]) / (xDomain[1] - xDomain[0])) * W;
@@ -171,7 +173,7 @@
 					{/if}
 				</g>
 			{/each}
-			{#each ends as e (e.s.id)}
+			{#each endLabels ? ends : [] as e (e.s.id)}
 				<g opacity={e.s.faint || (anyEmph && !e.s.emphasis) ? 0.55 : 1}>
 					{#if Math.abs(e.ly - e.y) > 3}
 						<line x1={sx(x[e.i]) + 2} x2={pad.l + W + 4} y1={e.y} y2={e.ly} stroke={e.s.color} stroke-width="1" opacity="0.6" />

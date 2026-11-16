@@ -65,7 +65,7 @@ describe('dashboard takeaway', () => {
 		expect(r.headline).toBe('No condition is clearly best yet.');
 		expect(r.details[0]).toMatch(/not clearly ahead of one other condition/);
 		expect(r.details[1]).toMatch(/2 of 3 pairs differ clearly/);
-		expect(r.details[1]).toMatch(/Clearly behind at least one other: No signal \(A\) \(2\)/);
+		expect(r.details[1]).toMatch(/Clearly behind at least one other: No signal \(A\), behind 2/);
 	});
 
 	it('mentions conditions without enough data', () => {
