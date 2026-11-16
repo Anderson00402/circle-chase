@@ -367,9 +367,10 @@
 	.stack { display: flex; flex-direction: column; gap: 8px; width: min-content; }
 	.hud {
 		display: flex;
-		flex-wrap: wrap;
 		align-items: stretch;
 		min-width: 100%;
+		width: 0;
+		container-type: inline-size;
 		border: 1px solid var(--rule, #2a3a66);
 		border-radius: 6px;
 		background: var(--surface, rgba(255, 255, 255, 0.02));
@@ -378,7 +379,7 @@
 	}
 	.cell { padding: 5px 12px 6px; border-left: 1px solid var(--rule, #2a3a66); white-space: nowrap; display: flex; flex-direction: column; justify-content: center; }
 	.cell:first-child { border-left: 0; }
-	.cell.grow { flex: 1; }
+	.cell.grow { flex: 1; min-width: 0; overflow: hidden; }
 	.label { display: block; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim, #a3b6de); }
 	.label .dim { opacity: 0.7; letter-spacing: 0.04em; text-transform: none; }
 	.value { display: block; font-family: var(--font-display, var(--font-body, system-ui)); font-size: 20px; line-height: 1.15; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -438,9 +439,15 @@
 		color: var(--on-accent, #1d0d03);
 		cursor: pointer;
 	}
-	@media (max-width: 560px) {
+	/* Narrow boards: tighter cells, drop the extras before anything wraps. */
+	@container (max-width: 640px) {
 		.cell { padding: 4px 8px; }
+		.label .dim { display: none; }
+		.icon { width: 16px; height: 16px; }
+	}
+	@container (max-width: 520px) {
 		.value { font-size: 17px; }
 		.maze { display: none; }
+		.sound { margin: 0 4px; width: 30px; height: 30px; }
 	}
 </style>

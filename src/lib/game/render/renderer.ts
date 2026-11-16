@@ -139,7 +139,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 			if (o.glow) { ctx.shadowColor = o.glow; ctx.shadowBlur = size * 0.6 * dpr; }
 			if (o.stroke) {
 				ctx.lineJoin = 'round';
-				ctx.lineWidth = o.strokeWidth ?? Math.max(2, size * 0.18);
+				ctx.lineWidth = o.strokeWidth ?? Math.max(2, Math.min(size * 0.18, 6));
 				ctx.strokeStyle = o.stroke;
 				ctx.strokeText(str, 0, 0);
 				ctx.shadowBlur = 0;
