@@ -35,10 +35,11 @@ routes at `http://127.0.0.1:3211`. `npm run convex` pushes this folder on save.
 | `participants` | browser (anonymous id in localStorage) or bot | `number` 1, 2, 3... (for the counterbalanced cue order), `nickname?`, `device`, first/last seen |
 | `sessions` | visit | `mode`, `source`, `cueOrder`, `appVersion`, `difficulty`, `sound`, `reducedMotion`, `inputType`, `viewport`, started/ended, counters |
 | `blocks` | cue played within a session | `cue`, `orderIndex`, started/ended, `trialCount`, `engagedCount`, `deaths`, `score` |
-| `trials` | power-up | context + every measure of `TrialMeasures` (`src/lib/telemetry/types.ts`); the 10 Hz series packed as bytes (~1 KB); `clipId?` |
+| `trials` | power-up | context + every measure of `TrialMeasures` (`src/lib/telemetry/types.ts`), including `lastChaseEnd` and `rulesVersion`; the 10 Hz series packed as bytes (~1 KB); `clipId?` |
 | `clips` | stored replay (engaged or caught trials) | packed scenes (`data`, 5-15 KB), `markers`, `numbers`, `cue`, `outcome`; separate so trial scans stay light |
 | `ratings` | questionnaire answer | `kind: 'block'` (clarity, distraction 1-7) or `'session'` (clearest, leastClear, comment) |
 | `presence` | open game page | heartbeat every 5 s; rows older than 20 s are swept by a cron |
+| `counters` | source (`human`, `bot`) | running totals for `live.counters`: trials, engaged, inRates, decisions, clips, sessions, participants, lastTrialAt; kept by `participants.ensure`, `sessions.start`, `trials.save` (practice trials not counted) |
 
 ## Write side (used by `src/lib/telemetry/client.svelte.ts`)
 
@@ -49,7 +50,7 @@ routes at `http://127.0.0.1:3211`. `npm run convex` pushes this folder on save.
 | `sessions.update` | `{ key, inputType?, sound?, reducedMotion?, end? }` | session id or null |
 | `blocks.start` | `{ key, sessionKey, cue, orderIndex }` | `{ blockId }` |
 | `blocks.end` | `{ key, deaths, score }` (last call wins) | block id or null |
-| `trials.save` | `{ key, sessionKey, blockKey, trialIndex, sound, reducedMotion, inputType, appVersion, difficulty, ...measures, series: bytes, clip? }` | `{ trialId, clipId }` |
+| `trials.save` | `{ key, sessionKey, blockKey, trialIndex, sound, reducedMotion, inputType, appVersion, difficulty, ...measures, series: bytes, clip? }`; the outcome is recomputed from the measures (`convex/lib/rules.ts`), a write without `lastChaseEnd` is stored as `rulesVersion: 1` | `{ trialId, clipId }` |
 | `ratings.saveBlock` | `{ key, blockKey, clarity: 1-7, distraction: 1-7 }` | rating id |
 | `ratings.saveSession` | `{ key, sessionKey, clearest?, leastClear?, comment? }` | rating id |
 | `presence.heartbeat` | `{ sessionKey, pid, cue, mode, source, state: 'playing'\|'idle', score, level, powerLeft, nickname? }` | row id |
@@ -73,11 +74,11 @@ not from the caller.
 | `clips.moments` | `{ cue?, outcome?, source?, paginationOpts }` | page of clips newest first, **without** `data` (`trialId`, `cue`, `outcome`, `markers`, `numbers`, `mazeId`, `level`, `t0`, `t1`, `scenes`, `size`, `createdAt`, `source`, `mode`) |
 | `sessions.overview` | `{ source?, mode?, limit? = 50 }` | sessions newest first with `participant { number, nickname }` and `blocks[]` |
 | `participants.overview` | `{ source? }` | participants with `sessions`, `studySessions`, `trials` counts, most recently seen first |
-| `live.counters` | `{ source?, now? }` | `{ trials, engaged, inRates, clips, sessions, participants, lastMinute, lastTrialAt, nowPlaying, playing[] }` |
+| `live.counters` | `{ source?, now? }` | `{ trials, engaged, inRates, decisions, clips, sessions, participants, lastMinute, lastTrialAt, nowPlaying, playing[] }` from the `counters` table plus an index range for the last minute (no trial scan) |
 | `presence.nowPlaying` | `{}` | presence rows updated in the last 20 s (no `pid`) |
 | `runs.session` | `{ sessionKey }` | the run sheet: `participant`, `run` info, `runs[]` (one per block: `cue`, `orderIndex`, `mode`, `trials`, `counted` decisions, `wellTimed`, `caught`, `catches`, `clips`, `outcomes`, `clarity`, `distraction`); null until the session exists |
 | `runs.block` | `{ blockKey }` | one run for its summary: the same tally plus `rows[]` (each trial: `outcome`, `counted`, `total`, `turnLeft`, `eats`, `clipId`) and its rating; null until the block exists |
-| `exports.trials` | filter + `format: 'csv'\|'json'` | `{ filename, contentType, rows, body }`; CSV is one flat row per trial (48 columns, no series), JSON is full rows with the series unpacked |
+| `exports.trials` | filter + `format: 'csv'\|'json'` | `{ filename, contentType, rows, body }`; CSV is one flat row per trial (52 columns, no series; includes `rulesVersion`, `decision`, `catchLate`, `lastChaseEnd`), JSON is full rows with the series unpacked and `decision` |
 
 HTTP downloads with the same filter as query parameters:
 `GET http://127.0.0.1:3211/export/trials.csv?source=human&mode=study` (and `trials.json`).
@@ -89,20 +90,33 @@ seconds if it must also fall back to 0 while nobody plays.
 
 ```ts
 {
-  cue, trials, engaged, inRates, participants,
+  cue, trials, engaged, inRates, decisions, participants, decisionParticipants,
   outcomes: Record<Outcome, number>,           // all trials of the cue
-  caught:    { k, n, rate, lo, hi },           // caught / inRates, Wilson 95%
-  wellTimed: { k, n, rate, lo, hi },           // (late catch + timely retreat) / inRates
-  turnAway:  { n, q10, q25, median, q75, q90, mean, values[] },  // turnLeft of trials in rates
+  wellTimed: { k, n, rate, lo, hi, method },   // timely retreat / decisions: the headline
+  tooLate:   { k, n, rate, lo, hi, method },   // (caught + overstayed) / decisions
+  caught:    { k, n, rate, lo, hi, method },   // caught / decisions (worst part of too late)
+  tooEarly:  { k, n, rate, lo, hi, method },   // early retreat / decisions
+  interval: 'bootstrap' | 'wilson',            // participant bootstrap; Wilson under 3 people
+  catches: { n, late, share },                 // catches; share of inRates; in no rate
+  turnAway:  { n, q10, q25, median, q75, q90, mean, values[] },  // turnLeft of decision trials
   wasted:    { n, ..., mean, values[] },       // power left after early retreats
-  lateCatches, nearMisses,
+  nearMisses, oldRules,                        // oldRules: rulesVersion 1 rows, in no rate
   clarity: { n, mean }, distraction: { n, mean },               // block ratings
-  notEnoughData                                // inRates < 10
+  notEnoughData                                // decisions < 10
 }
 ```
 
-`inRates` (the denominator of every rate) = engaged, the power ran out by itself
-(`endReason: 'expired'`), and the player did not leave during the aftermath.
+`inRates` (stored on each trial) = engaged, the power ran out by itself (`endReason: 'expired'`),
+and the player did not leave during the aftermath. **Decision trials** (the denominator of every
+rate, `isDecision` in `convex/lib/rules.ts`) are the `inRates` trials of rules version 2 whose
+outcome is caught, overstayed, timely retreat or early retreat. Catches, other and rows of older
+rules are not decisions. `dashboard.points`, `recent` and `sessions` report `inRates` as "is a
+decision trial".
+
+Intervals: `clusteredRates` resamples participants with replacement 2,000 times (seeded by the
+condition and its counts, so the same data gives the same interval), pools their decision trials
+and takes the 2.5th and 97.5th percentiles; with fewer than 3 participants it returns Wilson.
+`wilson` is kept for learning curves and small groups.
 
 ### Clips
 
@@ -132,8 +146,12 @@ only on rows from an earlier guided study flow and are no longer written.
 | --- | --- | --- |
 | `admin.deleteBotData` | `{ confirm: 'delete bot data' }` | deletes every row with `source: 'bot'` in every table |
 | `admin.wipeEverything` | `{ confirm: 'wipe everything' }` | deletes all rows of all tables (fresh demo); cannot be undone |
+| `admin.reclassify` | `{ confirm: 'reclassify' }` | recomputes `outcome`, `rulesVersion` and `wasted` of every trial and the outcome of its clip from the stored measures; rows without `lastChaseEnd` keep their class and become `rulesVersion: 1`; recounts `counters` at the end |
+| `counters.rebuildCounters` | `{ confirm: 'rebuild counters' }` | recounts the `counters` table from trials, sessions and participants |
 
-Both delete in batches and schedule themselves until done; they return `{ deleted, continuing }`.
+The deleting ones work in batches and schedule themselves until done; they return
+`{ deleted, continuing }`. `reclassify` and `rebuildCounters` run in the background (pages of 200
+and 400 rows) and log a line to the Convex log when done.
 
 ## Interpretations of STUDY.md
 
@@ -148,29 +166,36 @@ Places where the definitions needed a concrete reading (full list in `tracker.ts
 - **After the end** the ghosts hunt the player, so total distance shrinks even when fleeing. A
   chase running at the end continues only while the player's own steps still bring them closer
   (sum over 0.3 s below -0.05 tiles). No new chase starts after the end.
-- **Turn-away**: the last chase of the trial. Its moment is when the player was closest (latest
-  moment within 0.05 tiles of the minimum), or, if that chase ran past the end, the last step that
-  still closed in (negative time left). A chase ending in an eat turns at the eat (distance 0).
-- **Still closing in at the end** (overstayed, exposure): the last chase is not an eat and turned
-  with less than 0.2 s left or never turned. This makes the classes contiguous: under 0.2 s is
-  overstayed (if within 5 tiles and survived), 0.2-2 s timely, over 2 s early.
+- **Final decision / turn-away**: the last chase of the trial (`lastChaseEnd`: turn, eat, open).
+  Its moment is when the player was closest (latest moment within 0.05 tiles of the minimum), or,
+  if that chase ran past the end, the last step after the end that still closed in (negative time
+  left), or the end itself (0) when no step did. A chase ending in an eat turns at the eat
+  (distance 0).
+- **Outcome rules** live in `convex/lib/rules.ts` (`classify`), shared by the tracker and Convex.
+  Caught needs `after.caught` and `endDist` of 5 tiles or less. Overstayed: the last chase is open
+  or turned with less than 0.2 s left. This makes the turn-away classes contiguous: under 0.2 s is
+  overstayed, 0.2-2 s timely, over 2 s early (with a ghost reachable).
 - **Early retreat "while a ghost was still reachable"**: at the turn some scared ghost was out
-  and within (time left x level-1 player speed) tiles.
-- **Two classes added**: `other` (engaged, none of the five fits, e.g. ate the last scared ghost
-  with 2.5 s left) and `interrupted` (death during the power, level clear, a second power dot
-  `refreshed`, or the player left `quit`). Interrupted trials never count toward the rates.
+  and within (time left x level-1 player speed, 7 tiles/s) tiles. Since chasing needs the ghost
+  within 8 tiles, every turn with more than 2 s left is reachable; `other` is a safety net.
+- **Two classes added**: `other` (engaged, none of the classes fits) and `interrupted` (death
+  during the power, level clear, a second power dot `refreshed`, or the player left `quit`).
+  Interrupted trials never count toward the rates.
 - **Early retreat before the warning window** (turned with more than about 3.3 s left) is kept
   as `early-retreat` but is not engaged, so it is outside the rates; `wasted` covers all early
-  retreats.
+  retreats. Other trials that are not engaged are `not-engaged`, whatever they ate.
 - An eat inside the warning window counts as chasing there (engaged).
 - An aftermath cut short (new power-up, level clear, player left) keeps `after.seen` < 3 and
   `after.cut`; only `cut: 'quit'` leaves the rates.
 
 ## Practical limits
 
-Summary, counters and export queries read every trial of their filter in one query. A trial row
+Summary, dashboard and export queries read every trial of their filter in one query (they must:
+the rates and the bootstrap need every decision trial). `live.counters` does not: it reads the
+`counters` table and the last minute of trials. A trial row
 is about 2 KB, so a query stays within Convex's read limits (16 MB, 32k documents per function)
 up to roughly 5,000 trials per filter, which is far beyond a study of this size (a 13-cue study
 session gives about 60-100 trials). Beyond that, add per-cue counters maintained by
-`trials.save` or move summaries to a scheduled aggregate. Clips are never scanned by summaries;
-`live.counters` counts them through `trials.clipId`.
+`trials.save` or move summaries to a scheduled aggregate. Clips are never scanned by summaries.
+`dashboard.sessions` still reads the trials of its 100 newest sessions on every change, and
+`replays.list` the newest 4,000 trials; both are bounded but grow with the data.

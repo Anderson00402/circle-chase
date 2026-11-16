@@ -60,31 +60,70 @@ maze** in tiles, to the nearest scared ghost that is out of the pen):
 | --- | --- |
 | Chasing | The distance to the nearest scared ghost within 8 tiles has been shrinking over the last 0.3 s, or is at most 1 tile. |
 | Engaged | The player was chasing at some point in the last 3 s of the power ("the warning window"). Unengaged trials are kept but left out of the rates. |
-| Turn-away time | Time left on the power at the moment the player was closest before they stopped closing in for good. This is when they decided to quit. Negative when they only turned after the power had ended. |
+| Final decision | The last chase of the trial (the last one running in the warning window or after it), and how it ended: turned away, ate the ghost (no chase began after it), or still running when the trial closed. |
+| Turn-away time | Time left on the power at the moment the player was closest before they stopped closing in for good on that last chase. This is when they decided to quit. Negative when they only turned after the power had ended; 0 when they were still closing in at the end and stopped right then. For a chase that ended in an eat, the time left at the eat. |
 | Turn-away distance | Distance to the ghost at that moment. |
-| Late catch | A ghost eaten with 1.5 s or less left. Also record time left for every eat. |
+| Eats | Time left for every ghost eaten. A catch with 1.5 s or less left is a late catch. |
 | Exposure at the end | Distance to the nearest ghost that just turned dangerous, and whether the player was still closing in. |
 | Aftermath | In the 3 s after the end: caught or not, time until caught, smallest distance to a dangerous ghost, near miss (within 1.5 tiles and survived). |
 | Reaction | For players still chasing at the end: time from the end until they first move away. |
 | Series | 10 Hz samples from power start to end + 3 s: time left, distance, chasing flag, player tile. |
 
-Outcome of a trial (first that applies):
+Outcome of a trial (rules version 2, in `convex/lib/rules.ts`, shared by the tracker and Convex;
+first that applies). A trial is **engaged** when the player was chasing at some point in the
+warning window (the last 3 s, or the whole power if shorter). For an engaged trial the outcome
+comes from its **final decision**, the last chase:
 
-1. **caught**: died within 3 s after the end to a ghost that had been scared. The cue failed.
-2. **late catch**: ate a ghost in the last 1.5 s. The player used the time to the limit.
-3. **overstayed**: still closing in when the power ended, within 5 tiles, and survived.
-4. **timely retreat**: turned away with 0.2-2 s left.
-5. **early retreat**: turned away with more than 2 s left while a ghost was still reachable.
-6. **not engaged**: no chase in the warning window.
+1. **caught** ("caught"): died within 3 s after the end to a ghost that had been scared, **and**
+   when the power ended the player was within 5 tiles (path distance) of a ghost that had just
+   turned dangerous. The cue failed.
+2. **catch** ("caught the ghost"): the last chase ended by eating the ghost and no further chase
+   began before the power ended. Marked late when eaten with 1.5 s or less left. Shows no decision.
+3. **overstayed** ("stayed too long"): the last chase was still running when the power ended
+   (turned away with less than 0.2 s left, after the end, or never), and not caught.
+4. **timely retreat** ("turned away in time"): turned away from the last chase with 0.2-2 s left.
+5. **early retreat** ("turned away too early"): turned away with more than 2 s left while a ghost
+   was still reachable.
+6. **other**: engaged, but none of these fits (in practice: turned with more than 2 s left and no
+   ghost reachable, which the chase range of 8 tiles makes all but impossible).
+7. **not engaged**: no chase in the warning window (an early retreat before the window is kept as
+   early retreat, outside the rates). **interrupted**: the power did not run out by itself.
+
+A death after the end that does not meet the "caught" rule leaves the class as it is; it is still
+recorded in the aftermath fields. Every engaged trial whose last chase ended in a turn-away lands in
+exactly one of timely, early or overstayed.
+
+Why catches are excluded from the rates: eating a ghost shows the player was chasing, not whether
+they knew the time left; a player chasing blindly who happens to eat a ghost in the last second
+looks exactly like one who judged it well.
+Why "caught" needs proximity: a player who turned away in good time and was 7 tiles from any ghost
+when the power ended, then died 2 s later, did not misjudge the end; only a death that follows
+from being close to a ghost as it turned dangerous says the cue failed.
+
+Each trial stores `rulesVersion`. The raw measures are the source of truth: `admin.reclassify`
+recomputes every outcome from them. Rows recorded before version 2 lack the last chase's ending,
+so they keep their old class, are marked version 1 and are left out of every rate.
 
 ## Headline numbers per cue
 
-- **Caught rate**: caught / engaged trials. Lower is better. The clearest sign the player did not
-  know the end was coming.
-- **Well-timed rate** ("awareness"): (late catch + timely retreat) / engaged trials. Higher is
-  better. Shown with a 95% Wilson interval, because sample sizes are small.
-- **Turn-away time**: median and spread. Close to 0.5-1 s is ideal; large values mean the player
-  bailed out early because they could not tell how much time was left.
+Every rate divides by **decision trials** = caught + overstayed + timely retreat + early retreat,
+among engaged trials whose power ran out by itself and whose aftermath the player stayed for
+(rules version 2). These are the trials whose ending shows whether the player knew the time left.
+On the dashboard "counted" means decision trials.
+
+- **Well-timed rate** (the headline): timely retreats / decision trials. Higher is better.
+- **Too-late rate**: (caught + overstayed) / decision trials. Lower is better. Its worst part, the
+  **caught rate** (caught / decision trials), is shown with it.
+- **Too-early rate**: early retreats / decision trials. Lower is better.
+- **Catches** are reported apart: count, share of engaged trials (eligible as above), and how
+  many were late. They are in no rate's denominator.
+- **Intervals**: 95%, clustered by participant: a seeded bootstrap over participants (2,000
+  resamples; resample participants with replacement, pool their decision trials, take the 2.5th
+  and 97.5th percentiles of the pooled rate), because the power-ups of one person are not
+  independent. A condition with fewer than 3 participants falls back to a 95% Wilson interval; the
+  dashboard says which was used. Learning curves and pooled channel views use Wilson.
+- **Turn-away time**: median and spread over decision trials. Close to 0.5-1 s is ideal; large
+  values mean the player bailed out early because they could not tell how much time was left.
 - **Wasted power**: mean seconds of power left unused after an early retreat.
 - **Clarity and distraction ratings** from the questionnaire.
 - Always show the number of trials and participants behind each figure.
@@ -99,7 +138,7 @@ did about it.
 
 ## Honesty rules for the dashboard
 
-- Never show a rate without its sample size. Flag cues with fewer than 10 engaged trials as "not
+- Never show a rate without its sample size. Flag cues with fewer than 10 decision trials as "not
   enough data".
 - Human and bot data are separate views. Bot data carries a visible "simulated" label.
 - Definitions above are shown in the dashboard (tooltips or a "How this is measured" panel).
