@@ -62,6 +62,25 @@ for (const key of Object.keys(Core.DIFFICULTY)) {
   console.log(`${key} ghost speed by level: ${paces.map(p => Math.round(p * 100) + '%').join(' ')} -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
+// Fog: a small light normally; a power dot opens it to the whole maze, and it closes again over the
+// last LIGHT_CLOSE seconds, never jumping open or shut.
+{
+  const m = Core.buildMaze(Core.MAZES[0]), full = Math.hypot(m.W, m.H), small = Core.LIGHT_RADIUS, total = 6;
+  const r = left => Core.lightRadius(m, left, total);
+  const closing = [2, 1.5, 1, 0.5, 0.01].map(r);
+  const opening = [0, 0.1, 0.2, 0.3, 0.4].map(t => r(total - t));
+  const checks = {
+    'no power': Core.lightRadius(m, 0, 0) === small,
+    'mid power': Math.abs(r(3) - full) < 1e-9,
+    'opens': opening[0] === small && opening.every((v, i) => i === 0 || v > opening[i - 1]) && Math.abs(opening[4] - full) < 1e-9,
+    'opens at once for reduced motion': Math.abs(Core.lightRadius(m, total, total, 0) - full) < 1e-9,
+    'closes': closing.every((v, i) => i === 0 || v < closing[i - 1]) && closing[4] - small < 0.2,
+  };
+  const bad = Object.keys(checks).filter(k => !checks[k]);
+  if (bad.length) fail++;
+  console.log(`fog light: ${small} tiles, full ${full.toFixed(1)}; closing ${closing.map(v => v.toFixed(1)).join(' ')} -> ${bad.length ? 'FAIL ' + bad.join(', ') : 'OK'}`);
+}
+
 for (const key of Object.keys(Core.DIFFICULTY)) {
   for (let run = 0; run < 3; run++) {
     const g = Core.createGame(key);

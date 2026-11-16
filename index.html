@@ -102,7 +102,7 @@ body {
           <div class="overlay" id="overlay">
             <div class="card">
               <h2 id="ov-title">circle chase</h2>
-              <p id="ov-text">Eat every dot. You can only catch the ghosts after a power dot.</p>
+              <p id="ov-text">Eat every dot in the dark. A power dot lights up the maze for a few seconds.</p>
               <div class="actions">
                 <button class="btn primary" id="ov-primary" type="button">Start game</button>
                 <button class="btn" id="ov-secondary" type="button" hidden>New game</button>
@@ -130,6 +130,12 @@ const Core = (() => {
   const EXIT = [9, 7], HOME = [9, 10], BANNER_ROW = 13;
   const PEN_SLOTS = [[9, 9], [9, 10], [9, 11]];
   const GUARD_LINE = 10;    // the Guard chases only at or below this row
+
+  // Fog: the circle's light reaches LIGHT_RADIUS tiles. A power dot opens it to the whole maze over
+  // LIGHT_OPEN seconds, and it closes again over the last LIGHT_CLOSE seconds of the power, in step
+  // with the warning flashes, so the fog creeping back is itself a warning. The closing is squared so
+  // the fog visibly creeps in from the first flash, not just in the last half second.
+  const LIGHT_RADIUS = 3.2, LIGHT_OPEN = 0.4, LIGHT_CLOSE = 2;
 
   // Left half of each maze (columns 0-9); the right half mirrors it.
   // # wall  . dot  o power dot  - pen door  _ pen  (space) open floor
@@ -261,6 +267,15 @@ const Core = (() => {
       }
     }
     return dist;
+  }
+
+  // How far the light reaches, in tiles. At full power it covers the whole maze from any tile.
+  // open is how long the light takes to open (0 opens it at once, for reduced motion).
+  function lightRadius(m, fright, frightTotal, open = LIGHT_OPEN) {
+    if (!(fright > 0)) return LIGHT_RADIUS;
+    const opening = open > 0 ? (frightTotal - fright) / open : 1;
+    const k = Math.max(0, Math.min(1, opening, (fright / LIGHT_CLOSE) ** 2));
+    return LIGHT_RADIUS + (Math.hypot(m.W, m.H) - LIGHT_RADIUS) * k;
   }
 
   function createGame(diffKey = 'normal', emit = () => {}, rng = Math.random) {
@@ -514,7 +529,10 @@ const Core = (() => {
     return Object.assign(g, { update, steer, pos, mode, targetOf, ghostPace });
   }
 
-  return { createGame, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED };
+  return {
+    createGame, buildMaze, lightRadius, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW,
+    PLAYER_SPEED, LIGHT_RADIUS, LIGHT_OPEN, LIGHT_CLOSE,
+  };
 })();
 </script>
 
@@ -723,7 +741,7 @@ const Core = (() => {
     overlayMode = mode;
     const touch = touchUI.matches;
     const copy = {
-      title: ['circle chase', 'Eat every dot. You can only catch the ghosts after a power dot.', 'Start game'],
+      title: ['circle chase', 'Eat every dot in the dark. A power dot lights up the maze for a few seconds.', 'Start game'],
       paused: ['paused', 'The game is on hold.', 'Resume'],
       over: ['game over', text, 'Play again'],
     }[mode];
@@ -753,6 +771,7 @@ const Core = (() => {
     T = t;
     dpr = r;
     layers = {};
+    fogLayer = null;
     canvas.style.width = T * m.W + 'px';
     canvas.style.height = T * m.H + 'px';
     canvas.width = Math.round(T * m.W * dpr);
@@ -938,6 +957,60 @@ const Core = (() => {
     for (const off of [-W, 0, W]) { const px = x + off; if (px > -1 && px < W) fn((px + 0.5) * T); }
   }
 
+  // ---------- fog ----------
+  // Outside the light the maze sits under FOG_DARK black, so the neon walls only just show. The light's
+  // edge fades over LIGHT_SOFT tiles. Ghosts in the dark show only their eyes, and power dots glow
+  // faintly through the fog so players can head for them.
+  const FOG_DARK = 0.93, LIGHT_SOFT = 1.5, EYES_ALPHA = 0.7, POWER_GLOW = 0.4;
+  let fogLayer = null, fogCtx = null;
+
+  // How dark the fog is at a distance (in tiles) from the circle: 0 inside the light, FOG_DARK outside.
+  function fogAt(dist, radius) {
+    const k = (dist - (radius - LIGHT_SOFT / 2)) / LIGHT_SOFT;
+    return FOG_DARK * Math.max(0, Math.min(1, k));
+  }
+
+  // One reusable canvas the size of the board: fill it dark, then cut the light out of it.
+  function drawFog(px, py, radius) {
+    const m = game.maze;
+    if (!fogLayer || fogLayer.width !== canvas.width || fogLayer.height !== canvas.height) {
+      fogLayer = document.createElement('canvas');
+      fogLayer.width = canvas.width;
+      fogLayer.height = canvas.height;
+      fogCtx = fogLayer.getContext('2d');
+    }
+    const f = fogCtx;
+    f.setTransform(1, 0, 0, 1, 0, 0);
+    f.globalCompositeOperation = 'source-over';
+    f.clearRect(0, 0, fogLayer.width, fogLayer.height);
+    f.globalAlpha = FOG_DARK;
+    f.fillStyle = C['maze-bg'];
+    f.fillRect(0, 0, fogLayer.width, fogLayer.height);
+    f.globalAlpha = 1;
+    f.setTransform(dpr, 0, 0, dpr, 0, 0);
+    f.globalCompositeOperation = 'destination-out';
+    const r0 = Math.max(0, radius - LIGHT_SOFT / 2) * T, r1 = (radius + LIGHT_SOFT / 2) * T, cy = (py + 0.5) * T;
+    // In a tunnel the light shows on both edges, like the circle does.
+    eachWrap(px, cx => {
+      const grad = f.createRadialGradient(cx, cy, r0, cx, cy, r1);
+      grad.addColorStop(0, 'rgba(0, 0, 0, 1)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      f.fillStyle = grad;
+      f.fillRect(cx - r1, cy - r1, r1 * 2, r1 * 2);
+    });
+    f.globalCompositeOperation = 'source-over';
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(fogLayer, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // Distance in tiles from the circle, the short way round through a tunnel.
+  function lightDist(px, py, x, y) {
+    let dx = Math.abs(x - px);
+    dx = Math.min(dx, game.maze.W - dx);
+    return Math.hypot(dx, y - py);
+  }
+
   function draw() {
     const g = game, m = g.maze, reduce = reduceMotion.matches, now = g.time;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1082,6 +1155,42 @@ const Core = (() => {
           ctx.globalAlpha = 1;
         }
       });
+    }
+
+    // Fog over everything drawn so far; the timer, points and banner stay on top and readable.
+    // The maze is revealed when it is cleared and when the game is over.
+    if (g.state !== 'clear' && g.state !== 'over') {
+      let radius = Core.lightRadius(m, g.fright, g.frightTotal, reduce ? 0 : Core.LIGHT_OPEN);
+      // The light goes out with the circle.
+      if (g.state === 'dying') radius *= 1 - 0.6 * Math.min(1, g.stateTime / 1.1);
+      if (radius - LIGHT_SOFT / 2 < Math.hypot(m.W, m.H)) {
+        drawFog(px, py, radius);
+
+        // Eyes in the dark, fading in as the fog thickens over the ghost.
+        if (showGhosts) {
+          g.enemies.forEach((e, i) => {
+            let [x, y] = g.pos(e);
+            if (e.state === 'waiting' && !reduce) y += Math.sin(now * 4 + i * 2) * 0.16;
+            const dark = fogAt(lightDist(px, py, x, y), radius);
+            if (dark <= 0) return;
+            const d = e.dir >= 0 ? Core.DIRS[e.dir] : { x: 0, y: 0 };
+            const color = e.scared ? (powerFlash(g.fright) ? C.player : C.scared) : C[e.def.id];
+            ctx.globalAlpha = EYES_ALPHA * (dark / FOG_DARK);
+            eachWrap(x, cx => ghostEyes(ctx, cx, (y + 0.5) * T - T * 0.1, T, d, color, false));
+          });
+          ctx.globalAlpha = 1;
+        }
+
+        // Power dots glow faintly through the fog.
+        for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
+          if (m.dots[y * m.W + x] !== 2) continue;
+          const dark = fogAt(lightDist(px, py, x, y), radius);
+          if (dark <= 0) continue;
+          ctx.globalAlpha = POWER_GLOW * (dark / FOG_DARK);
+          drawPowerDot(ctx, (x + 0.5) * T, (y + 0.5) * T, T, pulse);
+        }
+        ctx.globalAlpha = 1;
+      }
     }
 
     // Power timer: a bar in the top wall that drains with the power and flashes with the ghosts.
