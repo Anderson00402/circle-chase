@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { clusteredRates, quantile, spread, summarize, wilson, type TrialRow } from '#convex/lib/stats.ts';
+import { RULES_VERSION } from '#convex/lib/rules.ts';
 
 describe('wilson interval', () => {
 	it('matches published values', () => {
@@ -84,7 +85,7 @@ describe('participant-clustered intervals', () => {
 
 describe('summarize', () => {
 	const row = (outcome: string, extra: Partial<TrialRow> = {}): TrialRow => ({
-		cue: 'timer-bar', participantId: 'p1', outcome, engaged: true, inRates: true, rulesVersion: 2, lateCatch: false,
+		cue: 'timer-bar', participantId: 'p1', outcome, engaged: true, inRates: true, rulesVersion: RULES_VERSION, lateCatch: false,
 		turnLeft: null, wasted: null, eats: [], after: { nearMiss: false, caught: outcome === 'caught' }, ...extra
 	});
 
@@ -113,6 +114,8 @@ describe('summarize', () => {
 		expect(s.tooEarly).toMatchObject({ k: 1, n: 4, rate: 0.25 });
 		expect(s.catches).toEqual({ n: 2, late: 1, share: 2 / 7 });
 		expect(s.oldRules).toBe(1);
+		// The old row was eligible (inRates), so the rates say they left it out.
+		expect(s.leftOut.oldRules).toBe(1);
 		expect(s.turnAway.values).toEqual([-0.3, 0.1, 0.8, 2.6]);
 		expect(s.wasted.mean).toBe(2.6);
 		expect(s.clarity).toEqual({ n: 2, mean: 5 });
