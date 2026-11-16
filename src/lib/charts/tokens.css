@@ -1,0 +1,25 @@
+/*
+ * Chart colours. Imported by pages that show charts (the dashboard). Values were checked with the
+ * dataviz palette validator against --surface (#0f1526); see encoding.ts for the figures.
+ */
+:root {
+	/* Condition roles. The baseline blue is darker than --role-baseline so it stays apart from the
+	   reference grey (the lighter blue sits only 8.8 apart from it for normal vision). */
+	--chart-reference: #a3b3d6;
+	--chart-baseline: #3987e5;
+	--chart-idea: #ffd84a;
+
+	/* Outcomes, in the order time runs: too early to too late */
+	--o-caught: #e34948;
+	--o-overstayed: #eda100;
+	--o-well: #1baf7a;
+	--o-early: #9085e9;
+	--o-other: #56607e;
+	--o-idle: #36415f;
+
+	/* Chrome */
+	--chart-grid: #1c2540;
+	--chart-axis: #3a4870;
+	--chart-window: rgba(27, 175, 122, 0.12);
+	--chart-window-edge: rgba(27, 175, 122, 0.45);
+}

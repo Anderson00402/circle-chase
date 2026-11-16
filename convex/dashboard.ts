@@ -10,7 +10,7 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
 import { query, type QueryCtx } from './_generated/server';
-import { filterArgs, scanTrials, type Filter } from './lib/filters';
+import { filterArgs, matches, scanTrials, type Filter } from './lib/filters';
 import { unpackSeries } from './lib/series';
 import { summarize, wilson, type CueSummary, type Rate } from './lib/stats';
 import { blockRatings } from './summary';
@@ -63,9 +63,14 @@ export const main = query({
 		const cues = [...new Set([...trials.map((t) => t.cue), ...ratings.map((r) => r.cue ?? '')].filter(Boolean))].sort();
 		const byCue = cues.map((c) => {
 			const rs = ratings.filter((r) => r.cue === c);
-			const s = summarize(c, trials.filter((t) => t.cue === c), rs);
+			const mine = trials.filter((t) => t.cue === c);
+			const s = summarize(c, mine, rs);
+			// Outcomes of the counted trials only: their shares are exactly the rates.
+			const countedOutcomes: Record<string, number> = {};
+			for (const t of mine) if (t.inRates) countedOutcomes[t.outcome] = (countedOutcomes[t.outcome] ?? 0) + 1;
 			return {
 				...lite(s),
+				countedOutcomes,
 				clarityCI: ratingStats(rs.map((r) => r.clarity).filter((x): x is number => typeof x === 'number')),
 				distractionCI: ratingStats(rs.map((r) => r.distraction).filter((x): x is number => typeof x === 'number'))
 			};
@@ -204,9 +209,7 @@ export const recent = query({
 					: t.withIndex('by_created');
 		const rows: Doc<'trials'>[] = [];
 		for await (const r of base.order('desc')) {
-			if ((src === 'all' || r.source === src) && (!f.mode || r.mode === f.mode) && (!f.cue || r.cue === f.cue)
-				&& (!f.sessionId || r.sessionId === f.sessionId)
-				&& r.createdAt >= (f.from ?? 0) && r.createdAt <= (f.to ?? Number.MAX_SAFE_INTEGER)) rows.push(r);
+			if (matches(r, f)) rows.push(r);
 			if (rows.length >= Math.min(limit, 200)) break;
 		}
 		const people = await participantNumbers(ctx, rows.map((r) => r.participantId));
@@ -254,8 +257,9 @@ export const sessions = query({
 		const people = await participantNumbers(ctx, rows.map((s) => s.participantId));
 		const out = [];
 		for (const s of rows) {
-			const blocks = await ctx.db.query('blocks').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect();
-			const trials = await ctx.db.query('trials').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect();
+			// Warm-up rounds are left out, as everywhere else.
+			const blocks = (await ctx.db.query('blocks').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect()).filter((b) => !b.practice);
+			const trials = (await ctx.db.query('trials').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect()).filter((t) => !t.practice);
 			const fps = trials.map((t) => t.fps).filter((x) => x > 0);
 			const ratings = await ctx.db.query('ratings').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect();
 			out.push({
@@ -283,7 +287,9 @@ export const sessions = query({
 				appVersion: s.appVersion,
 				blockRatings: ratings.filter((r) => r.kind === 'block').length,
 				finalRating: ratings.some((r) => r.kind === 'session'),
-				sim: (s as unknown as { sim?: unknown }).sim ?? null
+				sim: s.sim ? { preset: s.sim.preset, run: s.sim.run } : null,
+				abandonedBlocks: blocks.filter((b) => b.abandoned).length,
+				pausedSeconds: Math.round(blocks.reduce((a, b) => a + (b.pausedSeconds ?? 0), 0))
 			});
 		}
 		return out;
@@ -313,6 +319,83 @@ export const facets = query({
 		}
 		participants.sort((x, y) => x.number - y.number);
 		return { counts, participants };
+	}
+});
+
+/** Spearman rank correlation (average ranks for ties); null below 3 pairs. */
+function spearman(xs: number[], ys: number[]): number | null {
+	if (xs.length < 3) return null;
+	const rank = (a: number[]) => {
+		const idx = a.map((v, i) => ({ v, i })).sort((p, q) => p.v - q.v);
+		const r = new Array<number>(a.length);
+		for (let k = 0; k < idx.length;) {
+			let j = k;
+			while (j + 1 < idx.length && idx[j + 1].v === idx[k].v) j++;
+			for (let m = k; m <= j; m++) r[idx[m].i] = (k + j) / 2 + 1;
+			k = j + 1;
+		}
+		return r;
+	};
+	const rx = rank(xs), ry = rank(ys);
+	const mx = rx.reduce((a, b) => a + b, 0) / rx.length, my = ry.reduce((a, b) => a + b, 0) / ry.length;
+	let num = 0, dx = 0, dy = 0;
+	for (let i = 0; i < rx.length; i++) {
+		num += (rx[i] - mx) * (ry[i] - my);
+		dx += (rx[i] - mx) ** 2;
+		dy += (ry[i] - my) ** 2;
+	}
+	return dx && dy ? Math.round((num / Math.sqrt(dx * dy)) * 100) / 100 : null;
+}
+
+/**
+ * Planted vs recovered, for one simulator run (default: the newest). For every condition: the
+ * awareness noise and distraction the simulator planted (convex/sim.ts), and what the real pipeline
+ * measured from the bots' play. If the instrument works, well-timed rate falls as planted noise
+ * rises (a negative rank correlation) and the flat preset shows no clear differences.
+ */
+export const simCheck = query({
+	args: { run: v.optional(v.string()) },
+	handler: async (ctx, a) => {
+		const bot = await ctx.db.query('sessions').withIndex('by_source_started', (i) => i.eq('source', 'bot')).order('desc').collect();
+		const runs = new Map<string, { run: string; preset: string; sessions: number; startedAt: number }>();
+		for (const s of bot) {
+			if (!s.sim) continue;
+			const r = runs.get(s.sim.run) ?? { run: s.sim.run, preset: s.sim.preset, sessions: 0, startedAt: s.startedAt };
+			r.sessions++;
+			r.startedAt = Math.min(r.startedAt, s.startedAt);
+			runs.set(s.sim.run, r);
+		}
+		const runList = [...runs.values()].sort((x, y) => y.startedAt - x.startedAt);
+		const run = a.run && runs.has(a.run) ? a.run : runList[0]?.run;
+		if (!run) return { runs: runList, run: null, preset: null, cues: [], rho: null, trials: 0, participants: 0 };
+		const sessions = bot.filter((s) => s.sim?.run === run);
+		const planted = new Map<string, { noise: number; distraction: number }>();
+		const trials: Doc<'trials'>[] = [];
+		const ratings: Doc<'ratings'>[] = [];
+		for (const s of sessions) {
+			for (const p of s.sim!.planted) planted.set(p.cue, { noise: p.noise, distraction: p.distraction });
+			trials.push(...(await ctx.db.query('trials').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect()).filter((t) => !t.practice));
+			ratings.push(...(await ctx.db.query('ratings').withIndex('by_session', (i) => i.eq('sessionId', s._id)).collect()).filter((r) => r.kind === 'block'));
+		}
+		const cues = [...planted.entries()].map(([cue, p]) => {
+			const rs = ratings.filter((r) => r.cue === cue);
+			const sm = summarize(cue, trials.filter((t) => t.cue === cue), rs);
+			return {
+				cue, plantedNoise: p.noise, plantedDistraction: p.distraction,
+				inRates: sm.inRates, trials: sm.trials, wellTimed: sm.wellTimed, caught: sm.caught,
+				turnMedian: sm.turnAway.median, distraction: sm.distraction
+			};
+		}).sort((x, y) => x.plantedNoise - y.plantedNoise || x.cue.localeCompare(y.cue));
+		const ok = cues.filter((c) => c.wellTimed.rate !== null);
+		return {
+			runs: runList,
+			run,
+			preset: runs.get(run)!.preset,
+			cues,
+			rho: spearman(ok.map((c) => c.plantedNoise), ok.map((c) => c.wellTimed.rate!)),
+			trials: trials.length,
+			participants: new Set(trials.map((t) => t.participantId)).size
+		};
 	}
 });
 
