@@ -18,14 +18,13 @@
  *
  * Measured with the real tracker under outcome rules version 2 (see diagnose.test.ts): rates are
  * over decision trials, catches are left out. "Too late" climbs steadily with the bot's belief
- * error (error 0-0.5 s: about half too late; +1 to +2 s: about 70%), "too early" with a negative
- * error beyond about -2 s. But this bot turns away late: with a mean caution of 0.3 s it aims at
- * about 0.3 s left and its actual turn (the closest moment) lands near the 0.2 s line, so an
- * almost exact bot (noise 0.3 s) turns away in time only about 50% of the time, while a bot that
- * believes it has 0.5-2 s less than it has does so about 90% of the time. The well-timed rate is
- * therefore flat between noise 0.3 and 1.2 s and falls only beyond that, which caps how well a
- * planted run can be recovered. Changing the bot's caution would change that; it is left as is so
- * the validation does not tune the bot to the measure.
+ * error, "too early" with a large negative one.
+ *
+ * The simulated player's safety margin (caution) averages 1.0 s: a player who knows the time left
+ * is modelled as backing off with about a second to spare, the middle of the "in time" window
+ * (0.2-2 s). An earlier version used 0.3 s, which put even an exact bot right on the 0.2 s line, so
+ * half of its turns counted as too late and the planted levels could not show through. That was a
+ * flaw in the simulated player, not in the measure; the measure's definitions were not touched.
  *
  * Pure and deterministic for a seed.
  */
@@ -143,7 +142,7 @@ export function drawProfile(seed: number, blocks: number): Profile {
 	return {
 		skill: round2(0.72 + rng() * 0.28),
 		noiseScale: round2(Math.exp(gauss(rng) * 0.25)),
-		caution: round2(0.3 + gauss(rng) * 0.4),
+		caution: round2(1.0 + gauss(rng) * 0.4),
 		reaction: round2(0.25 + rng() * 0.35),
 		ignoreRate: round2(lazy ? 0.45 + rng() * 0.25 : rng() * 0.12),
 		learning: round2(0.2 + rng() * 0.4),
