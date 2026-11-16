@@ -151,8 +151,9 @@
 				{#if clearOnes.length}
 					Clear: {clearOnes.map((r) => `${r.cond.code} ${r.cond.name} (${pts(r.diff)})`).join(', ')}. Everything else could be chance.
 				{:else}
-					No condition differs clearly from the {refName} on this rate yet. Hollow points: fewer than 5 people played both, so there is no interval or test.
+					No condition differs clearly from the {refName} on this rate yet.
 				{/if}
+				{#if diffRows.some((r) => r.thin && r.diff !== null)}Hollow points: fewer than 5 people played both, so there is no interval or test.{/if}
 			</p>
 		{/if}
 	</Panel>

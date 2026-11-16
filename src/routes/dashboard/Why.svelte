@@ -139,7 +139,8 @@
 			.map((id) => {
 				const c = a.cues.find((x) => x.cue === id) ?? null;
 				const series: LineSeries[] = [];
-				if (timer) series.push({ ...lineOf(timer, false), emphasis: false });
+				// The timer bar at full strength (no band) so the comparison line is easy to follow.
+				if (timer) series.push({ ...lineOf(timer, false), emphasis: true, faint: false });
 				if (c) series.push(lineOf(c, true));
 				return { id, cond: condition(id), c, series };
 			});
@@ -411,9 +412,10 @@
 					xTitle={(v) => `Power-up ${v}${v === main.learning.maxTrialBucket ? ' and later' : ''}`}
 					xTicks={byTrial.map((b) => b.x)}
 					height={240}
+					minN={10}
 					caption="Turned away in time, too late and too early by power-up number within a run"
 				/>
-				<p class="foot">Bands: 95% Wilson intervals (pooled over people). n per point in the tooltip.</p>
+				<p class="foot">Bands: 95% Wilson intervals (pooled over people). Points with fewer than 10 counted power-ups are not drawn; n per point in the tooltip.</p>
 			{:else}
 				<EmptyState compact icon="chart" title="No counted power-ups yet" />
 			{/if}
@@ -432,6 +434,7 @@
 					xTitle={(v) => `Run ${v} of the session`}
 					xTicks={byBlock.map((b) => b.x)}
 					height={240}
+					minN={10}
 					caption="Turned away in time, too late and too early by run position in the session"
 				/>
 				<p class="foot">The counterbalanced order spreads practice evenly over the conditions.</p>
