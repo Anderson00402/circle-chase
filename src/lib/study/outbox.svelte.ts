@@ -160,7 +160,8 @@ export function startOutbox(client: ConvexClient): Outbox {
 /** The app's outbox (started on first use if the layout has not yet). */
 export const getOutbox = startOutbox;
 
-function createOutbox(client: ConvexClient): Outbox {
+/** A new outbox (the app uses the one from `startOutbox`; tests make their own). */
+export function createOutbox(client: ConvexClient): Outbox {
 	const self = PREFIX + uid();
 	let jobs: Job[] = [];
 	const callbacks = new Map<string, (r: unknown) => void>();
