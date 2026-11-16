@@ -45,8 +45,11 @@
 	}
 	let { rows, span, ends, zeroLabel, label, selected = null, onselect, caption }: Props = $props();
 
+	let boxW = $state(0);
 	const step = $derived(span > 60 ? 25 : span > 30 ? 20 : 10);
 	const ticks = $derived.by(() => {
+		// On a phone the plot is narrow: the two ends and zero only.
+		if (boxW > 0 && boxW < 560) return [-span, 0, span];
 		const out: number[] = [];
 		for (let v = -Math.floor(span / step) * step; v <= span + 1e-9; v += step) out.push(v);
 		return out;
@@ -55,7 +58,6 @@
 	const fmt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v)}`;
 
 	let box = $state<HTMLDivElement>();
-	let boxW = $state(0);
 	let hover = $state<{ row: DiffRow; x: number; y: number } | null>(null);
 	function move(e: PointerEvent, row: DiffRow) {
 		if (!box) return;

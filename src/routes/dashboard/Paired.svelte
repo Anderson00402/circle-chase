@@ -125,9 +125,11 @@
 		sub="For everyone who played both, their {RATE_WORD[rate]} rate under the condition minus under the {refName}, averaged over those people. Bars: 95% intervals over people. A bar clear of zero, after adjusting for all {family.length} comparisons, is marked clear."
 	>
 		{#snippet actions()}
-			<Segmented label="Compared with" size="sm" options={[{ value: 'timer-bar', label: 'Timer bar' }, { value: 'none', label: 'No signal' }]} bind:value={ref} />
-			<Segmented label="Rate" size="sm" options={[{ value: 'wellTimed', label: 'In time' }, { value: 'tooLate', label: 'Too late' }, { value: 'tooEarly', label: 'Too early' }]} bind:value={rate} />
-			<InfoTip term="Paired difference" align="end">{DEFS.paired}</InfoTip>
+			<div class="ctl">
+				<Segmented label="Compared with" size="sm" options={[{ value: 'timer-bar', label: 'Timer bar' }, { value: 'none', label: 'No signal' }]} bind:value={ref} />
+				<Segmented label="Rate" size="sm" options={[{ value: 'wellTimed', label: 'In time' }, { value: 'tooLate', label: 'Too late' }, { value: 'tooEarly', label: 'Too early' }]} bind:value={rate} />
+				<InfoTip term="Paired difference" align="end">{DEFS.paired}</InfoTip>
+			</div>
 		{/snippet}
 		{#if !anyPairs}
 			<EmptyState compact icon="chart" title="Nobody has played the {refName} and another condition yet">
@@ -186,13 +188,15 @@
 
 	<Panel title="Does it depend on how it was played?" sub={FACTOR_SUB[factor]}>
 		{#snippet actions()}
-			<Segmented
-				label="Breakdown"
-				size="sm"
-				options={(Object.keys(FACTOR_LABEL) as FactorKey[]).map((k) => ({ value: k, label: FACTOR_LABEL[k] }))}
-				bind:value={factor}
-			/>
-			<Segmented label="Rate" size="sm" options={[{ value: 'wellTimed', label: 'In time' }, { value: 'tooLate', label: 'Too late' }, { value: 'tooEarly', label: 'Too early' }]} bind:value={bRate} />
+			<div class="ctl">
+				<Segmented
+					label="Breakdown"
+					size="sm"
+					options={(Object.keys(FACTOR_LABEL) as FactorKey[]).map((k) => ({ value: k, label: FACTOR_LABEL[k] }))}
+					bind:value={factor}
+				/>
+				<Segmented label="Rate" size="sm" options={[{ value: 'wellTimed', label: 'In time' }, { value: 'tooLate', label: 'Too late' }, { value: 'tooEarly', label: 'Too early' }]} bind:value={bRate} />
+			</div>
 		{/snippet}
 		{#if bd.levels.length < 2}
 			<EmptyState compact icon="chart" title="Nothing to compare yet">{oneLevelText[factor]}</EmptyState>
@@ -240,6 +244,14 @@
 	}
 	.prec b {
 		color: var(--ink);
+	}
+	.ctl {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+		min-width: 0;
+		max-width: 100%;
 	}
 	.all {
 		color: var(--ink);
