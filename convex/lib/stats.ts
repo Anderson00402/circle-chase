@@ -170,6 +170,13 @@ export interface DecisionRates {
 	tooEarly: Rate;
 	/** Interval used for all four. */
 	interval: IntervalMethod;
+	/**
+	 * Trials left out of the rates for a reason the page should say. `oldRules`: eligible trials
+	 * (engaged, ran out by itself, player stayed) recorded before the current rules, which cannot be
+	 * recomputed because a measure the rules need was not stored ("not counted: recorded before the
+	 * current rules").
+	 */
+	leftOut: { oldRules: number };
 }
 
 const RATE_KEYS = ['wellTimed', 'tooLate', 'caught', 'tooEarly'] as const;
@@ -201,7 +208,8 @@ export function decisionRates(trials: { participantId: string; outcome: string; 
 			return { method: 'wilson' as const, rates: [0, 1, 2, 3].map((j) => ({ ...wilson(clusters.reduce((a, c) => a + c.k[j], 0), n), method: 'wilson' as const })) };
 		})()
 		: clusteredRates(clusters, 4, seedKey);
-	const out = { interval: r.method } as DecisionRates;
+	const oldRules = trials.filter((t) => t.inRates && t.rulesVersion !== RULES_VERSION).length;
+	const out = { interval: r.method, leftOut: { oldRules } } as DecisionRates;
 	RATE_KEYS.forEach((key, j) => (out[key] = r.rates[j]));
 	return out;
 }
@@ -227,7 +235,7 @@ export interface CueSummary extends DecisionRates {
 	/** Power left unused after an early retreat (all early retreats with a ghost still reachable). */
 	wasted: Spread;
 	nearMisses: number;
-	/** Trials classified by older rules (no stored measure to recompute them): left out of every rate. */
+	/** Trials classified by older rules (no stored measure to recompute them), engaged or not: in no rate. `leftOut.oldRules` counts the eligible ones. */
 	oldRules: number;
 	clarity: { n: number; mean: number | null };
 	distraction: { n: number; mean: number | null };

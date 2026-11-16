@@ -24,15 +24,18 @@ export async function blockRatings(ctx: QueryCtx, f: Filter): Promise<Doc<'ratin
  */
 export const byCue = query({
 	args: filterArgs,
-	handler: async (ctx, f): Promise<{ source: string; cues: CueSummary[]; all: CueSummary; scanned: number }> => {
+	handler: async (ctx, f): Promise<{ source: string; cues: CueSummary[]; all: CueSummary; scanned: number; leftOut: { oldRules: number } }> => {
 		const trials = await scanTrials(ctx, f);
 		const ratings = await blockRatings(ctx, f);
 		const cues = [...new Set([...trials.map((t) => t.cue), ...ratings.map((r) => r.cue ?? '')].filter(Boolean))].sort();
+		const all = summarize('all', trials, ratings);
 		return {
 			source: f.source ?? 'human',
 			cues: cues.map((c) => summarize(c, trials.filter((t) => t.cue === c), ratings.filter((r) => r.cue === c))),
-			all: summarize('all', trials, ratings),
-			scanned: trials.length
+			all,
+			scanned: trials.length,
+			/** Eligible trials left out of every rate because they were recorded before the current rules. */
+			leftOut: all.leftOut
 		};
 	}
 });

@@ -17,7 +17,7 @@ export const counters = query({
 		const src = a.source ?? 'human';
 		const now = a.now ?? Date.now();
 		const rows = (await ctx.db.query('counters').collect()).filter((c) => src === 'all' || c.source === src);
-		const total = (k: 'trials' | 'engaged' | 'inRates' | 'decisions' | 'clips' | 'sessions' | 'participants') => rows.reduce((n, c) => n + c[k], 0);
+		const total = (k: 'trials' | 'engaged' | 'inRates' | 'decisions' | 'oldRules' | 'clips' | 'sessions' | 'participants') => rows.reduce((n, c) => n + (c[k] ?? 0), 0);
 		const recent: Doc<'trials'>[] = src === 'all'
 			? await ctx.db.query('trials').withIndex('by_created', (i) => i.gt('createdAt', now - 60_000)).collect()
 			: await ctx.db.query('trials').withIndex('by_source_created', (i) => i.eq('source', src).gt('createdAt', now - 60_000)).collect();
@@ -30,6 +30,8 @@ export const counters = query({
 			engaged: total('engaged'),
 			inRates: total('inRates'),
 			decisions: total('decisions'),
+			/** Eligible trials recorded before the current rules: not counted in any rate. */
+			leftOut: { oldRules: total('oldRules') },
 			clips: total('clips'),
 			sessions: total('sessions'),
 			participants: total('participants'),

@@ -9,7 +9,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import { internalMutation, mutation, type MutationCtx } from './_generated/server';
-import { isDecision } from './lib/rules';
+import { RULES_VERSION, isDecision } from './lib/rules';
 import { source } from './validators';
 
 export const counterFields = {
@@ -20,6 +20,8 @@ export const counterFields = {
 	inRates: v.number(),
 	/** Decision trials (current rules): the denominator of every rate. */
 	decisions: v.number(),
+	/** Eligible trials recorded before the current rules (cannot be recomputed): in no rate. Absent on old rows (0). */
+	oldRules: v.optional(v.number()),
 	clips: v.number(),
 	sessions: v.number(),
 	participants: v.number(),
@@ -27,7 +29,7 @@ export const counterFields = {
 };
 
 type Counts = Omit<Doc<'counters'>, '_id' | '_creationTime' | 'source'>;
-const ZERO: Counts = { trials: 0, engaged: 0, inRates: 0, decisions: 0, clips: 0, sessions: 0, participants: 0, lastTrialAt: null };
+const ZERO: Counts = { trials: 0, engaged: 0, inRates: 0, decisions: 0, oldRules: 0, clips: 0, sessions: 0, participants: 0, lastTrialAt: null };
 
 /** Add to the totals of one source (creates the document on first use). */
 export async function bump(ctx: MutationCtx, src: 'human' | 'bot', add: Partial<Counts>) {
@@ -46,6 +48,7 @@ export async function bump(ctx: MutationCtx, src: 'human' | 'bot', add: Partial<
 export function trialCounts(t: Pick<Doc<'trials'>, 'engaged' | 'inRates' | 'outcome' | 'rulesVersion' | 'clipId' | 'createdAt'>, clip: boolean): Partial<Counts> {
 	return {
 		trials: 1, engaged: t.engaged ? 1 : 0, inRates: t.inRates ? 1 : 0, decisions: isDecision(t) ? 1 : 0,
+		oldRules: t.inRates && t.rulesVersion !== RULES_VERSION ? 1 : 0,
 		clips: clip ? 1 : 0, lastTrialAt: t.createdAt
 	};
 }
