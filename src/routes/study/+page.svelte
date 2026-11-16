@@ -34,14 +34,14 @@
 	</EmptyState>
 
 	<div class="preview">
-	<Panel title="Preview: the question after each round" sub="Nothing is saved from this preview.">
-		<Scale7
-			question="I could tell when the power was about to run out."
-			low="Not at all"
-			high="Completely"
-			bind:value={clarity}
-		/>
-	</Panel>
+		<Panel title="Preview: the question after each round" sub="Nothing is saved from this preview.">
+			<Scale7
+				question="I could tell when the power was about to run out."
+				low="Not at all"
+				high="Completely"
+				bind:value={clarity}
+			/>
+		</Panel>
 	</div>
 </Page>
 
