@@ -16,10 +16,14 @@
  * a share of power-ups they ignore, and a learning effect: noise is larger early in the session and
  * settles over the first 20 or so trials. Counterbalanced orders spread that learning over the cues.
  *
- * Measured with the real tracker (see calibrate.test.ts), the bot's awareness moves the headline
- * numbers by a modest amount: with caution around 0.3 s, noise 0.3 s gives about 70% well timed and
- * almost no catches, noise 2.2 s about 50% well timed and 5-12% caught. Reaction time hardly
- * matters: once it notices, the bot is good at getting away.
+ * Measured with the real tracker (see calibrate.test.ts and diagnose.test.ts), the bot's awareness
+ * moves the headline numbers by a modest amount: with caution around 0.3 s, noise 0.3 s gives about
+ * 70% well timed and almost no catches, noise 2.2 s about 50-60% well timed and 5-12% caught.
+ * Reaction time hardly matters: once it notices, the bot is good at getting away.
+ * Why "well timed" moves so little: a bot that believes it has 1-2 s more than it has keeps chasing
+ * and often eats a ghost in the last 1.5 s, which counts as a late catch (well timed), and it is
+ * rarely caught afterwards. The separate errors track the noise much better: the share of early
+ * retreats, of overstays plus catches, and the 10-90% spread of turn-away times all grow with it.
  *
  * Pure and deterministic for a seed.
  */

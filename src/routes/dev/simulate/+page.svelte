@@ -147,7 +147,7 @@
 					{/snippet}
 				</Field>
 				<div class="row">
-					<Field label="Participants" hint="About 2 seconds each for a full session.">
+					<Field label="Participants" hint="A few seconds each: about 2 s to simulate, plus writing, which slows as the database grows.">
 						{#snippet children(id)}
 							<input {id} class="input num" type="number" min="1" max="200" bind:value={participants} disabled={running} data-testid="participants" />
 						{/snippet}
@@ -214,7 +214,7 @@
 	</div>
 
 	<div class="grid">
-		<Panel title="What the {preset} preset plants" sub={preset === 'planted' ? 'Invented for validation, not a prediction. Lower noise should mean more well-timed trials and fewer caught.' : `Every condition gets the same noise (${FLAT_NOISE} s), so the dashboard should show no real differences.`} flush>
+		<Panel title="What the {preset} preset plants" sub={preset === 'planted' ? 'Invented for validation, not a prediction. More noise should mean more early retreats, more overstays and catches, and a wider spread of turn-away times. The well-timed rate moves less: a bot that overstays often still eats a ghost late.' : `Every condition gets the same noise (${FLAT_NOISE} s), so the dashboard should show no real differences.`} flush>
 			<DataTable
 				caption="Planted awareness per condition"
 				dense

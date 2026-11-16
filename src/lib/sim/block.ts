@@ -45,6 +45,8 @@ export interface SimTrial {
 	measures: TrialMeasures;
 	/** What the bot was given for this power-up (null only if the tracker saw a power the loop did not). */
 	awareness: TrialAwareness | null;
+	/** The belief error the bot drew for this power-up, seconds (positive: thought it had more time). */
+	error: number | null;
 }
 
 export interface BlockResult {
@@ -64,6 +66,7 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 	const out: SimTrial[] = [];
 	// The awareness each power-up was played with, by power serial.
 	const bySerial = new Map<number, TrialAwareness>();
+	const errors = new Map<number, number>();
 	let trialIndex = keys.firstTrialIndex ?? 0;
 	let serial = 0, k = 0;
 
@@ -72,7 +75,7 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 			key: keys.trialKey(), sessionKey: keys.sessionKey, blockKey: keys.blockKey, trialIndex: trialIndex++,
 			cue: plan.cue, sound: true, reducedMotion: false, inputType: 'none', difficulty: game.config.difficulty
 		});
-		out.push({ args, measures: m, awareness: bySerial.get(m.serial) ?? null });
+		out.push({ args, measures: m, awareness: bySerial.get(m.serial) ?? null, error: errors.get(m.serial) ?? null });
 	};
 
 	const steps = Math.round(plan.seconds / STEP);
@@ -88,6 +91,7 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 			bot.options.reaction = a.reaction;
 		}
 		bot.step();
+		if (s > 0 && !errors.has(s)) errors.set(s, bot.error);
 		game.update(STEP);
 		if (i % STEPS_PER_FRAME === 0) {
 			const scene = game.scene();
