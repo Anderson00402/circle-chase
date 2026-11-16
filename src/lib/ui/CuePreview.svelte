@@ -12,11 +12,11 @@
 	 * ghost in view, player cues the player; both widen to take in the pair when it fits.
 	 */
 	const zoomCache = new Map<string, { clip: Clip; path: FW[] }>();
-	export const ZOOM = { min: 9, max: 13 };
+	export const ZOOM = { min: 9, max: 14 };
 	function zoomPath(clip: Clip, subject: 'ghost' | 'player'): FW[] {
 		const hit = zoomCache.get(subject);
 		if (hit?.clip === clip) return hit.path;
-		const path = fp(clip.scenes, { min: ZOOM.min, max: ZOOM.max, pad: 5, subject });
+		const path = fp(clip.scenes, { min: ZOOM.min, max: ZOOM.max, pad: 6, subject }, 0.22);
 		zoomCache.set(subject, { clip, path });
 		return path;
 	}
@@ -215,12 +215,14 @@
 	.preview { width: 100%; height: 100%; display: flex; flex-direction: column; gap: var(--space-2); }
 	.stage { position: relative; flex: 1; min-height: 0; }
 	.stage :global(.scene-view), .stage :global(.zoom) { position: absolute; inset: 0; }
+	/* Small and in a corner, so it hides as little of the board as possible. */
 	.play-btn {
 		position: absolute;
-		right: 8px;
-		bottom: 8px;
-		width: 34px;
-		height: 34px;
+		right: 6px;
+		top: 6px;
+		width: 26px;
+		height: 26px;
+		opacity: 0.85;
 		display: grid;
 		place-items: center;
 		border-radius: 50%;
