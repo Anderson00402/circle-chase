@@ -191,9 +191,10 @@
 	.dim a {
 		color: var(--focus);
 	}
+	/* Stacked: the forest has three rate columns and needs the full width. */
 	.two {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--space-6);
 		margin-top: var(--space-5);
 	}
