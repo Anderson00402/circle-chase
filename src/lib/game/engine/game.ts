@@ -38,7 +38,7 @@ export const DEFAULT_CONFIG: GameConfig = {
 /** Study mode: random power lengths, power dots that grow back, and no game over. */
 export const STUDY_CONFIG: GameConfig = {
 	mode: 'study', difficulty: 'normal', seed: 1, startLevel: 1,
-	frightRange: [4, 8], powerRespawn: 12, infiniteLives: true, fixedLevel: true
+	frightRange: [4, 8], powerRespawn: 12, infiniteLives: true, fixedLevel: true, powerLock: true
 };
 
 /** Small seeded random number generator (mulberry32). */
@@ -181,6 +181,15 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 			g.scared = true;
 			if (g.mode === 'active') g.flip = true;
 		}
+		// One power-up at a time: the other power dots step out until this one is over.
+		if (config.powerLock && config.powerRespawn > 0) {
+			for (let i = 0; i < dots.length; i++) {
+				if (dots[i] !== 2) continue;
+				dots[i] = 0;
+				dotsLeft--;
+				respawns.push({ i, at: time });
+			}
+		}
 	}
 
 	function endPower(reason: PowerEndReason) {
@@ -267,6 +276,7 @@ export function createGame(partial: Partial<GameConfig> = {}): EngineGame {
 	function tickPickups(dt: number) {
 		if (bonus && (bonus.left -= dt) <= 0) bonus = null;
 		if (!respawns.length) return;
+		if (config.powerLock && powerOn) return;
 		const [px, py] = pos(player);
 		respawns = respawns.filter((r) => {
 			if (time < r.at) return true;

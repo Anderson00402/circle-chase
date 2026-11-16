@@ -200,6 +200,11 @@ export interface GameConfig {
 	 * every trial of a session is played on the same maze at the same speeds.
 	 */
 	fixedLevel?: boolean;
+	/**
+	 * While a power-up is running, the other power dots leave the board and come back when it is over
+	 * (needs `powerRespawn`). Study mode sets this so a second power dot never cuts a trial short.
+	 */
+	powerLock?: boolean;
 }
 
 export interface Game {

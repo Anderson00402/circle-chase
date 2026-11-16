@@ -268,3 +268,26 @@ describe('fixed level', () => {
 		expect(STUDY_CONFIG.fixedLevel).toBe(true);
 	});
 });
+
+describe('power lock', () => {
+	it('study mode never refreshes a power-up with a second power dot', async () => {
+		const { createGame, STUDY_CONFIG } = await import('./game');
+		const { createBot } = await import('./bot');
+		for (const seed of [1, 2, 3]) {
+			const game = createGame({ ...STUDY_CONFIG, seed });
+			const bot = createBot(game, { seed });
+			let powers = 0;
+			for (let i = 0; i < 120 * 150; i++) {
+				bot.step();
+				game.update(1 / 120);
+				const f = game.frame();
+				for (const e of f.events) {
+					if (e.type === 'power') powers++;
+					if (e.type === 'powerEnd') expect(e.reason).not.toBe('refreshed');
+				}
+				if (f.power.left > 0) expect(Array.from(game.dots).includes(2)).toBe(false);
+			}
+			expect(powers).toBeGreaterThan(3);
+		}
+	});
+});
