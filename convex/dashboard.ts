@@ -18,7 +18,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, query, type QueryCtx } from './_generated/server';
 import { filterArgs, type Filter } from './lib/filters';
-import { CURVE_FROM, CURVE_STEP, curveOf, rebuildSessionDigest, type DigestRow } from './lib/digest';
+import { CURVE_FROM, CURVE_STEP, curveOf, rebuildSessionDigest, sessionRows, type DigestRow } from './lib/digest';
 import { RULES_VERSION } from './lib/rules';
 import {
 	cellsOfRows, emptyAgg, isDecisionRow, mergeAgg as mergeInto, isRanked, lineIndex, LINES, mainOf, outcomeAt, slim, summaryOf, timeToSpare,
@@ -101,8 +101,7 @@ async function readParts(ctx: QueryCtx, f: Filter): Promise<{ parts: Part[]; doc
 		let data: CellsData;
 		if (d.firstAt >= from && d.lastAt <= to) data = JSON.parse(d.data) as CellsData;
 		else {
-			const dg = await ctx.db.query('trialDigests').withIndex('by_session', (i) => i.eq('sessionId', d.sessionId)).unique();
-			const rows = (dg?.rows ?? []).filter((r) => r.createdAt >= from && r.createdAt <= to);
+			const rows = (await sessionRows(ctx, d.sessionId)).filter((r) => r.createdAt >= from && r.createdAt <= to);
 			data = cellsOfRows(rows as CellRow[], d.mode);
 		}
 		const cues: Record<string, CueAgg> = {};

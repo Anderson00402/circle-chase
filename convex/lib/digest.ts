@@ -16,11 +16,19 @@
  *
  * The digest's `mode` is its first trial's; each row carries its own `mode` too, and filters use
  * the row's (a console session can mix study and arcade runs).
+ *
+ * Chunks: a session's rows are kept in documents of at most `DIGEST_CHUNK` rows (`chunk` 0, 1,
+ * 2...; digests written before chunks have no `chunk` and hold the whole session). A new trial is
+ * appended to the session's last chunk, so a save rewrites at most `DIGEST_CHUNK` rows, not the
+ * whole session (the local database keeps every revision: rewriting a 150-row digest on each trial
+ * made about 1 GB of revisions for 15,000 power-ups). Readers treat each chunk like a digest of its
+ * own (each carries the session's context and its own `firstAt`/`lastAt`); `sessionRows` gives a
+ * session's rows in one list.
  */
 import { defineTable } from 'convex/server';
 import { v, type Infer } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { mode, source } from '../validators';
 import { unpackSeries } from './series';
 import { cellsOfRows, type CellRow } from './cells';
@@ -90,6 +98,8 @@ export const trialDigestTable = defineTable({
 	simRun: v.optional(v.string()),
 	firstAt: v.number(),
 	lastAt: v.number(),
+	/** Position of this document among its session's chunks (absent: 0, a digest written before chunks). */
+	chunk: v.optional(v.number()),
 	rows: v.array(digestRow)
 })
 	.index('by_session', ['sessionId'])
@@ -228,10 +238,61 @@ export async function syncCells(ctx: MutationCtx, d: Pick<Doc<'trialDigests'>, '
 	else await ctx.db.insert('trialCells', doc);
 }
 
-/** Replace a digest's rows (and its cells). For writers outside this file, e.g. `admin.reclassify`. */
-export async function patchDigestRows(ctx: MutationCtx, d: Doc<'trialDigests'>, rows: DigestRow[]): Promise<void> {
-	await ctx.db.patch(d._id, { rows, ...bounds(rows) });
-	await syncCells(ctx, d, rows);
+/** Rows per digest document (see "Chunks" above). */
+export const DIGEST_CHUNK = 25;
+let chunkSize: number = DIGEST_CHUNK;
+/** Tests only: write chunks of another size (Infinity: one document per session, as before chunks). */
+export function setDigestChunkForTests(n: number) { chunkSize = n; }
+
+type Digest = Doc<'trialDigests'>;
+type Reader = Pick<QueryCtx, 'db'>;
+const byCreated = (a: DigestRow, b: DigestRow) => a.createdAt - b.createdAt;
+
+/** A session's digest documents, in chunk order. */
+export async function sessionChunks(ctx: Reader, sessionId: Id<'sessions'>): Promise<Digest[]> {
+	const ds = await ctx.db.query('trialDigests').withIndex('by_session', (i) => i.eq('sessionId', sessionId)).collect();
+	return ds.sort((a, b) => (a.chunk ?? 0) - (b.chunk ?? 0));
+}
+
+/** All of a session's digest rows, oldest first. */
+export function rowsOfChunks(ds: Digest[]): DigestRow[] {
+	return ds.flatMap((d) => d.rows).sort(byCreated);
+}
+export async function sessionRows(ctx: Reader, sessionId: Id<'sessions'>): Promise<DigestRow[]> {
+	return rowsOfChunks(await sessionChunks(ctx, sessionId));
+}
+
+/** Write a chunk's rows (delete it when none are left). */
+async function writeChunk(ctx: MutationCtx, d: Digest, rows: DigestRow[]) {
+	if (rows.length) await ctx.db.patch(d._id, { rows, ...bounds(rows) });
+	else await ctx.db.delete(d._id);
+}
+
+/** Insert a session's rows as new chunks after `start`. */
+async function insertChunks(ctx: MutationCtx, head: Omit<Digest, '_id' | '_creationTime' | 'rows' | 'firstAt' | 'lastAt' | 'chunk'>, rows: DigestRow[], start: number) {
+	const size = Number.isFinite(chunkSize) ? chunkSize : Math.max(1, rows.length);
+	for (let i = 0, c = start; i < rows.length; i += size, c++) {
+		const part = rows.slice(i, i + size);
+		await ctx.db.insert('trialDigests', { ...head, chunk: c, ...bounds(part), rows: part });
+	}
+}
+
+/**
+ * Change some rows of one session's digest (and its cells): `update` returns the new row, or the
+ * same object to leave it. Only chunks with a changed row are written. For writers outside this
+ * file, e.g. `admin.reclassify`.
+ */
+export async function patchSessionRows(ctx: MutationCtx, sessionId: Id<'sessions'>, update: (r: DigestRow) => DigestRow): Promise<void> {
+	const ds = await sessionChunks(ctx, sessionId);
+	if (!ds.length) return;
+	const all: DigestRow[] = [];
+	for (const d of ds) {
+		let changed = false;
+		const rows = d.rows.map((r) => { const n = update(r); if (n !== r) changed = true; return n; });
+		if (changed) await writeChunk(ctx, d, rows);
+		all.push(...rows);
+	}
+	await syncCells(ctx, ds[0], all.sort(byCreated));
 }
 
 function bounds(rows: DigestRow[]) {
@@ -240,40 +301,54 @@ function bounds(rows: DigestRow[]) {
 
 /**
  * Put one trial into its session's digest (insert or replace). Pass the packed series when the
- * trial is new; leave it out to keep the curve already stored (an outcome changed).
+ * trial is new; leave it out to keep the curve already stored (an outcome changed). A new trial is
+ * appended to the last chunk, or starts a new one when that is full.
  */
 export async function syncDigest(ctx: MutationCtx, t: Doc<'trials'>, packed?: ArrayBuffer | null): Promise<void> {
-	const d = await ctx.db.query('trialDigests').withIndex('by_session', (i) => i.eq('sessionId', t.sessionId)).unique();
-	if (!d) {
+	const ds = await sessionChunks(ctx, t.sessionId);
+	if (!ds.length) {
 		const p = await ctx.db.get(t.participantId);
 		const rows = [rowOf(t, packed ?? null)];
-		const doc = {
+		const head = {
 			sessionId: t.sessionId, participantId: t.participantId, participantNumber: p?.number ?? null,
-			source: t.source, mode: t.mode, ...(t.simRun ? { simRun: t.simRun } : {}), ...bounds(rows), rows
+			source: t.source, mode: t.mode, ...(t.simRun ? { simRun: t.simRun } : {})
 		};
-		await ctx.db.insert('trialDigests', doc);
-		await syncCells(ctx, doc, rows);
+		await insertChunks(ctx, head, rows, 0);
+		await syncCells(ctx, head, rows);
 		return;
 	}
-	const i = d.rows.findIndex((r) => r.id === t._id);
-	const rows = [...d.rows];
-	if (i >= 0) rows[i] = rowOf(t, packed, d.rows[i]);
-	else {
-		rows.push(rowOf(t, rows.length < MAX_ROWS_WITH_CURVE ? (packed ?? null) : null));
-		rows.sort((a, b) => a.createdAt - b.createdAt);
+	for (const d of ds) {
+		const i = d.rows.findIndex((r) => r.id === t._id);
+		if (i < 0) continue;
+		const rows = [...d.rows];
+		rows[i] = rowOf(t, packed, d.rows[i]);
+		await writeChunk(ctx, d, rows);
+		await syncCells(ctx, d, rowsOfChunks(ds.map((x) => (x === d ? { ...x, rows } : x))));
+		return;
 	}
-	await patchDigestRows(ctx, d, rows);
+	const total = ds.reduce((n, d) => n + d.rows.length, 0);
+	const row = rowOf(t, total < MAX_ROWS_WITH_CURVE ? (packed ?? null) : null);
+	const last = ds[ds.length - 1];
+	let chunks: Digest[];
+	if (last.rows.length < chunkSize) {
+		const rows = [...last.rows, row].sort(byCreated);
+		await writeChunk(ctx, last, rows);
+		chunks = [...ds.slice(0, -1), { ...last, rows }];
+	} else {
+		const { _id, _creationTime, rows: _r, firstAt: _f, lastAt: _l, chunk, ...head } = last;
+		await insertChunks(ctx, head, [row], (chunk ?? 0) + 1);
+		chunks = [...ds, { ...last, rows: [row] }];
+	}
+	await syncCells(ctx, last, rowsOfChunks(chunks));
 }
 
 /** Rebuild one session's digest from its trial rows and series (about 2 reads per trial). */
 export async function rebuildSessionDigest(ctx: MutationCtx, sessionId: Id<'sessions'>): Promise<number> {
 	const trials = await ctx.db.query('trials').withIndex('by_session', (i) => i.eq('sessionId', sessionId)).collect();
-	const d = await ctx.db.query('trialDigests').withIndex('by_session', (i) => i.eq('sessionId', sessionId)).unique();
+	const ds = await sessionChunks(ctx, sessionId);
+	for (const d of ds) await ctx.db.delete(d._id);
 	if (!trials.length) {
-		if (d) {
-			await ctx.db.delete(d._id);
-			await syncCells(ctx, d, []);
-		}
+		if (ds.length) await syncCells(ctx, ds[0], []);
 		return 0;
 	}
 	const rows: DigestRow[] = [];
@@ -281,30 +356,33 @@ export async function rebuildSessionDigest(ctx: MutationCtx, sessionId: Id<'sess
 		const ser = await ctx.db.query('trialSeries').withIndex('by_trial', (i) => i.eq('trialId', t._id)).unique();
 		rows.push(rowOf(t, rows.length < MAX_ROWS_WITH_CURVE ? (ser?.series ?? null) : null));
 	}
-	rows.sort((a, b) => a.createdAt - b.createdAt);
-	if (d) {
-		await patchDigestRows(ctx, d, rows);
-	} else {
-		const p = await ctx.db.get(trials[0].participantId);
-		const t = trials[0];
-		const doc = {
-			sessionId, participantId: t.participantId, participantNumber: p?.number ?? null,
-			source: t.source, mode: t.mode, ...(t.simRun ? { simRun: t.simRun } : {}), ...bounds(rows), rows
-		};
-		await ctx.db.insert('trialDigests', doc);
-		await syncCells(ctx, doc, rows);
-	}
+	rows.sort(byCreated);
+	const t = trials[0];
+	const p = await ctx.db.get(t.participantId);
+	const head = {
+		sessionId, participantId: t.participantId, participantNumber: p?.number ?? null,
+		source: t.source, mode: t.mode, ...(t.simRun ? { simRun: t.simRun } : {})
+	};
+	await insertChunks(ctx, head, rows, 0);
+	await syncCells(ctx, head, rows);
+	return rows.length;
+}
+
+/** Rewrite one session's cells from its digest rows (no digest change). Returns the rows read. */
+export async function rebuildSessionCells(ctx: MutationCtx, sessionId: Id<'sessions'>): Promise<number> {
+	const ds = await sessionChunks(ctx, sessionId);
+	if (!ds.length) return 0;
+	const rows = rowsOfChunks(ds);
+	await syncCells(ctx, ds[0], rows);
 	return rows.length;
 }
 
 /** Remove a trial from its session's digest (when the trial row is deleted). */
 export async function dropFromDigest(ctx: MutationCtx, t: Pick<Doc<'trials'>, '_id' | 'sessionId'>): Promise<void> {
-	const d = await ctx.db.query('trialDigests').withIndex('by_session', (i) => i.eq('sessionId', t.sessionId)).unique();
+	const ds = await sessionChunks(ctx, t.sessionId);
+	const d = ds.find((x) => x.rows.some((r) => r.id === t._id));
 	if (!d) return;
 	const rows = d.rows.filter((r) => r.id !== t._id);
-	if (rows.length) await patchDigestRows(ctx, d, rows);
-	else {
-		await ctx.db.delete(d._id);
-		await syncCells(ctx, d, []);
-	}
+	await writeChunk(ctx, d, rows);
+	await syncCells(ctx, d, rowsOfChunks(ds.map((x) => (x === d ? { ...x, rows } : x))));
 }

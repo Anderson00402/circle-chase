@@ -8,7 +8,7 @@ import type { TableNames } from './_generated/dataModel';
 import { internalMutation, mutation, type MutationCtx } from './_generated/server';
 import { RULES_VERSION, rescore } from './lib/rules';
 import type { Doc, Id } from './_generated/dataModel';
-import { patchDigestRows, rowOf } from './lib/digest';
+import { patchSessionRows, rowOf } from './lib/digest';
 import { patchReplayRows } from './lib/replayDigest';
 
 const TABLES: TableNames[] = ['clips', 'trialSeries', 'trialDigests', 'trialCells', 'replayDigests', 'trials', 'ratings', 'blocks', 'presence', 'sessions', 'participants', 'counters', 'cueCounters'];
@@ -106,10 +106,8 @@ export const reclassifyStep = internalMutation({
 		}
 		// The dashboard's digests: one write per session touched, keeping each trial's stored curve.
 		for (const [sessionId, ts] of touched) {
-			const d = await ctx.db.query('trialDigests').withIndex('by_session', (i) => i.eq('sessionId', sessionId)).unique();
-			if (!d) continue;
 			const byId = new Map(ts.map((t) => [t._id, t]));
-			await patchDigestRows(ctx, d, d.rows.map((row) => (byId.has(row.id) ? rowOf(byId.get(row.id)!, undefined, row) : row)));
+			await patchSessionRows(ctx, sessionId, (row) => (byId.has(row.id) ? rowOf(byId.get(row.id)!, undefined, row) : row));
 		}
 		// The replay browser's digests likewise.
 		for (const [sessionId, ts] of touched) await patchReplayRows(ctx, sessionId, ts);
