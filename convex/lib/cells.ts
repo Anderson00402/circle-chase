@@ -15,7 +15,7 @@
  * Pure (no Convex imports), so tests can check it against the row-by-row arithmetic and time it on
  * a synthetic load (cells.test.ts).
  */
-import { clusteredRates, spread, wilson, type Cluster, type Rate } from './stats';
+import { BOOT_MIN_PARTICIPANTS, BOOT_RESAMPLES, quantile, spread, wilson, type Cluster, type IntervalMethod, type Rate } from './stats';
 import { classify, DECISIONS, isLateCatch, PURSUIT_GAIN, REACH_SPEED, RULES_VERSION, TIMELY, TIMELY_CHECK, type ChaseEnd, type RuleInput } from './rules';
 import {
 	againstRef, allPairs, family, median, PAIR_MIN_PEOPLE, paired as pairedOf, pairedFrom, peopleNeeded, pooledSd, RATE_INDEX, unpairedFrom,
@@ -243,16 +243,17 @@ export function addRow(a: CueAgg, r: CellRow) {
 	}
 }
 
-/** b merged into a (in place). */
-export function mergeAgg(a: CueAgg, b: CueAgg): CueAgg {
+/** b merged into a (in place). `core`: only what a summary reads (not the learning and breakdown counts). */
+export function mergeAgg(a: CueAgg, b: CueAgg, core = false): CueAgg {
 	a.t += b.t; a.eng += b.eng; a.elig += b.elig; a.old += b.old; a.oldElig += b.oldElig; a.nm += b.nm;
-	for (const [k, v] of Object.entries(b.out)) addMap(a.out, k, v);
+	for (const k in b.out) addMap(a.out, k, b.out[k]);
 	a.sh += b.sh;
 	addTo(a.d, b.d);
-	for (const [k, v] of Object.entries(b.nc)) addMap(a.nc, k, v);
+	for (const k in b.nc) addMap(a.nc, k, b.nc[k]);
 	a.cat += b.cat; a.lcat += b.lcat; a.gu += b.gu; a.guf += b.guf;
 	for (const x of b.turn) a.turn.push(x);
 	for (const x of b.waste) a.waste.push(x);
+	if (core) return a;
 	for (const [k, v] of Object.entries(b.bt)) addCounts(a.bt, k, v);
 	for (const [k, v] of Object.entries(b.bb)) addCounts(a.bb, k, v);
 	a.mb = Math.max(a.mb, b.mb);
@@ -323,6 +324,70 @@ export function cellsOfRows(rows: CellRow[], mode: 'study' | 'arcade'): CellsDat
 	return { groups: [...groups.values()], session: s };
 }
 
+// ---------- intervals ----------
+
+/** The seed hash of convex/lib/stats.ts (its generator is inlined below), so the intervals are the same numbers. */
+function hash(s: string): number {
+	let h = 2166136261;
+	for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+	return h >>> 0;
+}
+
+/**
+ * The participant-clustered bootstrap of convex/lib/stats.ts `clusteredRates` for the four rates,
+ * giving the same numbers (same seed, same draws, same percentiles; cells.test.ts checks it) but
+ * on typed arrays, about three times faster: the headline runs one per condition, and with a few
+ * hundred people that was most of its time.
+ */
+export function clusteredRates4(clusters: Cluster[], seedKey: string, resamples = BOOT_RESAMPLES): { method: IntervalMethod; rates: Rate[] } {
+	const live = clusters.filter((c) => c.n > 0);
+	const n = live.reduce((a, c) => a + c.n, 0);
+	const k = [0, 1, 2, 3].map((j) => live.reduce((a, c) => a + c.k[j], 0));
+	if (live.length < BOOT_MIN_PARTICIPANTS) return { method: 'wilson', rates: k.map((kj) => ({ ...wilson(kj, n), method: 'wilson' as const })) };
+	// mulberry32, as `rng` above, inlined: the closure call was most of the cost.
+	let st = hash(`${seedKey}|${n}|${k.join(',')}|${live.length}`) >>> 0;
+	const P = live.length;
+	const N = new Float64Array(P), K = new Float64Array(P * 4);
+	live.forEach((c, i) => {
+		N[i] = c.n;
+		for (let j = 0; j < 4; j++) K[i * 4 + j] = c.k[j];
+	});
+	const d0 = new Float64Array(resamples), d1 = new Float64Array(resamples), d2 = new Float64Array(resamples), d3 = new Float64Array(resamples);
+	for (let b = 0; b < resamples; b++) {
+		let nb = 0, s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+		for (let i = 0; i < P; i++) {
+			st = (st + 0x6d2b79f5) >>> 0;
+			let t = st;
+			t = Math.imul(t ^ (t >>> 15), t | 1);
+			t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+			const x = Math.floor((((t ^ (t >>> 14)) >>> 0) / 4294967296) * P), o = x * 4;
+			nb += N[x];
+			s0 += K[o];
+			s1 += K[o + 1];
+			s2 += K[o + 2];
+			s3 += K[o + 3];
+		}
+		d0[b] = s0 / nb;
+		d1[b] = s1 / nb;
+		d2[b] = s2 / nb;
+		d3[b] = s3 / nb;
+	}
+	const draws = [d0, d1, d2, d3];
+	return {
+		method: 'bootstrap',
+		rates: k.map((kj, j) => {
+			if (kj === 0 || kj === n) return { ...wilson(kj, n), method: 'wilson' as const };
+			const sorted = draws[j].sort() as unknown as number[];
+			return { k: kj, n, rate: kj / n, lo: quantile(sorted, 0.025), hi: quantile(sorted, 0.975), method: 'bootstrap' as const };
+		})
+	};
+}
+
+/** Every cluster pooled into one (so the interval falls back to Wilson). */
+function mergeClusters(cs: Cluster[]): Cluster {
+	return { n: cs.reduce((a, c) => a + c.n, 0), k: [0, 1, 2, 3].map((j) => cs.reduce((a, c) => a + c.k[j], 0)) };
+}
+
 // ---------- the headline, from cells ----------
 
 /** One session's contribution to a filter: its participant and its conditions' totals. */
@@ -359,14 +424,17 @@ function bucketOf(x: number, c: Counts, li: number): Bucket {
 	return { x, n, wellTimed: w(0), tooLate: w(1), tooEarly: w(3), caught: w(2) };
 }
 
-/** A condition's summary (the shape of convex/lib/stats.ts `summarize`, without per-trial lists). */
-export function summaryOf(cue: string, perP: [string, CueAgg][], li: number) {
+/**
+ * A condition's summary (the shape of convex/lib/stats.ts `summarize`, without per-trial lists).
+ * `boot: false` gives Wilson intervals (the pooled "all conditions" summary, which no chart draws).
+ */
+export function summaryOf(cue: string, perP: [string, CueAgg][], li: number, boot = true) {
 	const tot = emptyAgg();
-	for (const [, a] of perP) mergeAgg(tot, a);
+	for (const [, a] of perP) mergeAgg(tot, a, true);
 	// Clusters in participant order, so the interval does not depend on the order rows were read in.
 	const sorted = [...perP].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0));
 	const clusters: Cluster[] = sorted.map(([, a]) => hitsAt(a.d, li)).map(({ n, k }) => ({ n, k }));
-	const r = clusteredRates(clusters, 4, cue);
+	const r = clusteredRates4(boot ? clusters : [mergeClusters(clusters)], cue);
 	const { n: decisions, k } = hitsAt(tot.d, li);
 	const outcomes = { ...tot.out };
 	if (li > 0 && tot.sh) {
@@ -420,7 +488,10 @@ export const YARDSTICK_IDS = ['timer-bar', 'none', 'classic-blink'] as const;
 /** Smallest paired difference worth detecting (fraction) in the precision statement. */
 export const TARGET_DIFF = 0.15;
 
-/** Participant -> condition -> merged totals. */
+/**
+ * Participant -> condition -> merged totals. The parts are this call's own (parsed for it), so a
+ * person's first session is used as it is and later sessions are merged into it.
+ */
 function byPerson(parts: Part[]): Map<string, Map<string, CueAgg>> {
 	const m = new Map<string, Map<string, CueAgg>>();
 	for (const p of parts) {
@@ -429,7 +500,7 @@ function byPerson(parts: Part[]): Map<string, Map<string, CueAgg>> {
 		for (const [cue, a] of Object.entries(p.cues)) {
 			const have = byCue.get(cue);
 			if (have) mergeAgg(have, a);
-			else byCue.set(cue, mergeAgg(emptyAgg(), a));
+			else byCue.set(cue, a);
 		}
 	}
 	return m;
@@ -454,24 +525,29 @@ function cellsAt(people: Map<string, Map<string, CueAgg>>, li: number): Cells {
  * sound and input usually stay the same for a person.
  */
 function factorDiffs(people: Map<string, Map<string, CueAgg>>, f: FactorKey, levels: [string, string], cues: string[], li: number) {
-	const at = (a: CueAgg | undefined, lv: string) => (a?.bd[`${f}|${lv}`] ? hitsAt(a.bd[`${f}|${lv}`], li) : null);
-	// Pooled over conditions, per person.
-	const pooled = (byCue: Map<string, CueAgg>, lv: string) => {
-		let n = 0;
-		const k = [0, 0, 0, 0];
-		for (const a of byCue.values()) {
-			const h = at(a, lv);
-			if (!h) continue;
-			n += h.n;
-			for (let j = 0; j < 4; j++) k[j] += h.k[j];
+	type H = { n: number; k: number[] } | null;
+	const keys = [`${f}|${levels[0]}`, `${f}|${levels[1]}`];
+	// Per person, once: hits at each level, per condition and pooled over conditions.
+	const per = [...people.values()].map((bc) => {
+		const byCue = new Map<string, [H, H]>();
+		const pool: [{ n: number; k: number[] }, { n: number; k: number[] }] = [{ n: 0, k: [0, 0, 0, 0] }, { n: 0, k: [0, 0, 0, 0] }];
+		for (const [c, a] of bc) {
+			const h = keys.map((key) => (a.bd[key] ? hitsAt(a.bd[key], li) : null)) as [H, H];
+			byCue.set(c, h);
+			h.forEach((x, l) => {
+				if (!x) return;
+				pool[l].n += x.n;
+				for (let j = 0; j < 4; j++) pool[l].k[j] += x.k[j];
+			});
 		}
-		return n ? { n, k } : null;
-	};
-	type Get = (bc: Map<string, CueAgg>, lv: string) => { n: number; k: number[] } | null;
-	const one = (get: Get, j: number, id: string): Paired & { between: boolean } => {
+		return { byCue, pool: pool.map((x) => (x.n ? x : null)) as [H, H] };
+	});
+	const one = (get: (p: (typeof per)[number]) => [H, H] | undefined, j: number, id: string): Paired & { between: boolean } => {
 		const ds: number[] = [], xa: number[] = [], xb: number[] = [];
-		for (const bc of people.values()) {
-			const x = get(bc, levels[1]), y = get(bc, levels[0]);
+		for (const p of per) {
+			const h = get(p);
+			if (!h) continue;
+			const [y, x] = h;
 			if (x && y) ds.push(x.k[j] / x.n - y.k[j] / y.n);
 			if (x) xa.push(x.k[j] / x.n);
 			if (y) xb.push(y.k[j] / y.n);
@@ -483,12 +559,12 @@ function factorDiffs(people: Map<string, Map<string, CueAgg>>, f: FactorKey, lev
 	let between = false;
 	for (const key of COMPARED) {
 		const j = RATE_INDEX[key];
-		const a1 = one(pooled, j, 'all');
+		const a1 = one((p) => p.pool, j, 'all');
 		const all = { ...family([a1])[0], between: a1.between };
-		const list = cues.map((c) => one((bc, lv) => at(bc.get(c), lv), j, c));
-		const per = family(list).map((x, i) => ({ ...x, between: list[i].between }));
+		const list = cues.map((c) => one((p) => p.byCue.get(c), j, c));
+		const fam = family(list).map((x, i) => ({ ...x, between: list[i].between }));
 		between ||= a1.between;
-		out[key] = { all: slim(all), cues: per.map(slim) };
+		out[key] = { all: slim(all), cues: fam.map(slim) };
 	}
 	return { between, diffs: out };
 }
@@ -506,8 +582,8 @@ export function mainOf(parts: Part[], li: number) {
 	const cues = [...cueSet].sort();
 	const perCue = (c: string) => [...people.entries()].filter(([, bc]) => bc.has(c)).map(([pid, bc]) => [pid, bc.get(c)!] as [string, CueAgg]);
 	const byCue = cues.map((c) => summaryOf(c, perCue(c), li));
-	const allPer = [...people.entries()].map(([pid, bc]) => [pid, [...bc.values()].reduce((m, a) => mergeAgg(m, a), emptyAgg())] as [string, CueAgg]);
-	const all = summaryOf('all', allPer, li);
+	const allPer = [...people.entries()].map(([pid, bc]) => [pid, [...bc.values()].reduce((m, a) => mergeAgg(m, a, true), emptyAgg())] as [string, CueAgg]);
+	const all = summaryOf('all', allPer, li, false);
 
 	// Within-person comparisons on decision trials.
 	const cells = cellsAt(people, li);
@@ -596,7 +672,7 @@ export function mainOf(parts: Part[], li: number) {
 	const byBlock: Bucket[] = [];
 	for (let b = 1; b <= Math.min(maxBlock, MAX_BLOCK); b++) byBlock.push(bucketOf(b, bb.get(b) ?? zero(), li));
 
-	const allAgg = allPer.reduce((m, [, a]) => mergeAgg(m, a), emptyAgg());
+	const allAgg = allPer.reduce((m, [, a]) => mergeAgg(m, a, true), emptyAgg());
 	const firstAt = parts.length ? Math.min(...parts.map((p) => p.firstAt)) : null;
 	const lastAt = parts.length ? Math.max(...parts.map((p) => p.lastAt)) : null;
 	return {

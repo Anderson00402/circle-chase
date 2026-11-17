@@ -64,8 +64,17 @@ export function tTwoSided(t: number, df: number): number {
 	return ibeta(df / (df + t * t), df / 2, 0.5);
 }
 
-/** The t value whose two-sided p is `p` (e.g. 0.05 gives the 97.5th percentile). */
+/** The t value whose two-sided p is `p` (e.g. 0.05 gives the 97.5th percentile). Cached: one search per df. */
+const tCache = new Map<string, number>();
 export function tCritical(df: number, p = 0.05): number {
+	const key = `${df}|${p}`;
+	const hit = tCache.get(key);
+	if (hit !== undefined) return hit;
+	const v = tSearch(df, p);
+	if (tCache.size < 5000) tCache.set(key, v);
+	return v;
+}
+function tSearch(df: number, p: number): number {
 	let lo = 0, hi = 1000;
 	for (let i = 0; i < 100; i++) {
 		const mid = (lo + hi) / 2;
