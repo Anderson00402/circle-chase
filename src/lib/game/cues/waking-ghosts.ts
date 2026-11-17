@@ -2,7 +2,7 @@ import type { CueContext, Cue, GhostView } from '../types';
 import { carries, scaredShiver, sinceWoke, WARN, warnDepth, warnOn, wispUnit, wrapDx } from './shared-ghosts';
 
 /**
- * Idea 6: no gauge drawn beside the ghost, only the ghost's own body. Scared wisps come to as
+ * Idea 6: no gauge drawn beside the ghost, only the ghost's own body. Scared ghosts come to as
  * the power runs out, and two things grow steadily with the time used, so a glance says how far
  * along they are, not only which stage:
  *
@@ -14,13 +14,15 @@ import { carries, scaredShiver, sinceWoke, WARN, warnDepth, warnOn, wispUnit, wr
  *
  *   dazed    rocking slowly from side to side (a fixed tilt with reduced motion)
  *   groggy   upright, barely swaying
- *   alert    the last 2 s, always: still drained (the body keeps its scared look), but alarmed: a
- *            thin dashed outline and alarm marks above the head in the ghost's own colour, pupils
- *            in that colour, leaning towards the hero and trembling harder and harder
+ *   alert    the last 2 s, always: still scared (the faint body inside the blue dashes), but
+ *            alarmed: the gaps between the blue dashes fill with the ghost's own colour, so the
+ *            outline closes into a two-colour line; alarm marks above the head and pupils in that
+ *            colour; leaning towards the hero and trembling harder and harder
  *
  * Then they wake: only now does the body take its own colour, with a springy stretch back into
- * its normal, dangerous self. "About to wake" (pale, dashed, alarmed) and "awake" (solid colour)
- * are two different pictures, even at small sizes. The first two
+ * its normal, dangerous self. Scared (blue dashes with gaps), about to wake (blue and colour
+ * alternating, no gaps, alarm marks) and awake (solid colour) are three different pictures, even
+ * at small sizes. The first two
  * stages split the time before the final warning in half, so they scale with the power length.
  * Each stage starts with a small hop. With reduced motion there is no rocking, shiver or hop;
  * the height, the eyes, the tilt and the danger colour carry everything.
@@ -49,8 +51,8 @@ function tiltOf(k: CueContext, s: 0 | 1 | 2, i: number, cx: number): number {
 }
 
 /**
- * Eyes that open with `open` 0..1: a dark lid line when shut, a dark round eye with a light pupil
- * when wide (dark on the pale drained body).
+ * Eyes that open with `open` 0..1: a thin lid line when shut, a round eye in the scared blue with
+ * a dark pupil when wide (light on the faint, dark scared body).
  */
 function drawEyes(k: CueContext, x0: number, hy: number, t: number, open: number, socket: string, pupil: string, lookX: number) {
 	const { ctx } = k;
@@ -106,25 +108,24 @@ function drawWaking(k: CueContext, g: GhostView, i: number, cx: number, cy: numb
 	ctx.translate(cx + ox, cy + foot - lift);
 	ctx.rotate(rot);
 	ctx.scale(sx, sy);
-	// The body stays in the drained scared look to the very end; eyes are drawn below, unscaled
+	// The body stays in the scared look to the very end; eyes are drawn below, unscaled
 	// vertically by the squash, so they stay readable when flat.
-	const ink = colors.scaredInk ?? '#2b2f39';
+	const ink = colors.scaredInk ?? colors.scared;
 	k.drawGhost(g, i, 'scared', 0, -foot, { eyes: 'none' });
 	const jx = scaredShiver(k, i);
 	const hy = k.ghostPath(g, i, jx, -foot, { look: 'scared' });
-	// Final warning: a thin dashed outline in the ghost's own colour, over a dark keyline so it
-	// reads on any wall colour. Thin and broken on purpose: the solid colour is kept for "awake".
+	// Final warning: the gaps between the scared outline's blue dashes fill with the ghost's own
+	// colour (the same dash rhythm, shifted by one dash), so the outline closes into a two-colour
+	// line. Never a solid fill: the solid colour is kept for "awake".
 	if (warn > 0) {
-		const lw = Math.max(1.2, t * 0.065) / Math.min(sx, sy), dash = Math.max(2.2, t * 0.13) / Math.min(sx, sy);
 		ctx.lineJoin = 'round';
-		ctx.strokeStyle = k.rgba(colors.bg, 0.7 * warn);
-		ctx.lineWidth = lw + 2 / Math.min(sx, sy);
-		ctx.stroke();
-		ctx.setLineDash([dash, dash * 0.7]);
+		ctx.setLineDash([t * 0.09, t * 0.14]);
+		ctx.lineDashOffset = t * 0.09;
 		ctx.strokeStyle = k.rgba(danger, warn);
-		ctx.lineWidth = lw;
+		ctx.lineWidth = Math.max(1.2, t * 0.085);
 		ctx.stroke();
 		ctx.setLineDash([]);
+		ctx.lineDashOffset = 0;
 	}
 	// Eyes: undo the squash so they open by their own amount, not the body's.
 	if (t >= 7) {
@@ -132,11 +133,11 @@ function drawWaking(k: CueContext, g: GhostView, i: number, cx: number, cy: numb
 		ctx.translate(jx, hy);
 		ctx.scale(1 / sx, 1 / sy);
 		const lookX = s === 2 ? Math.sign(wrapDx(k, cx, k.playerPos()[0])) : 0;
-		drawEyes(k, 0, 0, t, used, ink, warn > 0 ? k.mix('#ffffff', danger, warn) : '#ffffff', lookX);
+		drawEyes(k, 0, 0, t, used, ink, warn > 0 ? k.mix(colors.bg, danger, warn) : colors.bg, lookX);
 		ctx.restore();
 	}
 	ctx.restore();
-	// The top of the head, after the squash: the body's top sits 0.89 wisp units above its foot.
+	// The top of the head, after the squash: the body's top sits 0.89 ghost units above its foot.
 	if (warn > 0) drawAlarm(k, cx + ox, cy + foot - lift - t * (0.89 * sy + 0.06), t, warn, deep, danger, i);
 }
 
@@ -173,7 +174,7 @@ export const wakingGhosts: Cue = {
 	name: 'Ghosts waking up',
 	tagline: 'Scared ghosts rise from flat to tall and open their eyes as the power runs out.',
 	description:
-		'Scared ghosts start squashed flat with their eyes shut, rocking. As the power runs out they rise steadily and their eyes open, so a ghost halfway up means half the time is gone; halfway to the last 2 seconds they sit upright. In the last 2 seconds they stay pale but sound the alarm: a dashed outline and alarm marks in their own colour, and they lean towards you and tremble. Only when the power ends do they take their full colour and spring awake and dangerous.',
+		'Scared ghosts start squashed flat with their eyes shut, rocking. As the power runs out they rise steadily and their eyes open, so a ghost halfway up means half the time is gone; halfway to the last 2 seconds they sit upright. In the last 2 seconds they stay scared but sound the alarm: the gaps in their blue outline fill with their own colour, alarm marks appear over their heads, and they lean towards you and tremble. Only when the power ends do they take their full colour and spring awake and dangerous.',
 	channel: 'ghosts',
 	baseFlash: false,
 
@@ -196,7 +197,7 @@ export const wakingGhosts: Cue = {
 		k.ctx.translate(-cx, -(cy + foot));
 		drawDefault();
 		k.ctx.restore();
-		// A ring in the wisp's own colour bursts off it (only fades with reduced motion).
+		// A ring in the ghost's own colour bursts off it (only fades with reduced motion).
 		const r = k.reduceMotion ? t * 0.6 : t * (0.4 + 0.5 * k.ease.outCubic(u));
 		k.ring(cx, cy - t * 0.05, r, Math.max(1.2, t * 0.09 * (1 - u * 0.5)), k.colors.ghost[g.id], { alpha: 1 - u });
 	}

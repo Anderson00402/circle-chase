@@ -2,9 +2,9 @@ import type { CueContext, Cue, GhostView } from '../types';
 import { carries, sinceWoke, WARN, warnOn, wrapDx } from './shared-ghosts';
 
 /**
- * Idea 2: every scared wisp wears a ring that empties like a clock face. The bright part is the
+ * Idea 2: every scared ghost wears a ring that empties like a clock face. The bright part is the
  * time left; it is eaten clockwise from 12 o'clock, so the gap grows like a clock hand sweeping
- * round. The ring hugs the wisp and stays inside one tile. In the last 2 s what is left turns hot
+ * round. The ring hugs the ghost and stays inside one tile. In the last 2 s what is left turns hot
  * orange, thickens and beats five times (the last beat ends with the power); when it closes a
  * ring snaps outward from the wisp.
  */
@@ -36,7 +36,9 @@ function drawHalo(k: CueContext, g: GhostView, i: number, cx: number, cy: number
 	const warn = warnOn(k);
 	// Beat: a sharp swell that fades, five times in the last 2 s (steady with reduced motion).
 	const beat = k.reduceMotion || left > WARN ? 0 : Math.pow(1 - ((WARN - left) % BEAT) / BEAT, 2.5);
-	const live = k.mix(colors.scared, colors.accent, warn);
+	// Calm: the scared blue lifted toward white, so the ring stands apart from the dashed blue
+	// outline of the ghost inside it. Hot orange in the final warning.
+	const live = k.mix(k.mix(colors.scared, '#ffffff', 0.35), colors.accent, warn);
 	const TAU = Math.PI * 2, hand = (1 - frac) * TAU;
 
 	ctx.save();

@@ -2,7 +2,7 @@ import type { CueContext, Cue, GhostView } from '../types';
 import { carries, scaredShiver, sinceWoke, warnDepth, warnOn, wispUnit } from './shared-ghosts';
 
 /**
- * Idea 1: each scared wisp has lost its colour, and its own colour rises back up inside its body
+ * Idea 1: each scared ghost is an empty dashed outline, and its own colour rises back up inside it
  * like liquid. How full it is is how much of the power is gone, exactly in proportion to time.
  * In the last 2 s the liquid boils (choppy surface, rising bubbles, a hot surface line); it
  * reaches the top of the head as the power ends and the wisp is solid and dangerous again.
@@ -11,14 +11,14 @@ import { carries, scaredShiver, sinceWoke, warnDepth, warnOn, wispUnit } from '.
 /** Seconds the "solid again" outline lasts after the power ran out. */
 const SEAL = 0.35;
 
-/** Top and bottom of the scared body, in units of the wisp size, from its centre. */
-const TOP = -0.45, BOTTOM = 0.49;
+/** Top and bottom of the ghost body, in units of the ghost size, from its centre. */
+const TOP = -0.47, BOTTOM = 0.47;
 
 /**
  * Height of the liquid surface (from the wisp centre, in wisp units) that leaves `fill` of the
  * body's area below it. The body is round at the top and tapers to a tail, so filling by height
  * would look nearly full well before the end; filling by area keeps "half full" at half time.
- * Worked out once from the scared body's outline (the same curves the renderer traces, at rest).
+ * Worked out once from the body's outline (the same curves the renderer traces, tail at rest).
  */
 const levelFor = (() => {
 	let rows: number[] | null = null;
@@ -27,15 +27,13 @@ const levelFor = (() => {
 		const c = document.createElement('canvas');
 		c.width = c.height = N;
 		const x = c.getContext('2d', { willReadFrequently: true })!;
-		const t = N * 0.95, R = 0.37 * t, hy = -0.08 * t, tx = 0.135 * t, ty = 0.49 * t, fx = -0.14 * t, fy = 0.42 * t;
+		const t = N * 0.95, R = 0.37 * t, hy = -0.1 * t, tx = 0.22 * t, ty = 0.47 * t;
 		x.translate(N / 2, N / 2);
 		x.beginPath();
 		x.moveTo(-R, hy);
 		x.arc(0, hy, R, Math.PI, 0);
-		x.bezierCurveTo(R * 1.02, hy + R * 0.8, tx + t * 0.1, ty - t * 0.16, tx, ty);
-		x.quadraticCurveTo(t * 0.06, ty - t * 0.02, t * 0.02, fy - t * 0.07);
-		x.quadraticCurveTo(-t * 0.02, fy + t * 0.03, fx, fy);
-		x.bezierCurveTo(-R * 0.75, fy - t * 0.04, -R * 1.02, hy + R * 0.75, -R, hy);
+		x.bezierCurveTo(R, hy + R, tx + t * 0.12, ty - t * 0.1, tx, ty);
+		x.bezierCurveTo(tx - t * 0.1, ty - t * 0.05, -R * 0.9, hy + R * 0.9, -R, hy);
 		x.closePath();
 		x.fillStyle = '#fff';
 		x.fill();
@@ -84,7 +82,8 @@ function drawFilling(k: CueContext, g: GhostView, i: number, cx: number, cy: num
 	const warn = warnOn(k), deep = warnDepth(k);
 	const still = k.reduceMotion;
 	const color = colors.ghost[g.id];
-	const dark = k.mix(color, '#000000', 0.62);
+	// Draws only the dashed outline and the eyes of the scared look over what is already there.
+	const outline = () => k.drawGhost(g, i, 'scared', cx, cy, { color: 'rgba(0,0,0,0)', eyes: 'dark' });
 
 	// Surface: a lazy slosh while calm, choppy and boiling in the last 2 s.
 	const sy = surfaceY(cy, t, fill);
@@ -98,14 +97,15 @@ function drawFilling(k: CueContext, g: GhostView, i: number, cx: number, cy: num
 		+ amp * Math.sin((x - cx) * kx + k.now * w + i * 2.1)
 		+ amp * 0.5 * Math.sin((x - cx) * kx * 1.9 - k.now * w * 1.4 + i);
 
-	// 1. The empty scared wisp, exactly as the base game draws it.
+	// 1. The empty scared ghost, exactly as the base game draws it.
 	k.drawGhost(g, i, 'scared', cx, cy);
 	if (fill <= 0) return;
 
 	const body = () => k.ghostPath(g, i, cx + scaredShiver(k, i), cy, { look: 'scared' });
 	const bottom = cy + t;
 
-	// 2. Below the surface: the same wisp drawn again in its own colour (face and stripes darker).
+	// 2. Below the surface: the body filled solid in its own colour, the dashed outline drawn
+	// again over it, and dark eyes once the colour reaches them.
 	ctx.save();
 	ctx.beginPath();
 	traceSurface(k, cx, t, y);
@@ -113,7 +113,10 @@ function drawFilling(k: CueContext, g: GhostView, i: number, cx: number, cy: num
 	ctx.lineTo(cx - t * 0.6, bottom);
 	ctx.closePath();
 	ctx.clip();
-	k.drawGhost(g, i, 'scared', cx, cy, { color, ink: dark });
+	body();
+	ctx.fillStyle = color;
+	ctx.fill();
+	outline();
 
 	// Boiling: bubbles rise from the tail to the surface (still dots with reduced motion).
 	if (warn > 0 && t >= 9) {
@@ -157,6 +160,8 @@ function drawFilling(k: CueContext, g: GhostView, i: number, cx: number, cy: num
 			ctx.fillStyle = k.rgba(k.mix(colors.scared, '#ffffff', 0.4), 0.85 * warn);
 			ctx.fill();
 		});
+		// The outline and eyes stay on top of the pale cap.
+		outline();
 	}
 
 	// 3. The surface line, light and clear against both the dark body and the colour; hotter and

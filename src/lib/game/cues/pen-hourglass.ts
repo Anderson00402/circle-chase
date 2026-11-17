@@ -1,4 +1,5 @@
 import { WALL, type Cue, type CueContext, type GeoBox } from '../types';
+import { drawDoor as drawBoardDoor } from '../render/board';
 import { beatPeakCrossed, finalBeat, hotness } from './shared-maze';
 
 /**
@@ -284,26 +285,21 @@ function notchBox(k: CueContext): GeoBox {
 }
 
 /**
- * The pen door, drawn back over the glass so the player can still see where wisps come out: a
- * dark notch cut through the glass's edge and the door's own glowing bar in it.
+ * The pen door, drawn back over the glass so the player can still see where ghosts come out: a
+ * dark notch cut through the glass's edge and the door's own dashed line in it.
  */
 function drawDoor(k: CueContext, alpha = 1) {
 	const { ctx, T } = k, d = k.geo.door;
 	if (!(d.w > 0 && d.h > 0)) return;
-	const across = d.w >= d.h, h = Math.max(1.5, T * 0.14), n = notchBox(k);
+	const n = notchBox(k);
 	ctx.save();
 	ctx.globalAlpha *= alpha;
 	ctx.fillStyle = k.colors.bg;
 	ctx.beginPath();
 	ctx.roundRect(n.x, n.y, n.w, n.h, T * 0.16);
 	ctx.fill();
-	ctx.fillStyle = k.colors.door;
-	ctx.shadowColor = k.colors.door;
-	ctx.shadowBlur = T * 0.3 * k.dpr;
-	ctx.beginPath();
-	if (across) ctx.roundRect(d.x - T * 0.08, d.cy - h / 2, d.w + T * 0.16, h, h / 2);
-	else ctx.roundRect(d.cx - h / 2, d.y - T * 0.08, h, d.h + T * 0.16, h / 2);
-	ctx.fill();
+	// The door exactly as the board draws it: the pale dashed line.
+	drawBoardDoor(ctx, k.maze, T, k.colors.door);
 	ctx.restore();
 }
 

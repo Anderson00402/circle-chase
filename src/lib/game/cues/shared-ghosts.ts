@@ -8,8 +8,8 @@ import type { CueContext, GhostView } from '../types';
 /** Seconds before the end at which every one of these cues gives its final warning. */
 export const WARN = 2;
 
-/** The renderer draws wisps a little larger than a tile; this is their size unit at tile T. */
-export const wispUnit = (T: number) => T * 1.13;
+/** The size unit of a ghost at tile T (the renderer draws ghosts one tile in size). */
+export const wispUnit = (T: number) => T;
 
 /**
  * True when this wisp should carry the signal: any scared wisp, out in the maze or still in the
@@ -21,11 +21,12 @@ export function carries(k: CueContext, g: GhostView): boolean {
 }
 
 /**
- * The scared look shivers a little sideways (base game, constant all power-up long). Returns the
- * same offset the renderer uses, so a body traced with `k.ghostPath` lines up with the drawing.
+ * Sideways offset of the scared look. The original art has no shiver, so this is always 0; it is
+ * kept so a body traced with `k.ghostPath` keeps lining up with the drawing if that changes.
  */
 export function scaredShiver(k: CueContext, index: number): number {
-	return k.reduceMotion ? 0 : Math.sin(k.now * 47 + index * 3) * wispUnit(k.T) * 0.022;
+	void k; void index;
+	return 0;
 }
 
 /**

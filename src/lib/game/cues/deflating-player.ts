@@ -1,4 +1,5 @@
 import type { Cue, CueContext } from '../types';
+import { heroRadius } from '../render/actors';
 import { CALM, expiredNow, HOT, justExpired, powered, WARN } from './shared-screen';
 
 /**
@@ -92,7 +93,7 @@ export const deflatingPlayer: Cue = {
 			k.drawPlayer(cx, cy, scale, { color: k.mix(k.colors.player, GLOW, 0.45 * g * (1 - alarm)) });
 			// A red rim round the hero, just outside its body, over a dark keyline.
 			if (alarm > 0) {
-				const rr = T * 0.5 * scale + Math.max(1.5, T * 0.09);
+				const rr = heroRadius(T) * scale + Math.max(1.5, T * 0.09);
 				k.ring(cx, cy, rr, Math.max(3, T * 0.17), k.colors.bg, { alpha: 0.5 * alarm });
 				k.ring(cx, cy, rr, Math.max(1.6, T * 0.1), HOT, { alpha: alarm });
 			}

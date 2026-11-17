@@ -1,5 +1,5 @@
 import type { Cue, CueContext } from '../types';
-import { CALM, expiredNow, HOT, justExpired, powered, WARN } from './shared-screen';
+import { expiredNow, HOT, justExpired, powered, WARN } from './shared-screen';
 
 /**
  * Heartbeat: while powered, the floor along the edges of the board glows and beats "lub-dub".
@@ -19,17 +19,21 @@ import { CALM, expiredNow, HOT, justExpired, powered, WARN } from './shared-scre
 
 /** Tempo steps: beats this far apart (s) while the beat itself is at or below `upTo` seconds left. */
 /** Each step is also brighter and reaches further in from the edge (`depth`, tiles), so the steps
- * differ by more than their colour and stay apart on every maze theme. */
+ * differ by more than their colour. */
 /**
- * The middle step: a yellow amber, well away in hue from the copper and red walls (an orange glow
- * on Plaza's copper hardly differed from the calm step), and clearly brighter than calm even
- * between beats.
+ * The middle step: a yellow amber, far in hue from the blue walls and from the red last step, and
+ * clearly brighter than calm even between beats.
  */
 const MID = '#ffd640';
+/**
+ * The calm step: the shared pale ice lifted toward white, so its glow does not melt into the glow
+ * of the blue walls beside it.
+ */
+const CALM_GLOW = '#e2efff';
 const STEPS = [
 	{ upTo: WARN, period: 0.4, color: HOT, base: 0.5, peak: 1, dub: 0.13, rm: 0.95, depth: 3.6 },
 	{ upTo: 4, period: 2 / 3, color: MID, base: 0.55, peak: 1, dub: 0.2, rm: 0.75, depth: 3 },
-	{ upTo: Infinity, period: 1, color: CALM, base: 0.24, peak: 0.7, dub: 0.24, rm: 0.35, depth: 2.3 }
+	{ upTo: Infinity, period: 1, color: CALM_GLOW, base: 0.28, peak: 0.7, dub: 0.24, rm: 0.35, depth: 2.3 }
 ];
 type Step = (typeof STEPS)[number];
 const EPS = 1e-6;

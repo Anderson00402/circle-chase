@@ -22,11 +22,11 @@ import { finalBeat, hotness, penBlock } from './shared-maze';
  * Cost: one cached picture of the board with charged walls, drawn through a rectangle clip.
  */
 
-/** Charged walls are a warm electric yellow: white would hardly differ from the silver maze. */
+/** Charged walls are a warm electric yellow, far from the blue of the maze. */
 const CHARGED = '#ffe45c';
 const CHARGED_GLOW = '#ffb52e';
 const EDGE = '#fff6c8';
-/** The final throb: a near-white warm light, so it shows on every theme including the silver one. */
+/** The final throb: a near-white warm light, brighter than the charged yellow. */
 const THROB = '#fff1a0';
 /** Seconds the charge takes to come in at the start (a fade, not a flash). */
 const CHARGE_IN = 0.35;
@@ -50,8 +50,8 @@ const SAMPLES = 256;
 const litCache = new Map<string, Float64Array>();
 
 /**
- * Share of the charged walls' light (the wall layer's own pixels, glow and panels included; not
- * the outer border band, not the pen block) inside the box at s = 0, 1/SAMPLES, ... 1. Read once
+ * Share of the charged walls' line (the wall layer's strongly lit pixels; not the faint glow,
+ * not the outer border band, not the pen block) inside the box at s = 0, 1/SAMPLES, ... 1. Read once
  * per maze and size from the charged wall picture at one pixel per CSS pixel, summed with a
  * summed-area table so each box costs four lookups.
  */
@@ -75,7 +75,8 @@ function litTable(k: CueContext): Float64Array {
 		for (let i = 0; i < W; i++) {
 			const inPen = i >= pen.x && i < pen.x + pen.w && y >= pen.y && y < pen.y + pen.h;
 			const inBand = i < band || y < band || i >= W - band || y >= H - band;
-			if (!inPen && !inBand) row += px[(y * W + i) * 4 + 3] / 255;
+			// The line itself, not its soft glow: the glow's faint edges are not what reads as a lit wall.
+			if (!inPen && !inBand && px[(y * W + i) * 4 + 3] > 140) row += 1;
 			S[(y + 1) * (W + 1) + i + 1] = S[y * (W + 1) + i + 1] + row;
 		}
 	}
@@ -85,9 +86,9 @@ function litTable(k: CueContext): Float64Array {
 		if (c2 <= a || d <= b) return 0;
 		return S[d * (W + 1) + c2] - S[b * (W + 1) + c2] - S[d * (W + 1) + a] + S[b * (W + 1) + a];
 	};
-	// The tide line is lit too: count its light as well, about a tenth of a tile's worth per pixel
+	// The tide line is lit too: count its light as well, about a third of a tile's worth per pixel
 	// of line on the board (its stroke plus glow), so walls and line together track the time.
-	const line = T * 0.14;
+	const line = T * 0.3;
 	const edge = (e: Edges) => {
 		const span = (a0: number, a1: number, L: number) => Math.max(0, Math.min(L, a1) - Math.max(0, a0));
 		const across = span(e.x0, e.x1, W), down = span(e.y0, e.y1, H);
@@ -150,7 +151,7 @@ function drawTide(k: CueContext) {
 		if (beat > 0) k.drawLayer(k.wallLayer(THROB, '#ffffff'), 0.8 * beat, 'lighter');
 	}));
 	// The outer border keeps its charge all round and dims with the time left. Pale, like the tide
-	// line, so the dimming shows even on the warm copper and red themes.
+	// line, so the dimming shows clearly against the blue it fades back to.
 	const left = k.clamp(power.frac);
 	k.drawLayer(k.wallLayer(EDGE, CHARGED_GLOW, { outer: true }), charge * left);
 	// ...and a charged band along it whose thickness is the time left: full width at the start,
@@ -177,7 +178,7 @@ function drawTide(k: CueContext) {
 	ctx.lineWidth = Math.max(1.2, T * (0.08 + 0.04 * hot + 0.14 * beat));
 	ctx.stroke(box);
 	ctx.restore();
-	// A darker hem just outside, so the line holds on light walls and floors.
+	// A darker hem just outside, so the line holds where it crosses a lit wall.
 	const out = new Path2D();
 	const g = Math.max(1.5, T * (0.1 + 0.07 * beat));
 	out.roundRect(b.x - g, b.y - g, b.w + 2 * g, b.h + 2 * g, r + g);
