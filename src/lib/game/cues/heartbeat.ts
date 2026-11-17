@@ -6,7 +6,7 @@ import { CALM, expiredNow, HOT, justExpired, powered, WARN } from './shared-scre
  *
  * The tempo has three clear steps rather than a smooth ramp, so a player can tell them apart:
  *   more than 4 s left   60 per minute, pale ice     (calm)
- *   4 s to 2 s left      90 per minute, orange       (getting low)
+ *   4 s to 2 s left      90 per minute, yellow amber (getting low)
  *   last 2 s            150 per minute, heart red    (about to end)
  * Beats are counted back from the end of the power, not forward from its start, so whatever the
  * length the last 2 s always hold the same five fast beats and the fifth, a single big one, lands
@@ -19,12 +19,16 @@ import { CALM, expiredNow, HOT, justExpired, powered, WARN } from './shared-scre
 
 /** Tempo steps: beats this far apart (s) while the beat itself is at or below `upTo` seconds left. */
 /** Each step is also brighter and reaches further in from the edge (`depth`, tiles), so the steps
- * differ by more than their colour and stay apart on every maze theme (amber on the gold maze). */
-/** The middle step: an orange redder than the shared amber, so it stands apart from the gold maze's own glow. */
-const MID = '#ff7f3f';
+ * differ by more than their colour and stay apart on every maze theme. */
+/**
+ * The middle step: a yellow amber, well away in hue from the copper and red walls (an orange glow
+ * on Plaza's copper hardly differed from the calm step), and clearly brighter than calm even
+ * between beats.
+ */
+const MID = '#ffd640';
 const STEPS = [
 	{ upTo: WARN, period: 0.4, color: HOT, base: 0.5, peak: 1, dub: 0.13, rm: 0.95, depth: 3.6 },
-	{ upTo: 4, period: 2 / 3, color: MID, base: 0.42, peak: 1, dub: 0.2, rm: 0.7, depth: 3 },
+	{ upTo: 4, period: 2 / 3, color: MID, base: 0.55, peak: 1, dub: 0.2, rm: 0.75, depth: 3 },
 	{ upTo: Infinity, period: 1, color: CALM, base: 0.24, peak: 0.7, dub: 0.24, rm: 0.35, depth: 2.3 }
 ];
 type Step = (typeof STEPS)[number];
@@ -97,7 +101,7 @@ export const heartbeat: Cue = {
 	name: 'Heartbeat',
 	tagline: 'The edges of the board beat like a heart that races as the power runs out.',
 	description:
-		'While you are powered, the floor along the edges of the board glows and beats like a heart, with a low thump you can hear. It beats slow and pale at first; below 4 seconds it beats faster in orange and the glow reaches further in; in the last 2 seconds it races in red, deeper still. One big beat lands as the power ends.',
+		'While you are powered, the floor along the edges of the board glows and beats like a heart, with a low thump you can hear. It beats slow and pale at first; below 4 seconds it beats faster in amber yellow and the glow reaches further in; in the last 2 seconds it races in red, deeper still. One big beat lands as the power ends.',
 	channel: 'screen',
 	baseFlash: false,
 
