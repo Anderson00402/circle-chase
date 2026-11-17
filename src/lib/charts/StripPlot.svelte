@@ -72,7 +72,7 @@
 	const hasExtra = $derived(rows.some((r) => (r.extra?.length ?? 0) > 0));
 	const extraW = $derived(hasExtra ? (narrow ? 44 : 76) : 0);
 	const hasValue = $derived(rows.some((r) => !!r.value));
-	const valueW = $derived(hasValue ? (narrow ? 40 : 92) : 0);
+	const valueW = $derived(hasValue ? (narrow ? 36 : 92) : 0);
 	const padR = 14;
 	const top = 26;
 	const plotW = $derived(Math.max(60, width - labelW - padR - extraW - (hasExtra ? 12 : 0) - valueW));
@@ -219,7 +219,7 @@
 						<text x={labelW + 6} y={y + ROW_H / 2 + 4} class="none">no counted power-ups yet</text>
 					{/if}
 					{#if row.value}
-						<text x={width - 2} y={y + ROW_H / 2 + 4} text-anchor="end" class="value">{row.value}</text>
+						<text x={width - 2} y={y + ROW_H / 2 + 4} text-anchor="end" class="value">{narrow ? row.value.split(' ')[0] : row.value}</text>
 					{/if}
 					{#each row.points as p (p.key)}
 						{@const c = at(row, p, y)}
@@ -254,7 +254,7 @@
 			{/each}
 		</svg>
 		<!-- The axis caption is HTML so it wraps on a narrow screen instead of being cut off. -->
-		<div class="x-cap" style:padding-left="{labelW}px" style:padding-right="{width - labelW - plotW}px">
+		<div class="x-cap" class:narrow style:padding-left="{labelW}px" style:padding-right="{width - labelW - plotW}px">
 			{#if ends}<span class="end">{ends[0]}</span>{/if}
 			<span class="axis-label">{xLabel}</span>
 			{#if ends}<span class="end r">{ends[1]}</span>{/if}
@@ -294,6 +294,13 @@
 	.x-cap .end.r {
 		order: 1;
 		text-align: right;
+	}
+	.x-cap.narrow .axis-label {
+		flex-basis: 100%;
+		order: 2;
+	}
+	.x-cap.narrow .end.r {
+		order: 0;
 	}
 	.value {
 		fill: var(--ink-dim);

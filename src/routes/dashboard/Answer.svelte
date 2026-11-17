@@ -117,7 +117,7 @@
 					{ label: 'Reference (A no signal, B classic blink)', color: ROLE_COLOR.reference, shape: 'diamond' },
 					{ label: 'Timer bar (0)', color: ROLE_COLOR.baseline, shape: 'square' },
 					{ label: 'Idea (1-10)', color: ROLE_COLOR.idea, shape: 'circle' },
-					{ label: `Under ${ENOUGH} counted`, color: 'var(--ink-dim)', shape: 'circle', hollow: true }
+					{ label: `Not ranked: under ${ENOUGH} counted or ${RANK_PEOPLE} people`, color: 'var(--ink-dim)', shape: 'circle', hollow: true }
 				]}
 			/>
 			{#if yardsticksDrawn}

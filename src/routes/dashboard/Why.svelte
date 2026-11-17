@@ -130,7 +130,9 @@
 	const spareAll = $derived.by(() => {
 		const vs = (points.data ?? []).filter((p) => p.inRates).map((p) => p.spare).filter((v): v is number => v !== null);
 		const had = vs.filter((v) => v >= 0).length;
-		return { n: vs.length, had, share: vs.length ? had / vs.length : null };
+		const early = (points.data ?? []).filter((p) => p.inRates && p.outcome === 'early-retreat' && p.spare !== null);
+		const earlyCould = early.filter((p) => p.spare! < 0).length;
+		return { n: vs.length, had, share: vs.length ? had / vs.length : null, early: early.length, earlyCould };
 	});
 
 	// Approach curves: small multiples, each condition against the timer bar ----------------------------
@@ -390,8 +392,9 @@
 					<p class="foot">
 						Over every turn-away here, {spareAll.share === null ? '–' : `${Math.round(spareAll.share * 100)}%`} still had time for the
 						ghost ({spareAll.had} of {spareAll.n}) and {spareAll.share === null ? '–' : `${Math.round((1 - spareAll.share) * 100)}%`} could
-						not have caught it. A turn-away left of zero that counts as "too early" broke off a chase that could not succeed: a
-						judgement of the chase, not of the clock. Right column: the share that still had time, per condition.
+						not have caught it. Of the {spareAll.early} turn-aways counted as too early, {spareAll.earlyCould} broke off a chase that could
+						not have succeeded in time: a fair judgement of the chase, not of the clock. Right column: the share that still had time,
+						per condition.
 					</p>
 				{:else}
 					<StripPlot

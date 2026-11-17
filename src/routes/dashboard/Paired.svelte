@@ -110,7 +110,7 @@
 			info: [
 				[`${lv1} minus ${lv0}`, unitPts(c?.diff ?? null)],
 				['95% interval', c && c.lo !== null ? `${unitPts(c.lo)} to ${unitPts(c.hi)}` : 'needs 5 people'],
-				[bd.between ? 'People (two groups)' : 'People who played both', String(c?.people ?? 0)],
+				[c?.between ? 'People (two groups, between people)' : 'People who played both (within people)', String(c?.people ?? 0)],
 				['Counted power-ups', `${lv0}: ${n(id, lv0)}, ${lv1}: ${n(id, lv1)}`],
 				['Verdict', c?.clear ? 'clear' : c?.p === null || !c ? 'too few people to test' : 'could be chance']
 			]
@@ -127,6 +127,8 @@
 	});
 	const bAll = $derived(bd.diffs?.[bRate].all ?? null);
 	const bClear = $derived(bRows.filter((r) => r.id !== 'all' && r.clear));
+	/** Per-condition rows compared between people (nobody played that condition at both levels). */
+	const bBetween = $derived((bd.diffs?.[bRate].cues ?? []).filter((c) => c.between && c.people > 0).length);
 	const oneLevelText: Record<FactorKey, string> = {
 		half: 'Block position needs study sessions with more than six blocks.',
 		power: 'Every counted power-up here has a similar length, so there is nothing to compare.',
@@ -258,7 +260,7 @@
 		{:else}
 			<p class="b-lead">
 				<b>{bd.compared[1]}</b> minus <b>{bd.compared[0]}</b>, {RATE_WORD[bRate]} rate,
-				{bd.between ? 'people at one level against people at the other (fewer than 5 people played both)' : 'inside each person who played both'}.
+				{bAll?.between ? 'people at one level against people at the other (fewer than 5 people played both)' : 'inside each person who played both'}.
 				{#if bAll && bAll.diff !== null}
 					Over all conditions: <b class="num">{unitPts(bAll.diff)}</b>{bAll.lo !== null ? ` (95% ${unitPts(bAll.lo)} to ${unitPts(bAll.hi)}, ${bAll.people} people)` : ` (${bAll.people} people, too few to test)`}, {bAll.clear ? 'a clear difference' : bAll.p === null ? 'no test yet' : 'could be chance'}.
 				{/if}
@@ -278,7 +280,11 @@
 			</DiffChart>
 			<p class="foot">
 				{#if bClear.length}Clear per condition: {bClear.map((r) => `${r.cond.code} ${r.cond.name} (${unitPts(r.diff)})`).join(', ')}.{:else}No single condition differs clearly between the two levels.{/if}
-				Per-condition rows are adjusted together for {bRows.length - 1} comparisons; hollow points have fewer than 5 people to test.
+				Per-condition rows are adjusted together for {bRows.length - 1} comparisons; hollow points have too few people to test.
+				{#if bBetween}
+					{bBetween === bRows.length - 1 ? 'Every per-condition row compares' : bBetween === 1 ? '1 per-condition row compares' : `${bBetween} per-condition rows compare`} different people
+					(those who played the condition at one level with those who played it at the other{factor === 'half' ? ': a person plays each condition in one run only, and the counterbalanced order decides which half' : ''}), which is weaker than a comparison inside each person.
+				{/if}
 				{#if bd.levels.length > 2}Other levels seen: {bd.levels.slice(2).join(', ')} (not compared).{/if}
 			</p>
 		{/if}

@@ -447,10 +447,11 @@ function cellsAt(people: Map<string, Map<string, CueAgg>>, li: number): Cells {
 }
 
 /**
- * Within-person difference between two levels of a factor, for one condition (or pooled over all):
- * every person with decision trials at both levels gives their rate at `second` minus at `first`. If
- * fewer than 5 people played both levels anywhere (sound and input usually stay the same for a
- * person), the factor is compared between people instead (Welch), and says so.
+ * Difference between two levels of a factor, for one condition (or pooled over all), as the second
+ * level minus the first. Inside each person when at least 5 people have decision trials at both
+ * levels (power length, and block position pooled over conditions); otherwise between people
+ * (Welch on one rate per person), and marked so: a person plays a condition in one block only, and
+ * sound and input usually stay the same for a person.
  */
 function factorDiffs(people: Map<string, Map<string, CueAgg>>, f: FactorKey, levels: [string, string], cues: string[], li: number) {
 	const at = (a: CueAgg | undefined, lv: string) => (a?.bd[`${f}|${lv}`] ? hitsAt(a.bd[`${f}|${lv}`], li) : null);
@@ -466,31 +467,28 @@ function factorDiffs(people: Map<string, Map<string, CueAgg>>, f: FactorKey, lev
 		}
 		return n ? { n, k } : null;
 	};
-	const bothAll = [...people.values()].filter((bc) => pooled(bc, levels[0]) && pooled(bc, levels[1])).length;
-	const between = bothAll < PAIR_MIN_PEOPLE;
-	const one = (get: (bc: Map<string, CueAgg>, lv: string) => { n: number; k: number[] } | null, j: number, id: string): Paired => {
-		if (!between) {
-			const ds: number[] = [];
-			for (const bc of people.values()) {
-				const x = get(bc, levels[1]), y = get(bc, levels[0]);
-				if (x && y) ds.push(x.k[j] / x.n - y.k[j] / y.n);
-			}
-			return pairedFrom(ds, id, id);
-		}
-		const xa: number[] = [], xb: number[] = [];
+	type Get = (bc: Map<string, CueAgg>, lv: string) => { n: number; k: number[] } | null;
+	const one = (get: Get, j: number, id: string): Paired & { between: boolean } => {
+		const ds: number[] = [], xa: number[] = [], xb: number[] = [];
 		for (const bc of people.values()) {
 			const x = get(bc, levels[1]), y = get(bc, levels[0]);
+			if (x && y) ds.push(x.k[j] / x.n - y.k[j] / y.n);
 			if (x) xa.push(x.k[j] / x.n);
 			if (y) xb.push(y.k[j] / y.n);
 		}
-		return unpairedFrom(xa, xb, id, id);
+		if (ds.length >= PAIR_MIN_PEOPLE) return { ...pairedFrom(ds, id, id), between: false };
+		return { ...unpairedFrom(xa, xb, id, id), between: true };
 	};
 	const out = {} as Record<RateKey, { all: Comparison; cues: Comparison[] }>;
+	let between = false;
 	for (const key of COMPARED) {
 		const j = RATE_INDEX[key];
-		const all = family([one(pooled, j, 'all')])[0];
-		const per = family(cues.map((c) => one((bc, lv) => at(bc.get(c), lv), j, c)));
-		out[key] = { all: slim({ ...all, between }), cues: per.map((x) => slim({ ...x, between })) };
+		const a1 = one(pooled, j, 'all');
+		const all = { ...family([a1])[0], between: a1.between };
+		const list = cues.map((c) => one((bc, lv) => at(bc.get(c), lv), j, c));
+		const per = family(list).map((x, i) => ({ ...x, between: list[i].between }));
+		between ||= a1.between;
+		out[key] = { all: slim(all), cues: per.map(slim) };
 	}
 	return { between, diffs: out };
 }

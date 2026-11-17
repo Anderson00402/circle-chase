@@ -159,7 +159,8 @@
 	const runOptions = $derived([
 		...runs.map((r) => ({
 			value: r.run,
-			label: `${presetWord(r.preset)}, ${plural(r.sessions, 'player')}, ${plural(r.trials, 'power-up')}, ${ago(r.startedAt, now)}${r.complete ? '' : ' (running)'}`
+			// Short, so it is not cut off on a phone; the banner below gives the power-up count.
+			label: `${presetWord(r.preset)}, ${plural(r.sessions, 'player')}, ${ago(r.startedAt, now)}${r.complete ? '' : ' (running)'}`
 		})),
 		...(otherPlay.trials ? [{ value: OTHER_RUN, label: `Other simulated play, ${plural(otherPlay.trials, 'power-up')}` }] : [])
 	]);
