@@ -1,4 +1,8 @@
 import type { Frame, Sfx, ToneOptions } from '../types';
+import { CHAIN_POINTS } from '../engine/game';
+
+/** Semitones above E5 for the 1st, 2nd, 3rd and 4th ghost eaten in one power-up. */
+const EAT_STEPS = [0, 5, 9, 12];
 
 /**
  * All sound is synthesized here, and all of it is original. Nothing plays until `wake()` is
@@ -186,8 +190,10 @@ export function createSfx(): SoundBoard {
 					if (e.reason !== 'refreshed' || !types.includes('power')) bedStop();
 					break;
 				case 'eat': {
-					const step = Math.log2(Math.max(1, e.points / 200)); // 0, 1, 2, 3 along a chain
-					const base = n('E5') * 2 ** ((step * 3) / 12);
+					// Pitch follows the place in the chain (first, second... ghost of this power-up), not
+					// the points: E5, A5, C#6, E6, chord tones of the power-up's A major, rising.
+					const place = Math.max(0, CHAIN_POINTS.indexOf(e.points as (typeof CHAIN_POINTS)[number]));
+					const base = n('E5') * 2 ** (EAT_STEPS[Math.min(place, EAT_STEPS.length - 1)] / 12);
 					arp([base, base * 1.26, base * 1.5, base * 2], 0.035, { type: 'square', vol: 0.03, dur: 0.07 });
 					noise(0.12, { vol: 0.05, freq: 2500, q: 0.8 });
 					break;

@@ -111,11 +111,13 @@ function wavesFor(level: number, scatterScale: number): number[] {
 
 /**
  * Arcade power length on normal: 6.5 s on level 1, about half a second less each level, with a
- * one-off breather of 1.5 s on every fourth level. Never under 2 s on any difficulty.
+ * breather on every fourth level: it keeps the previous level's length instead of dropping. So
+ * the power never gets longer from one level to the next. Never under 2 s on any difficulty.
  */
 export const MIN_POWER_TIME = 2;
 function powerTimeFor(level: number, powerScale: number): number {
-	const base = Math.max(2.5, 6.5 - 0.45 * (level - 1)) + (level % 4 === 0 ? 1.5 : 0);
+	const step = level % 4 === 0 ? level - 2 : level - 1;
+	const base = Math.max(2.5, 6.5 - 0.45 * step);
 	return Math.max(MIN_POWER_TIME, Math.round(base * powerScale * 10) / 10);
 }
 

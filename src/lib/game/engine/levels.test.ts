@@ -44,6 +44,8 @@ describe('levelInfo', () => {
 
 	it('power gets shorter with level and difficulty, and is never under 2 s', () => {
 		expect(levelInfo(1).powerTime).toBeGreaterThan(levelInfo(5).powerTime);
+		// Never longer than on the level before (level 4 used to be longer than level 1).
+		for (const d of DIFFS) for (let l = 2; l < 60; l++) expect(levelInfo(l, d).powerTime, `${d} level ${l}`).toBeLessThanOrEqual(levelInfo(l - 1, d).powerTime);
 		expect(levelInfo(1, 'easy').powerTime).toBeGreaterThan(levelInfo(1).powerTime);
 		expect(levelInfo(1, 'hard').powerTime).toBeLessThan(levelInfo(1).powerTime);
 		expect(levelInfo(1, 'hard').ghostSpeed).toBeGreaterThan(levelInfo(1).ghostSpeed);
