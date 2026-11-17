@@ -9,6 +9,49 @@ chase right up to the end and get out in time. If they do not, they either give 
 the power) or keep chasing a ghost that turns on them (and get caught). So the player's own
 behaviour around the end of each power-up tells us whether the cue worked.
 
+> **Figures in this file** (updated 2026-11-16) come from the current simulated data: planted run
+> `2xy6xrqq` (7,498 power-ups) and flat run `3allkras` (7,721), 40 simulated participants each,
+> 15,219 power-ups and 5,454 decisions together, all under rules version 3. Print them again with
+> `node scripts/simulate.mjs --summary --run <id>`; the full output of the seeding is in
+> `.logs/final-sim-planted.txt` and `.logs/final-sim-flat.txt`. Older run ids quoted in "Checked
+> against recorded data" are runs of earlier rules that have since been deleted; their tables are
+> kept as the history of how the measure was fixed.
+
+## Primary analysis, fixed in advance
+
+Written down before any person has played under the current rules, so the choice cannot follow
+the data:
+
+- **Primary outcome**: the turned-away-in-time rate per condition (timely retreats out of decision
+  trials), with **"too early" from 2.0 s left**, the line in the rules (`TIMELY` in
+  `convex/lib/rules.ts`). Every condition is compared with every other inside people (paired
+  differences, Holm over the 78 pairs) and against the timer bar (Holm over 12).
+- **Sensitivity check**: the same analysis with "too early" from **2.5 s** (`TIMELY_CHECK`, the
+  dashboard's line switch). It is reported beside the primary result, never instead of it. If the
+  order at the top changes between the two lines (it does in the planted simulated run: ink refill
+  80% and timer bar 79% at 2.5 s, timer bar 74% and ink refill 71% at 2.0 s), the report says so
+  and claims only what holds under both.
+- **Secondary**: too-late and too-early rates, the paired difference in median turn-away time,
+  "time to spare" at each turn-away, decisions per power-up per condition, clarity and distraction.
+
+## Before collecting data
+
+- [ ] **Pilot with 2 or 3 people** under study rules. Check on the run console's tally that a run
+  of 16 power-ups gives about 5 decisions or more per person and case, and how long a session
+  takes with all 13 cases (about 50 minutes of play). Pick a longer run length on the console (24)
+if the yield is far lower. Every yield figure in
+  this file comes from the simulator.
+- [ ] **Test the downloads on the study laptop**: open the dashboard and press every download
+  button once (Power-ups CSV and JSON, Answers, Runs). Each file must end without an
+  `EXPORT FAILED` line. `node scripts/export-e2e.mjs --quick` checks them all in one go.
+- [ ] **Delete the simulated data, or keep it clearly apart.** It is never mixed into the human
+  view, but a clean database is easier to hand over: "Delete simulated data" on the simulator page
+  (`/dev/simulate`, `admin.deleteBotData`) removes every bot row and leaves human rows alone.
+  Download the simulated runs first if they are wanted for the report.
+- [ ] Check sound on the study machine by ear (it has never been checked by a person).
+- [ ] Decide the number of participants from "People needed" on the dashboard after the pilot
+  (the planted run needed about 40 people to separate conditions 0.7 s of planted noise apart).
+
 ## Conditions
 
 Thirteen, each showing **one signal only** so results are not muddied by a second cue:
@@ -149,9 +192,9 @@ Why each threshold:
 
 **Fleeing ghosts and "reachable".** Under study rules a scared ghost within 7 tiles runs from the
 player at 4.7 tiles/s against the player's 6.2, so a pursuit closes about 1.5 tiles a second
-(`PURSUIT_GAIN` in `convex/lib/rules.ts`), not 5.6. Judged at that speed, 2,040 of the 3,001 "in
-time" and 291 of the 1,574 "too early" in the stored simulated data turned from a ghost the pursuit
-could no longer have caught before the end. They stay decisions about the time left, for this
+(`PURSUIT_GAIN` in `convex/lib/rules.ts`), not 5.6. Judged at that speed, 1,927 of the 2,919 "in
+time" (66%) and 246 of the 1,361 "too early" (18%) in the current simulated data turned from a
+ghost the pursuit could no longer have caught before the end. They stay decisions about the time left, for this
 reason: what the class asks is whether the player broke off the chase *before the power ran out*,
 and only the time left says when that is. A player who keeps running at a fleeing ghost they can
 no longer catch is still exposed when it turns (a ghost 2 tiles ahead becomes a hunter 2 tiles
@@ -192,10 +235,10 @@ from the raw fields every trial stores (`turnLeft`, `turnDist`, `lastChaseEnd`, 
   than on reacting. Moving the line would not remove this (any line near a cue event has it); what
   keeps it honest is that the turn-away time is stored for every trial: look at its distribution
   beside the rates, and recompute the rates with the line at 2.5 s as a check (the dashboard's
-  line switch, below). The line sits where turn-aways are dense: in the stored simulated data
-  (rules version 3, 16,078 trials, 5,868 decisions), 627 of the 1,018 "too early" trials that were
-  engaged (62%; 40% of all 1,574 "too early") turned between 2.0 and 2.5 s, and 878 of the 3,001
-  "in time" (29%) between 1.5 and 2.0 s. A cue that lets players anticipate (a draining bar, a
+  line switch, below). The line sits where turn-aways are dense: in the current simulated data
+  (rules version 3, 15,219 trials, 5,454 decisions), 527 of the 846 "too early" trials that were
+  engaged (62%; 39% of all 1,361 "too early") turned between 2.0 and 2.5 s, and 866 of the 2,919
+  "in time" (30%) between 1.5 and 2.0 s. A cue that lets players anticipate (a draining bar, a
   count) can put many turn-aways just above 2 s; a cue that marks an onset (the blink) puts them
   just below. The classic blink gives no information before 2 s, so a blink player cannot be "too
   early" by reading the cue, only by guessing: that is a property of that cue, not of the measure.
@@ -205,8 +248,8 @@ Each trial stores `rulesVersion` and the raw measures the rules read (`lastChase
 are the source of truth: `admin.reclassify` recomputes outcome, eligibility, wasted power and
 `gaveUpEarly` from them. The trials CSV carries every one of them (the chase log in one cell), so
 the classes can be recomputed from the download alone: `node scripts/csv-reclassify.mjs` does that
-with its own copy of the rules (all 16,072 stored simulated trials of version 3 agree on outcome,
-eligibility, `gaveUpEarly`, wasted power and the decision flag). Rows recorded before version 3 were measured with another idea of a chase
+with its own copy of the rules (all 15,219 trials of the two current simulated runs agree on
+outcome, eligibility, `gaveUpEarly`, wasted power and the decision flag). Rows recorded before version 3 were measured with another idea of a chase
 and lack `chaseEndDist`; they keep their class and their old version and are left out of every rate.
 
 ### What this measure cannot do
@@ -237,8 +280,13 @@ and lack `chaseEndDist`; they keep their class and their old version and are lef
   after a power-up ended, but a player can still clear the maze in the aftermath. Then the 3 s are
   cut (`after.cut: 'clear'`) and the player cannot be "caught" in them. Such trials keep their class
   and stay in the rates (the class stands on what was seen), and every rate result counts them
-  (`flagged.cutByClear`) so the page can say how many there are: 99 of 5,868 decision trials (1.7%)
-  in the stored simulated data, none of them caught (against 3.4% caught overall).
+  (`flagged.cutByClear`; the dashboard shows the count under the headline numbers as "counted, with
+  a shorter aftermath"): 74 of 5,454 decision trials (1.4%) in the current simulated data, none of
+  them caught (against 3.2% caught overall).
+- **Gave up very early, then caught.** A trial can give a reachable ghost up early (`gaveUpEarly`)
+  and still end with the player caught within 5 tiles after the end. **Caught has priority**: the
+  trial is classed "caught" (too late) and is not counted in the "gave up very early" share, which
+  is a part of too early only. 2 of 5,454 decisions in the current simulated data.
 - **A run at a ghost that starts in the last half second is not a chase.** The 3 tiles have to be
   closed while the power is on. A player who sets off 0.4 s before the end and runs on after it is
   recorded by the death, if there is one ("caught"), not as "stayed too long".
@@ -387,11 +435,13 @@ data, 40 simulated participants each, `node scripts/simulate.mjs --summary --run
 
 | Run | Decisions per condition | Rank correlation with planted noise: in time / too late / too early | Pairs clearly apart (paired, Holm): in time / too late / too early | Dashboard takeaway |
 | --- | --- | --- | --- | --- |
-| Planted `yd3y8vwk` | 205-232 | -0.97 / 0.95 / 0.91 | 20 / 15 / 3 of 78, all 20 in the planted direction | "No condition is clearly best yet": timer bar 76% is not clearly ahead of 7 others; 20 of 78 pairs differ, every clear difference as planted |
-| Flat `yqglh095` | 195-251 | none planted | 0 / 0 / 0 of 78 | "No condition is clearly best yet: across all 78 pairs of conditions, no difference is larger than chance would explain" |
+| Planted `2xy6xrqq` | 189-229 | -0.99 / 0.95 / 0.91 | 32 / 9 / 5 of 78, all 32 in the planted direction | A top group led by the timer bar (74%), final count (72%), ink refill (71%) and burning fuse (69%), none clearly apart from each other; dot sweep and no signal (36%) at the bottom |
+| Flat `3allkras` | 198-226 | none planted | 0 / 0 / 0 of 78 | No condition stands out: no difference is larger than chance would explain |
 
 "Clearly best" is a high bar on purpose: the top of the planted table is close (timer bar 0.3 s,
-final count 0.4, burning fuse 0.5), and 40 people do not separate neighbours that close. The
+final count 0.4, burning fuse 0.5, ink refill 0.6), and 40 people do not separate neighbours that
+close. With "too early" from 2.5 s the planted run's top changes order (ink refill 80%, timer bar
+79%) and the classic blink rises from 54% to 64%: one reason the line is fixed in advance (above). The
 pairs that do separate are those more than about 0.7 s of planted noise apart. `--summary` and the
 dashboard count separated pairs with the same code (`convex/lib/compare.ts` through
 `dashboard.simCheck`), so they cannot disagree.
@@ -418,11 +468,13 @@ Every rate divides by **decision trials** = caught + overstayed + timely retreat
 among the trials that count toward the rates (rules version 3). These are the trials whose ending
 shows whether the player knew the time left. On the dashboard "counted" means decision trials.
 
-- **Well-timed rate** (the headline): timely retreats / decision trials. Higher is better.
+- **Turned-away-in-time rate** (the headline, `wellTimed` in the code): timely retreats / decision
+  trials. Higher is better.
 - **Too-late rate**: (caught + overstayed) / decision trials. Lower is better. Its worst part, the
   **caught rate** (caught / decision trials), is shown with it.
 - **Too-early rate**: early retreats / decision trials. Lower is better. The part that **gave up
-  before the warning window** (`gaveUpEarly`) can be shown with it.
+  before the warning window** (`gaveUpEarly`, among trials classed too early only: a trial that
+  gave up early and was then caught is caught) is shown with it.
 - **Catches** are reported apart: count, share of the trials that count toward the rates, and how
   many were late. They are in no rate's denominator.
 - **Intervals**: 95%, clustered by participant: a seeded bootstrap over participants (2,000
@@ -458,6 +510,30 @@ The participant can see the screen, and only the cue may tell them how much powe
 power-up runs, the tracker's live readout carries no clock, no power length and nothing judged
 against the warning window: only the distance to the nearest scared ghost and whether the player is
 going after one. An outcome is available once the trial is closed, 3 s after the power ran out.
+
+## Limitations
+
+State these in any report of results:
+
+- **"In time" mostly means "left a chase that could not succeed before the end".** Two thirds of
+  the "in time" turn-aways in the simulated data came from a chase that could no longer close at
+  the fleeing speed. That is timing, but not judgement of the pursuit. Report "time to spare"
+  beside the rates.
+- **The 2 s line sits on every cue's final warning**, so it favours players who react to the
+  warning over players who anticipate it. The 2.5 s check is there to show how much this matters.
+- **Engagement differs by cue.** In the planted simulated run 55% of power-ups were engaged under
+  no signal and 73% under the timer bar. Decisions per power-up stay at 34-39% for every cue, but
+  the denominator of every rate is set by what players did after the cue appeared. Show decisions
+  per power-up per condition as a check.
+- **Some aftermaths are cut short by a maze clear** (1.4% of decisions in the simulated data; none
+  of them could end caught). They stay in the rates.
+- **A trial can give up early and then be caught** (2 in the simulated data). It counts as caught
+  only.
+- **One maze.** Every study run uses the same maze, speeds and rules; results may not carry over
+  to other layouts.
+- **No people yet.** Every yield and run-length figure comes from a simulated player, which cannot
+  see a cue. The pilot above is the first real test.
+- **Sound has never been checked by ear.**
 
 ## Honesty rules for the dashboard
 
