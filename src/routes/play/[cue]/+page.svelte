@@ -312,7 +312,8 @@
 	.tool.end :global(kbd) { background: transparent; color: inherit; border-color: currentColor; }
 	.tool:disabled { opacity: 0.6; cursor: default; }
 	.finishing { font-size: var(--text-sm); font-weight: 650; color: var(--accent); font-variant-numeric: tabular-nums; }
-	.body { flex: 1; min-height: 0; overflow: auto; padding: var(--space-3) var(--gutter); }
+	/* No bottom padding: the summary's action row sticks to the very bottom edge. */
+	.body { flex: 1; min-height: 0; overflow: auto; padding: var(--space-3) var(--gutter) 0; }
 	@media (max-width: 760px) {
 		.tool :global(kbd) { display: none; }
 		.who .dim:last-child { display: none; }

@@ -322,27 +322,29 @@
 	</section>
 
 	<section class="selected" aria-labelledby="sel-title">
-		<div class="sel-head">
-			<CueChip cue={selected} size="sm" />
-			<span class="role">{ROLE_LABEL[selected.role]} · {whereLabel(selected)}</span>
-		</div>
-		<h2 id="sel-title">{selected.name}</h2>
-		<p class="tagline">{selected.tagline}</p>
-		<div class="big">{#key selected.id}<CuePreview cue={selected} controls fps={30} />{/key}</div>
-		<p class="desc">{selected.description}</p>
+		<div class="sel-body">
+			<div class="sel-head">
+				<CueChip cue={selected} size="sm" />
+				<span class="role">{ROLE_LABEL[selected.role]} · {whereLabel(selected)}</span>
+			</div>
+			<h2 id="sel-title">{selected.name}</h2>
+			<p class="tagline">{selected.tagline}</p>
+			<div class="big">{#key selected.id}<CuePreview cue={selected} controls fps={30} />{/key}</div>
+			<p class="desc">{selected.description}</p>
 
-		<div class="settings">
-			<div class="set">
-				<span class="lab">Rules <InfoTip term="Rules">Study rules: each power-up lasts a random 4 to 8 s, power dots grow back, no game over, one maze. Arcade rules: the normal game with fixed power lengths, lives and levels. Both are measured.</InfoTip></span>
-				<Segmented label="Rules" size="sm" options={[{ value: 'study', label: MODE_LABEL.study }, { value: 'arcade', label: MODE_LABEL.arcade }]} bind:value={run.settings.rules} onchange={() => persist()} />
-			</div>
-			<div class="set length">
-				<span class="lab" title={runLengthWords(run.settings.runLength ?? RUN_LENGTH)}>Run length <InfoTip term="Run length">A run ends by itself after this many power-ups (the one in progress is measured to its end first). About one power-up in three ends in a decision, and one comes about every 15 s, so {RUN_LENGTH} power-ups take about 4 minutes and measure 5 or 6 decisions. End run still ends a run early.</InfoTip></span>
-				<Segmented label="Run length in power-ups" size="sm" options={lengthOptions} value={String(run.settings.runLength ?? RUN_LENGTH)} onchange={setLength} />
-			</div>
-			<div class="set">
-				<span class="lab">Sound</span>
-				<Segmented label="Sound" size="sm" options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} value={sound ? 'on' : 'off'} onchange={(v) => setSound(v === 'on')} />
+			<div class="settings">
+				<div class="set">
+					<span class="lab">Rules <InfoTip term="Rules">Study rules: each power-up lasts a random 4 to 8 s, power dots grow back, no game over, one maze. Arcade rules: the normal game with fixed power lengths, lives and levels. Both are measured.</InfoTip></span>
+					<Segmented label="Rules" size="sm" options={[{ value: 'study', label: MODE_LABEL.study }, { value: 'arcade', label: MODE_LABEL.arcade }]} bind:value={run.settings.rules} onchange={() => persist()} />
+				</div>
+				<div class="set length">
+					<span class="lab" title={runLengthWords(run.settings.runLength ?? RUN_LENGTH)}>Run length <InfoTip term="Run length">A run ends by itself after this many power-ups (the one in progress is measured to its end first). About one power-up in three ends in a decision, and one comes about every 15 s, so {RUN_LENGTH} power-ups take about 4 minutes and measure 5 or 6 decisions. End run still ends a run early.</InfoTip></span>
+					<Segmented label="Run length in power-ups" size="sm" options={lengthOptions} value={String(run.settings.runLength ?? RUN_LENGTH)} onchange={setLength} />
+				</div>
+				<div class="set">
+					<span class="lab">Sound</span>
+					<Segmented label="Sound" size="sm" options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} value={sound ? 'on' : 'off'} onchange={(v) => setSound(v === 'on')} />
+				</div>
 			</div>
 		</div>
 
@@ -362,23 +364,29 @@
 </div>
 
 <style>
+	/*
+	 * Two columns that share the width and never overlap: the cases (left, as wide as is left) and the
+	 * selected case (right, clamped). Both tracks are minmax(0, ...) and every child has min-width: 0,
+	 * so nothing in one column can push into the other. The page is as tall as its content (the
+	 * status line sits right under it); the card size is chosen so that it fits one screen.
+	 */
 	.console {
-		/* Thumbnail size: three rows of cards must fit the screen height, five the left column's width. */
-		--thumb: clamp(84px, min(calc((100dvh - 392px) / 3), calc((100vw - 520px) / 5 - 14px)), 190px);
 		--gap: 10px;
+		--panel-w: clamp(340px, 26vw, 460px);
+		--status-h: 40px;
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) 380px;
-		grid-template-rows: minmax(0, 1fr) auto;
+		grid-template-columns: minmax(0, 1fr) minmax(0, var(--panel-w));
+		grid-template-rows: auto auto;
+		align-content: start;
+		align-items: start;
 		gap: var(--space-4) var(--space-5);
 		width: 100%;
-		max-width: 1440px;
+		max-width: 1720px;
 		margin: 0 auto;
 		padding: var(--space-4) var(--gutter) var(--space-3);
-		/* One screen: a long description scrolls inside the selected panel instead of pushing the status line off. */
-		height: calc(100dvh - var(--bar-h));
-		min-height: 600px;
 		box-sizing: border-box;
 	}
+	.cases { min-width: 0; container-type: inline-size; }
 
 	/* ----- cases ----- */
 	.top { display: flex; align-items: baseline; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); }
@@ -391,18 +399,35 @@
 	/* Comparing all thirteen side by side is a laptop task; on a phone the participant comes first. */
 	@media (max-width: 600px) { .compare { display: none; } }
 	.cases-grid {
+		/*
+		 * Card size from the width this column really has (100cqi) and the screen height: five cards
+		 * across, three rows on one screen, never larger than 200px. The idea grid then fits as many
+		 * columns as that width holds.
+		 */
+		--thumb: clamp(72px, min(calc((100dvh - var(--bar-h) - 344px) / 3), calc((100cqi - 4 * var(--gap)) / 5 - 14px)), 200px);
+		--card: calc(var(--thumb) + 14px);
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr);
 		grid-template-areas: 'refs sheet' 'ideas ideas';
 		gap: var(--space-3) var(--space-4);
 		align-items: start;
+		min-width: 0;
 	}
-	.refs { grid-area: refs; }
-	.ideas { grid-area: ideas; }
+	.refs { grid-area: refs; min-width: 0; }
+	.ideas { grid-area: ideas; min-width: 0; }
 	.sheet { grid-area: sheet; }
+	/* The key hint only where it fits on the title line. */
+	@container (max-width: 860px) { .keys { display: none; } }
+	/* Too narrow for the run sheet beside the three references: it goes above them, still at the top. */
+	@container (max-width: 520px) {
+		.cases-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'sheet' 'refs' 'ideas'; }
+		.sheet { margin-top: 0; contain: none; max-height: 260px; }
+	}
 	h2 { font-size: var(--text-xs); font-family: var(--font-mono); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
-	.row { display: grid; grid-template-columns: repeat(5, calc(var(--thumb) + 14px)); gap: var(--gap); }
-	.refs .row { grid-template-columns: repeat(3, calc(var(--thumb) + 14px)); }
+	/* At most five across (ten ideas make two even rows), fewer when the column is narrower. */
+	.row { display: grid; grid-template-columns: repeat(auto-fill, var(--card)); gap: var(--gap); min-width: 0; max-width: calc(5 * var(--card) + 4 * var(--gap)); }
+	.refs .row { grid-template-columns: repeat(3, var(--card)); }
+	.case { min-width: 0; }
 
 	.case {
 		position: relative;
@@ -462,9 +487,12 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-2);
+		/* Exactly as tall as the reference cards beside it (adds no height of its own); scrolls inside if it must. */
 		align-self: stretch;
-		max-height: calc(var(--thumb) + 60px);
+		contain: size;
+		min-height: 0;
 		min-width: 0;
+		overflow-y: auto;
 		padding: var(--space-3);
 		border: 1px solid var(--rule);
 		border-radius: var(--radius-md);
@@ -508,27 +536,42 @@
 	.empty { color: var(--ink-faint); font-size: var(--text-sm); }
 
 	/* ----- selected case ----- */
+	/*
+	 * One compact block (preview, description, settings, Play), as tall as its content and never
+	 * taller than the screen: when space is short the preview gives way first (down to 150px), then
+	 * the block scrolls inside itself. Sticky when the cases are taller.
+	 */
 	.selected {
 		grid-row: 1 / 2;
 		grid-column: 2;
+		position: sticky;
+		top: calc(var(--bar-h) + var(--space-3));
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-2);
-		min-height: 0;
+		gap: var(--space-3);
+		min-width: 0;
+		max-height: calc(100dvh - var(--bar-h) - 2 * var(--space-4) - var(--status-h) - var(--space-3));
+		overflow: hidden;
+		overflow-wrap: anywhere;
 		padding: var(--space-4);
 		border: 1px solid var(--rule);
 		border-radius: var(--radius-lg);
 		background: var(--surface);
 	}
-	.sel-head { display: flex; align-items: center; gap: var(--space-2); }
+	.sel-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
 	.role { color: var(--ink-faint); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; }
 	.selected h2 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: var(--text-xl); letter-spacing: 0; text-transform: none; }
 	.tagline { color: var(--ink); }
 	/* The preview takes what the text leaves, so the description is never cut off. */
-	.big { width: 100%; flex: 1 1 0; min-height: 190px; max-height: 330px; }
-	.desc { flex: none; color: var(--ink-dim); font-size: var(--text-sm); }
+	/* Everything but Play; it scrolls inside itself only when even the smallest preview does not fit. */
+	.sel-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; overflow-x: hidden; }
+	.selected > :global(.btn.primary) { flex: none; }
+	.big { width: 100%; flex: 0 1 360px; height: 360px; min-height: 150px; }
+	.sel-body > :not(.big) { flex: none; }
+	.desc { color: var(--ink-dim); font-size: var(--text-sm); }
 	.settings { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--rule); }
-	.set { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+	.set { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-1) var(--space-3); min-width: 0; }
+	.set :global(.seg) { max-width: 100%; }
 	.lab { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-dim); font-size: var(--text-sm); }
 	.enter { margin-left: 6px; opacity: 0.75; }
 	.phone-only { display: none; }
@@ -537,6 +580,9 @@
 	/* ----- status line ----- */
 	.status {
 		grid-column: 1 / -1;
+		min-height: var(--status-h);
+		box-sizing: border-box;
+		min-width: 0;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
@@ -553,22 +599,16 @@
 
 	/* ----- narrower screens ----- */
 	@media (max-width: 1100px) {
-		.console { --thumb: clamp(84px, calc((100vw - 470px) / 5 - 14px), 190px); grid-template-columns: minmax(0, 1fr) 340px; }
 		.keys { display: none; }
 	}
 	@media (max-width: 860px) {
-		.console {
-			--thumb: calc((100vw - 2 * var(--gutter) - 2 * var(--gap)) / 3 - 14px);
-			grid-template-columns: minmax(0, 1fr);
-			grid-template-rows: auto;
-			height: auto;
-			min-height: 0;
-		}
-		.cases-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'sheet' 'refs' 'ideas'; }
-		.row, .refs .row { grid-template-columns: repeat(3, calc(var(--thumb) + 14px)); }
-		.sheet { margin-top: 0; max-height: 260px; }
-		.selected { grid-row: auto; grid-column: auto; position: relative; }
-		.big { height: min(80vw, 340px); }
+		.console { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+		.cases-grid { --thumb: min(200px, calc((100cqi - 2 * var(--gap)) / 3 - 14px)); grid-template-columns: minmax(0, 1fr); grid-template-areas: 'sheet' 'refs' 'ideas'; }
+		.row, .refs .row { grid-template-columns: repeat(3, var(--card)); }
+		.sheet { margin-top: 0; contain: none; max-height: 260px; }
+		.selected { grid-row: auto; grid-column: auto; position: relative; top: auto; max-height: none; overflow: visible; }
+		.sel-body { overflow: visible; }
+		.big { flex: none; height: min(80vw, 340px); }
 		/* The Play button stays in reach at the bottom of the screen. */
 		.selected :global(.btn.primary) { position: fixed; left: var(--gutter); right: var(--gutter); bottom: 12px; width: auto; z-index: 30; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); }
 		.console { padding-bottom: 84px; }

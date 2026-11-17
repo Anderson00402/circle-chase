@@ -205,7 +205,7 @@
 </div>
 
 <style>
-	.summary { width: 100%; max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-4); padding-bottom: var(--space-5); }
+	.summary { width: 100%; max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-4); padding-bottom: var(--space-3); }
 	.eyebrow { color: var(--accent); }
 	h1 { display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); font-weight: 600; margin-top: var(--space-1); }
 	h1 :global(.chip) { font-size: var(--text-xl); }
@@ -245,7 +245,8 @@
 	.ask-actions { display: flex; gap: var(--space-2); }
 	.done { color: var(--good); }
 	.link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: var(--text-sm); text-decoration: underline; cursor: pointer; align-self: flex-start; }
-	.go { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+	/* The next step is always in reach: on a short window the actions stay at the bottom while the rows scroll. */
+	.go { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-3) 0; background: var(--bg); border-top: 1px solid var(--rule); }
 	.k { margin-left: 6px; opacity: 0.75; }
 	.k :global(kbd) { background: transparent; color: inherit; border-color: currentColor; }
 	@media (max-width: 560px) {
@@ -254,8 +255,11 @@
 		td.n { white-space: normal; }
 		.what-cell { min-width: 0; }
 	}
-	@media (max-width: 860px) {
+	/* Below this the table and the questions do not both fit side by side: the questions go under it. */
+	@media (max-width: 1100px) {
 		.grid { grid-template-columns: minmax(0, 1fr); }
+	}
+	@media (max-width: 860px) {
 		.stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 		.go :global(.btn) { flex: 1 1 100%; }
 	}

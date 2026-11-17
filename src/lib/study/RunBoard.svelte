@@ -17,6 +17,8 @@
 	import LivePanel from '../telemetry/LivePanel.svelte';
 	import type { Participant } from './run.svelte.ts';
 	import { participantName } from '#convex/lib/replayDigest.ts';
+	/** Largest tile in px: a big board on a large screen, without a canvas so big it costs frames. */
+	const MAX_TILE = 40;
 
 	export interface RunEnd { blockKey: string; recent: RecentTrial[]; started: boolean; decisions: number }
 
@@ -114,7 +116,7 @@
 
 <div class="runboard" class:with-panel={showPanel}>
 	<div class="board">
-		<Game bind:this={gameRef} {cue} {config} onframe={onframe} onstart={tel.onStart} maxTile={34} {pausedNote} />
+		<Game bind:this={gameRef} {cue} {config} onframe={onframe} onstart={tel.onStart} maxTile={MAX_TILE} {pausedNote} />
 	</div>
 	{#if showPanel}
 		<div class="side">
@@ -129,11 +131,23 @@
 		grid-template-columns: minmax(0, 1fr);
 		gap: var(--space-4);
 		width: 100%;
-		max-width: 1280px;
+		/*
+		 * The board is bound by the window height (it fits itself to its box), so the page is only as
+		 * wide as a board of that height plus the panel: the panel sits beside the board on wide
+		 * windows, and a tall window gets a larger board instead of an empty band.
+		 */
+		--panel-w: 300px;
+		/* The largest board: 40 px tiles on the widest maze (25 tiles; the mazes are about square). */
+		--board-max: 1000px;
+		--board-fit: calc(100dvh - 170px);
+		max-width: min(var(--board-max), var(--board-fit));
 		margin: 0 auto;
 		align-items: start;
 	}
-	.runboard.with-panel { grid-template-columns: minmax(0, 1fr) 300px; }
+	.runboard.with-panel {
+		grid-template-columns: minmax(0, 1fr) var(--panel-w);
+		max-width: calc(min(var(--board-max), var(--board-fit)) + var(--panel-w) + var(--space-4));
+	}
 	.board { min-width: 0; }
 	@media (max-width: 900px) {
 		.runboard.with-panel { grid-template-columns: minmax(0, 1fr); }
