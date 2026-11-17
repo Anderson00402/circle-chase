@@ -119,7 +119,8 @@ for (const kind of ['trials', 'ratings', 'blocks']) {
 	cases.push({ kind, name: 'human', params: { source: 'human' }, tiny: 1 });
 	if (!QUICK) cases.push({ kind, name: 'bot, everything', params: { source: 'bot' }, tiny: kind === 'trials' ? 0 : 5 });
 	if (runId) cases.push({ kind, name: `bot, run ${runId}`, params: { source: 'bot', run: runId }, tiny: kind === 'trials' ? 25 : 2 });
-	if (runId) cases.push({ kind, name: 'human, a simulator run (matches nothing)', params: { source: 'human', run: runId }, tiny: 1, none: true });
+	// Pages of 25 for trials: the run holds about 7,500 rows to step over, and 7,500 one-row pages only measure round trips.
+	if (runId) cases.push({ kind, name: 'human, a simulator run (matches nothing)', params: { source: 'human', run: runId }, tiny: kind === 'trials' ? 25 : 1, none: true });
 	cases.push({ kind, name: 'bot, a cue that does not exist', params: { source: 'bot', cue: 'no-such-cue' }, tiny: 1, none: true });
 	cases.push({ kind, name: 'bot, a time range in the past with nothing in it', params: { source: 'bot', from: '1', to: '2' }, tiny: 1, none: true });
 }

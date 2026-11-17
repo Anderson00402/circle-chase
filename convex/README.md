@@ -14,6 +14,15 @@
 > the dying phase. The live panel reads `summary.cueCounts`. `appVersion` comes from `/build.json`.
 > The outbox parks a write the server keeps rejecting.
 
+> **Changed 2026-11-16, final polish.** Export pages are small (100-200 rows; blocks and ratings
+> read once per session, never per row) and the HTTP stream retries a failed page at half the size
+> before it gives up with an `EXPORT FAILED` line; the CSVs gain `consoleNumber` (the "#4" of the run
+> console). The outbox lists parked writes (`parkedWrites`) with retry, download and discard, and
+> never counts them as on the way (`src/lib/study/outbox-parked.svelte`). Dashboard and replay
+> digests are kept in chunks of 25 rows (see "Database growth"). The per-session totals count "gave
+> up very early" only for trials classed too early and count decisions cut by a maze clear
+> (`migrations.rebuildCells` recomputed them for the stored data).
+
 Everything the game measures lives here. What each measure means is defined in
 `docs/STUDY.md`; how it is computed is in `src/lib/telemetry/tracker.ts` (header comment) and
 summarised under "Interpretations" below.
@@ -66,7 +75,9 @@ routes at `http://127.0.0.1:3211`. `npm run convex` pushes this folder on save.
 | `blocks` | cue played within a session | `cue`, `orderIndex`, started/ended, `trialCount`, `engagedCount`, `deaths`, `score`, `pauses?`, `pausedSeconds?`; `segments?`: one entry per page that played it (a refresh resumes the block in a new page) with its own deaths, score and pauses; the block's totals are their sums |
 | `trials` | power-up | context + every measure of `TrialMeasures` (`src/lib/telemetry/types.ts`), including `lastChaseEnd` and `rulesVersion`; `simRun?`; `clipId?`. About 1 KB, no series |
 | `trialSeries` | trial | the 10 Hz series packed (~1 KB) + `trialId`, `sessionId`, `cue`, `source`, `mode`, `createdAt`, `simRun?`; indexes `by_trial`, `by_source_cue` [source, cue, createdAt], `by_run` [simRun, cue, createdAt] |
-| `trialDigests` | session | compact row per trial for the dashboard (`convex/lib/digest.ts`, owned by the dashboard); kept by `trials.save` and `admin.reclassify` |
+| `trialDigests` | up to 25 trials of a session (`chunk` 0, 1...; older ones hold a whole session) | compact row per trial for the dashboard (`convex/lib/digest.ts`); kept by `trials.save` and `admin.reclassify` |
+| `trialCells` | session | the session's totals for the headline numbers (`convex/lib/cells.ts`), rewritten from all its digest rows on every digest change |
+| `replayDigests` | up to 25 clips of a session (`chunk`, as above) | slim row per trial with a clip, for the replay browser (`convex/lib/replayDigest.ts`) |
 | `clips` | stored replay (engaged or caught trials) | packed scenes (`data`, 5-15 KB), `markers`, `numbers`, `cue`, `outcome`, `layout?` (the maze layout fingerprint); separate so trial scans stay light |
 | `ratings` | questionnaire answer | `kind: 'block'` (clarity, distraction 1-7) or `'session'` (clearest, leastClear, comment) |
 | `presence` | open game page | heartbeat every 5 s; rows older than 20 s are swept by a cron |
@@ -97,17 +108,24 @@ session, not from the caller.
 ### The outbox
 
 `startOutbox(client)` (root layout) starts the app's one queue; `getOutbox(client).send(fn, args,
-{ id?, lane?, onDone? })` queues a write; `outboxStatus` is reactive:
-`{ state: 'saved'|'saving'|'offline'|'failing', pending, waiting, failing, failingCount, lastError, parked, parkedErrors, savedAt }`.
+{ id?, lane?, onDone?, about? })` queues a write (`about`: participant label and case, to name it if it
+gets stuck); `outboxStatus` is reactive:
+`{ state: 'saved'|'saving'|'offline'|'failing', pending, waiting, failing, failingCount, lastError, parked, parkedErrors, parkedWrites, savedAt }`.
 
 - Nothing is dropped: a failing write is retried with back-off (0.5 s doubling to 30 s) for as long
   as the page lives and stays in localStorage until Convex has it. After 3 errors in a row it
   counts as failing (`failingCount`, `lastError`), but it is still kept and retried.
 - A write the server keeps rejecting (8 times in a row, while not offline; a lost connection never
   rejects a write, it only delays it) is **parked**: kept, tried again every 5 minutes, counted in
-  `failingCount` and listed in `parked` / `parkedErrors` (`{ fn, error }`), and it no longer holds
-  its lane, so the later writes of its session go on. Parked writes stay parked when another page
-  adopts them.
+  `failingCount` and listed in `parked` / `parkedErrors` (`{ fn, error }`) and in full in
+  `parkedWrites` (what it is in plain words, participant, session, case, the server's error, first
+  refused, parked, last tried, tries). It is **not** counted in `pending` (it is not on the way),
+  and it no longer holds its lane, so the later writes of its session go on. Parked writes stay
+  parked, with their count and error, when another page adopts them. `retryParked(id?)` tries
+  again now, `parkedJson(id?)` gives them with their stored arguments for a download, and
+  `discardParked(id)` drops one for good. `<OutboxParked />` (`src/lib/study/outbox-parked.svelte`)
+  is the small "1 write refused" button and panel with those three actions; it shows nothing while
+  there are none.
 - Writes of one lane (the telemetry client uses the session key) go in order; a stuck lane does
   not hold the others.
 - A write answering null (`runs.setup`, `runs.markBlock`, ratings, `blocks.end`,
@@ -146,9 +164,18 @@ session, not from the caller.
 `mode`, `cue`, `from`, `to`, `participantId`, `sessionId`, `run`, `includePractice`); `pageSize`
 (1-1000) forces smaller pages. Rows created after the download started are left out.
 
+Pages are small by default (trials 200, trials JSON 100, ratings 200, blocks 200: `PAGE_SIZE` in
+`exports.ts`), and the context of a row (session, participant, block, the block's rating) is read
+once per session on the page, not per row. On a busy machine Convex can still stop a query ("too
+many system operations"); the stream then reads the same page again at half the size, up to 6
+times with a short pause, and keeps the smaller size for the rest of the file. Only if that fails
+too does the file end with `EXPORT FAILED: the file is incomplete. <error> (tried 7 times, down to
+pages of N rows; R rows were written before this line, the rest are missing)`. `simulateLimit=N`
+(checks only) makes every page above N rows fail that way: `node scripts/export-e2e.mjs --squeeze 7`.
+
 | File | One row per | Columns |
 | --- | --- | --- |
-| `trials.csv` | trial | ids, `createdAt`, who (`participantLabel`, `participantNumber`, `runNumber`, `orderNumber`, `orderRow`, `simRun`), `source`, `mode`, `cue`, `blockIndex` (run order in the session, from 0), `suggestedPosition` (position of the cue in the suggested order), `pauses`, `pausedSeconds` (of its block), settings, every measure flat (`after.*` spelled out), the rules-v3 raw measures (`chaseEndDist`, `chaseGain`, `chaseGhost`, `gaveUpEarly`, `chaseLog`), `outcome`, `rulesVersion`, `inRates`, `decision`, `catchLate`, `hasClip`, `practice`. `chaseLog` is one cell: one chase per `;`, each `ghost from at left dist gain end endDist` (seconds since the power started, power left, tiles; `-` for no distance); empty without chases, blank before rules version 3 (`chaseLogCell` / `parseChaseLogCell` in `exports.ts`). Every class can be recomputed from this file alone: `node scripts/csv-reclassify.mjs` |
+| `trials.csv` | trial | ids, `createdAt`, who (`participantLabel`, `consoleNumber` (the number the run console shows, "#4"; empty outside the console), `participantNumber` (overall order of first visit: not the console's number), `runNumber`, `orderNumber`, `orderRow`, `simRun`), `source`, `mode`, `cue`, `blockIndex` (run order in the session, from 0), `suggestedPosition` (position of the cue in the suggested order), `pauses`, `pausedSeconds` (of its block), settings, every measure flat (`after.*` spelled out), the rules-v3 raw measures (`chaseEndDist`, `chaseGain`, `chaseGhost`, `gaveUpEarly`, `chaseLog`), `outcome`, `rulesVersion`, `inRates`, `decision`, `catchLate`, `hasClip`, `practice`. `chaseLog` is one cell: one chase per `;`, each `ghost from at left dist gain end endDist` (seconds since the power started, power left, tiles; `-` for no distance); empty without chases, blank before rules version 3 (`chaseLogCell` / `parseChaseLogCell` in `exports.ts`). Every class can be recomputed from this file alone: `node scripts/csv-reclassify.mjs` |
 | `trials.json` | trial | full row + who + pauses + `decision` + `series` unpacked |
 | `ratings.csv`, `ratings.json` | questionnaire answer | ids, who, `kind`, `cue`, `blockIndex`, `clarity`, `distraction`, `note`, `clearest`, `leastClear`, `comment` |
 | `blocks.csv`, `blocks.json` | run of a case (block) | ids, who, `cue`, `blockIndex`, `suggestedPosition`, start/end, `trials`, `engaged`, `deaths`, `score`, `pauses`, `pausedSeconds`, its rating, `appVersion`, `inputType` |
@@ -300,6 +327,40 @@ used by the simulator page, while the live panel reads `summary.cueCounts` (a fe
 a trial row is about 1 KB. `live.counters` reads the `counters` table and the last
 minute of trials. Clips and series are never scanned by summaries.
 
+## Database growth
+
+The local backend keeps every revision of every document in its SQLite file
+(`.convex/local/default/convex_local_backend.sqlite3`), so a document rewritten on every saved
+power-up costs its full size each time. Measured on 2026-11-16 (15,279 power-ups, 87 sessions,
+read-only from the SQLite file, `.shots/data-r4/`):
+
+| Table | Live size | All revisions | Why |
+| --- | --- | --- | --- |
+| `trialDigests` | 10 MB | **1,005 MB** | one document per session (up to 140 KB) rewritten on every power-up |
+| `replayDigests` | 4.9 MB | **337 MB** | the same per clip (up to 83 KB) |
+| `clips` | 154 MB | 154 MB | written once |
+| `trialCells` | 0.7 MB | 73 MB | per-session totals (up to 10 KB) rewritten on every power-up |
+| `sessions`, `blocks`, counters | 1 MB | 39 MB | small rows patched on every power-up |
+| `trials`, `trialSeries` | 36 MB | 36 MB | written once |
+| whole file | | 1.9 GB | |
+
+So about 1.4 GB of the 1.9 GB were old revisions of the two digests: a 175-trial session rewrote
+about 88 rows per save on average. Digests are now kept in chunks of 25 rows (`DIGEST_CHUNK`,
+`REPLAY_CHUNK`): a save rewrites the last chunk only, on average about 13 rows. In the test
+harness (`convex/digestChunks.test.ts`, 240 power-ups in two 120-trial sessions, chunks of 7) the
+digest bytes written fell from 9.7 MB to 0.7 MB and the replay digest bytes from 5.7 MB to 0.5 MB,
+with every dashboard and replay query giving the same answer. For the stored data's session sizes
+and chunks of 25 that is about 0.13 GB instead of 1.0 GB for the digests and 0.06 GB instead of
+0.34 GB for the replay digests: roughly 0.7 GB in all for 15,000 power-ups instead of 1.9 GB.
+Existing digests were not rewritten (a session's old single document stays chunk 0 and new trials
+go into new chunks), so the file does not shrink; only new data grows more slowly. The per-session
+totals (`trialCells`, about 5 KB per power-up) are still rewritten every time.
+
+The backend reads this file at start: with about 2 GB it takes about 30 s, longer than the CLI's
+default wait, so `npm run convex` sets `CONVEX_LOCAL_BACKEND_STARTUP_TIMEOUT_SECS=240`. A fresh
+database for a real study (after deleting or archiving the simulated data, or starting from an
+empty `.convex/`) starts in a second or two.
+
 ## Migrations (`convex/migrations.ts`)
 
 Resumable, in batches, never delete a row; started with `npx convex run`:
@@ -307,4 +368,5 @@ Resumable, in batches, never delete a row; started with `npx convex run`:
 | Mutation | Arguments | Effect |
 | --- | --- | --- |
 | `migrations.slimTrials` | `{ confirm: 'slim trials' }` | moves each trial's series into `trialSeries` and fills `simRun` (done 2026-11-16: 6,669 rows) |
+| `migrations.rebuildCells` | `{ confirm: 'rebuild cells' }` | works out every session's `trialCells` again from its digest rows (after a change to `convex/lib/cells.ts`); touches nothing else (done 2026-11-16: 87 sessions, 15,279 rows) |
 | `migrations.numberRunParticipants` | `{ confirm: 'number run participants' }` | gives `runNumber` to participants who already played through the console (per source, by first visit); stored numbers stay as they were (done: 35 bot, 0 human) |
