@@ -28,8 +28,8 @@ export function notCountedReason(t: ReasonInput, current: number = RULES_VERSION
 	if (t.after?.cut === 'clear') return 'The level was cleared less than 3 s after the power ran out';
 	switch (t.outcome) {
 		case 'not-engaged': return 'Not chasing a ghost in the last 3 s';
-		case 'catch': return 'Ate the ghost: no decision about the end';
-		case 'other': return 'Chasing in the last 3 s, but no decision: the ghost was too far off, or out of reach';
+		case 'catch': return 'Ate the ghost, which shows no decision about the end';
+		case 'other': return 'Chasing in the last 3 s, but with no decision to judge (the ghost was too far off, or out of reach)';
 		case 'late-catch': return 'Recorded under older rules';
 	}
 	// A decision class outside the rates: the player was not chasing near the end.
