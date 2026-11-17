@@ -16,10 +16,8 @@
 		label: string;
 		size?: 'sm' | 'md';
 		onchange?: (value: V) => void;
-		/** Tab order of the group (the checked option is the one stop), for a page that sets its own first stops. */
-		tabindex?: number;
 	}
-	let { options, value = $bindable(), label, size = 'md', onchange, tabindex }: Props = $props();
+	let { options, value = $bindable(), label, size = 'md', onchange }: Props = $props();
 	const name = $props.id();
 
 	function pick(v: V) {
@@ -31,7 +29,7 @@
 <div class="seg {size}" role="radiogroup" aria-label={label}>
 	{#each options as o (o.value)}
 		<label class:on={o.value === value}>
-			<input type="radio" {name} value={o.value} checked={o.value === value} onchange={() => pick(o.value)} {tabindex} />
+			<input type="radio" {name} value={o.value} checked={o.value === value} onchange={() => pick(o.value)} />
 			<span>{o.label}</span>
 			{#if o.hint !== undefined}<span class="hint num">{o.hint}</span>{/if}
 		</label>

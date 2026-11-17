@@ -301,7 +301,8 @@
 			return { prev: i > 0 ? href(rows[i - 1]) : null, next: i >= 0 ? href(rows[i + 1]) : null, pos: i, count: rows.length, list: back, run: true };
 		}
 		const q = toSearch(listState);
-		const n = nbQ.data;
+		// The answer kept from the previous replay (keepPreviousData) points at this one: not this one's yet.
+		const n = nbQ.data && nbQ.data.next !== id && nbQ.data.prev !== id ? nbQ.data : undefined;
 		// Back to the list at this card: the list shows enough cards to reach it and scrolls to it.
 		const at = new URLSearchParams({ at: id, ...(n && n.pos >= 0 ? { pos: String(n.pos) } : {}) });
 		return {
@@ -512,11 +513,11 @@
 				<section class="readouts" aria-label="At the playhead" aria-live="off">
 					<div class="ro big">
 						<span class="lab">{leftShown >= 0 ? 'Power left' : 'Since the end'}</span>
-						<span class="val num" class:after={leftShown < 0}>{Math.abs(leftShown).toFixed(2)}<small> s</small></span>
+						<span class="val num" class:after={leftShown < 0}>{Math.abs(leftShown).toFixed(2)}<small>&nbsp;s</small></span>
 					</div>
 					<div class="ro">
 						<span class="lab">Distance <InfoTip term="Distance">{DEFINITIONS.distance}{atMarker?.kind === 'turnAway' ? ' At the turn-away marker: to the chased ghost.' : ''}</InfoTip></span>
-						<span class="val num">{tilesNum(distNow)}{#if distNow != null}<small> tiles</small>{/if}</span>
+						<span class="val num">{tilesNum(distNow)}{#if distNow != null}<small>&nbsp;tiles</small>{/if}</span>
 						<span class="sub">{distWhat}</span>
 					</div>
 					<div class="ro">

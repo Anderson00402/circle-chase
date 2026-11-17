@@ -11,6 +11,7 @@
 	import ConnectionDot from '#lib/ui/ConnectionDot.svelte';
 	import { watchConnection } from '#lib/ui/connection.svelte.ts';
 	import { outboxStatus, startOutbox } from '#lib/study/outbox.svelte.ts';
+	import OutboxParked from '#lib/study/outbox-parked.svelte';
 	import { DEV_NAV, NAV, isCurrent } from '#lib/ui/nav.ts';
 	import type { LayoutProps } from './$types';
 
@@ -78,7 +79,7 @@
 			<span>Menu</span>
 		</button>
 
-		<span class="conn-slot"><ConnectionDot saving={outboxStatus} /></span>
+		<span class="conn-slot"><ConnectionDot saving={outboxStatus} /><OutboxParked /></span>
 
 		<nav id="site-nav" class:open={menuOpen} aria-label="Main">
 			<ul>
@@ -241,6 +242,8 @@
 	.conn-slot {
 		order: 3;
 		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 	}
 	.menu-btn {
 		display: none;
