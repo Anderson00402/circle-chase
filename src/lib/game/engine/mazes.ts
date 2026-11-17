@@ -228,8 +228,26 @@ export function buildMaze(def: MazeDef): Maze {
 	return {
 		id: def.id, name: def.name, W, H, tiles, dotsInit, dotTotal,
 		start: start as [number, number], exit: [dx, dy - inward], home: [dx, hy], penSlots,
-		tunnelRows, bannerRow: b[1], bonusTile: b, theme: def.theme
+		tunnelRows, bannerRow: b[1], bonusTile: b, theme: def.theme,
+		layout: layoutFingerprint(W, H, tiles)
 	};
+}
+
+/**
+ * A short, stable text for a tile grid: its size plus a 32-bit FNV-1a hash of the tile kinds.
+ * Only the walls, paths, pen and door count (not dots, start or colours), because those are what
+ * a recorded replay must be drawn on.
+ */
+export function layoutFingerprint(W: number, H: number, tiles: Uint8Array): string {
+	let h = 0x811c9dc5;
+	const add = (b: number) => {
+		h ^= b & 0xff;
+		h = Math.imul(h, 0x01000193);
+	};
+	add(W);
+	add(H);
+	for (let i = 0; i < tiles.length; i++) add(tiles[i]);
+	return `w${W}h${H}-${(h >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 const cache = new Map<string, Maze>();

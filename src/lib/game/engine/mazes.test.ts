@@ -31,6 +31,31 @@ describe('mazes', () => {
 		});
 	}
 
+	it('every maze has its own layout fingerprint, stable from build to build', () => {
+		const prints = MAZE_DEFS.map((d) => buildMaze(d).layout);
+		expect(new Set(prints).size).toBe(5);
+		for (const p of prints) expect(p).toMatch(/^w\d+h\d+-[0-9a-f]{8}$/);
+		// Built again from the same rows: the same text.
+		expect(MAZE_DEFS.map((d) => buildMaze({ ...d, rows: [...d.rows] }).layout)).toEqual(prints);
+		expect(allMazes().map((m) => m.layout)).toEqual(prints);
+		// Pinned values: if one of these changes, the maze changed and old clips no longer fit it.
+		expect(prints).toMatchInlineSnapshot(`
+			[
+			  "w25h25-7415fef2",
+			  "w23h25-d7c9ae0d",
+			  "w25h27-c70b3413",
+			  "w23h25-60910af8",
+			  "w23h24-caab91d6",
+			]
+		`);
+		// One wall tile turned into a path changes it.
+		const rows = [...MAZE_DEFS[0].rows];
+		const y = rows.findIndex((r) => r.includes('.#'));
+		const x = rows[y].indexOf('.#') + 1;
+		rows[y] = rows[y].slice(0, x) + '.' + rows[y].slice(x + 1);
+		expect(buildMaze({ ...MAZE_DEFS[0], rows }).layout).not.toBe(prints[0]);
+	});
+
 	it('levels walk through the mazes in order and then repeat', () => {
 		expect(mazeForLevel(1).id).toBe(MAZE_DEFS[0].id);
 		expect(mazeForLevel(5).id).toBe(MAZE_DEFS[4].id);

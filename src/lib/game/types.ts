@@ -57,6 +57,12 @@ export interface Maze {
 	/** Where the bonus item appears. */
 	bonusTile: [number, number];
 	theme: MazeTheme;
+	/**
+	 * Short fingerprint of the tile grid (size and every tile kind), e.g. "w28h31-3f9a12c0".
+	 * Set by `buildMaze`; the same grid always gives the same text, any change to the walls, pen or
+	 * door gives another. Clips store it so a replay is never drawn on a maze that has changed.
+	 */
+	layout?: string;
 }
 
 // ---------- actors ----------
