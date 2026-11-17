@@ -8,6 +8,7 @@
 	const terms: [string, string][] = [
 		['Power-up (trial)', DEFS.trial],
 		['Chasing', DEFS.chasing],
+		['Scared ghosts flee (study rules)', DEFS.fleeing],
 		['Engaged', DEFS.engaged],
 		['Counted', DEFS.counted],
 		['Turned away in time (well-timed rate)', DEFS.wellTimed],
@@ -17,13 +18,19 @@
 		['Caught the ghost', DEFS.catches],
 		['95% interval', DEFS.interval],
 		['Clear difference', DEFS.clear],
+		['Top group and leaders', DEFS.groups],
 		['Paired difference (within people)', DEFS.paired],
+		['Turn-away time, within people', DEFS.turnPaired],
+		['Ratings, within people', DEFS.ratingsPaired],
+		['Breakdowns', DEFS.breakdown],
 		['People needed', DEFS.precision],
 		['Not enough data', DEFS.notEnough],
 		['Turn-away time', DEFS.turnAway],
 		['Never turned', DEFS.neverTurned],
 		['Gave up very early', DEFS.gaveUpEarly],
 		['Wasted power', DEFS.wasted],
+		['Too early from (2 s or 2.5 s)', DEFS.line],
+		['Time to spare', DEFS.timeToSpare],
 		['Approach curve: still chasing', DEFS.stillChasing],
 		['Approach curve: distance', DEFS.approach],
 		['Clarity and distraction', `${DEFS.clarity} ${DEFS.distraction}`],
@@ -59,7 +66,12 @@
 					method adjusts every family of comparisons together: all 78 pairs for "is one condition best?", and the 12 against the
 					timer bar for "is an idea better than the timer bar?". Only differences that survive are called clear.
 				</li>
-				<li>When nothing survives, the page says no condition is clearly best and gives the highest rate only as a fact.</li>
+				<li>
+					The takeaway is written around groups: the leaders and the top group when the adjusted comparisons support one, how the
+					ideas stand against each yardstick, and what is still undecided. When nothing survives, it says no condition stands out
+					and gives the highest rate only as a fact. With fewer than 5 people who played both conditions no test runs, and it says
+					there are too few people to compare yet.
+				</li>
 			</ol>
 		</Panel>
 		<Panel title="Outcomes">
@@ -72,6 +84,13 @@
 			</dl>
 		</Panel>
 	</div>
+	<Panel title="Two checks on the measure">
+		<ul class="design">
+			<li><b>Too early from 2.5 s.</b> {DEFS.line}</li>
+			<li><b>Time to spare.</b> {DEFS.timeToSpare} The view is under "When players quit the chase".</li>
+			<li>{DEFS.limits}</li>
+		</ul>
+	</Panel>
 	<Panel title="Definitions">
 		<dl class="terms">
 			{#each terms as [t, d] (t)}

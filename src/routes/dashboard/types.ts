@@ -8,6 +8,7 @@ export type Comparison = Main['pairs']['wellTimed'][number];
 export type Points = FunctionReturnType<typeof api.dashboard.points>;
 export type Approach = FunctionReturnType<typeof api.dashboard.approach>;
 export type Ratings = FunctionReturnType<typeof api.dashboard.ratings>;
+export type RatingRow = Ratings['cues'][number];
 export type RunInfo = FunctionReturnType<typeof api.dashboard.facets>['runs'][number];
 
 /** Humans, or simulated players (one simulator run at a time). Never mixed. */
@@ -23,7 +24,13 @@ export interface DashFilter {
 	participantId?: Id<'participants'>;
 	from?: number;
 	cue?: string;
+	/** Where "too early" starts, in seconds left: 2 (the rules' line) or 2.5 (the sensitivity check). Absent: 2. */
+	line?: number;
 }
+
+/** The "too early" lines the page offers (convex/lib/cells.ts LINES). */
+export const LINE_DEFAULT = 2;
+export const LINE_CHECK = 2.5;
 
 /** Row order of the per-condition charts. */
 export type RowOrder = 'rank' | 'code';

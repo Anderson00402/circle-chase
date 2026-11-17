@@ -1,0 +1,788 @@
+{
+	"note": "Simulator run yd3y8vwk, only the first 5% of its time (4 players, 246 counted), dashboard:main on 2026-11-17.",
+	"cues": [
+		{
+			"cue": "burning-fuse",
+			"decisions": 18,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 0.8333333333333334,
+				"k": 11,
+				"lo": 0.5,
+				"method": "bootstrap",
+				"n": 18,
+				"rate": 0.6111111111111112
+			},
+			"tooLate": {
+				"hi": 0.5,
+				"k": 6,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 18,
+				"rate": 0.3333333333333333
+			},
+			"tooEarly": {
+				"hi": 0.16666666666666666,
+				"k": 1,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 18,
+				"rate": 0.05555555555555555
+			},
+			"caught": {
+				"hi": 0.1758845505823749,
+				"k": 0,
+				"lo": 0,
+				"method": "wilson",
+				"n": 18,
+				"rate": 0
+			}
+		},
+		{
+			"cue": "classic-blink",
+			"decisions": 23,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 0.75,
+				"k": 15,
+				"lo": 0.5,
+				"method": "bootstrap",
+				"n": 23,
+				"rate": 0.6521739130434783
+			},
+			"tooLate": {
+				"hi": 0.2222222222222222,
+				"k": 2,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 23,
+				"rate": 0.08695652173913043
+			},
+			"tooEarly": {
+				"hi": 0.5,
+				"k": 6,
+				"lo": 0.1111111111111111,
+				"method": "bootstrap",
+				"n": 23,
+				"rate": 0.2608695652173913
+			},
+			"caught": {
+				"hi": 0.14312112541726274,
+				"k": 0,
+				"lo": 0,
+				"method": "wilson",
+				"n": 23,
+				"rate": 0
+			}
+		},
+		{
+			"cue": "clock-halos",
+			"decisions": 21,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 0.7142857142857143,
+				"k": 12,
+				"lo": 0.42857142857142855,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.5714285714285714
+			},
+			"tooLate": {
+				"hi": 0.2857142857142857,
+				"k": 4,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.19047619047619047
+			},
+			"tooEarly": {
+				"hi": 0.5714285714285714,
+				"k": 5,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.23809523809523808
+			},
+			"caught": {
+				"hi": 0.14285714285714285,
+				"k": 1,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.047619047619047616
+			}
+		},
+		{
+			"cue": "deflating-player",
+			"decisions": 19,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 1,
+				"k": 11,
+				"lo": 0.2,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.5789473684210527
+			},
+			"tooLate": {
+				"hi": 0.8,
+				"k": 7,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.3684210526315789
+			},
+			"tooEarly": {
+				"hi": 0.14285714285714285,
+				"k": 1,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.05263157894736842
+			},
+			"caught": {
+				"hi": 0.14285714285714285,
+				"k": 1,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.05263157894736842
+			}
+		},
+		{
+			"cue": "dot-sweep",
+			"decisions": 19,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 0.5,
+				"k": 5,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.2631578947368421
+			},
+			"tooLate": {
+				"hi": 0.6666666666666666,
+				"k": 10,
+				"lo": 0.42857142857142855,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.5263157894736842
+			},
+			"tooEarly": {
+				"hi": 0.3333333333333333,
+				"k": 4,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.21052631578947367
+			},
+			"caught": {
+				"hi": 0.16666666666666666,
+				"k": 2,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.10526315789473684
+			}
+		},
+		{
+			"cue": "final-count",
+			"decisions": 21,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 1,
+				"k": 16,
+				"lo": 0.5555555555555556,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.7619047619047619
+			},
+			"tooLate": {
+				"hi": 0.2,
+				"k": 2,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.09523809523809523
+			},
+			"tooEarly": {
+				"hi": 0.3333333333333333,
+				"k": 3,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.14285714285714285
+			},
+			"caught": {
+				"hi": 0.15464382326420195,
+				"k": 0,
+				"lo": 0,
+				"method": "wilson",
+				"n": 21,
+				"rate": 0
+			}
+		},
+		{
+			"cue": "heartbeat",
+			"decisions": 17,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 0.5,
+				"k": 7,
+				"lo": 0.3333333333333333,
+				"method": "bootstrap",
+				"n": 17,
+				"rate": 0.4117647058823529
+			},
+			"tooLate": {
+				"hi": 0.3333333333333333,
+				"k": 4,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 17,
+				"rate": 0.23529411764705882
+			},
+			"tooEarly": {
+				"hi": 0.5,
+				"k": 6,
+				"lo": 0.2222222222222222,
+				"method": "bootstrap",
+				"n": 17,
+				"rate": 0.35294117647058826
+			},
+			"caught": {
+				"hi": 0.16666666666666666,
+				"k": 1,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 17,
+				"rate": 0.058823529411764705
+			}
+		},
+		{
+			"cue": "ink-refill",
+			"decisions": 19,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 1,
+				"k": 13,
+				"lo": 0.4444444444444444,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.6842105263157895
+			},
+			"tooLate": {
+				"hi": 0.4444444444444444,
+				"k": 5,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.2631578947368421
+			},
+			"tooEarly": {
+				"hi": 0.1111111111111111,
+				"k": 1,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.05263157894736842
+			},
+			"caught": {
+				"hi": 0.2222222222222222,
+				"k": 2,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 19,
+				"rate": 0.10526315789473684
+			}
+		},
+		{
+			"cue": "none",
+			"decisions": 15,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 0.6,
+				"k": 7,
+				"lo": 0.3333333333333333,
+				"method": "bootstrap",
+				"n": 15,
+				"rate": 0.4666666666666667
+			},
+			"tooLate": {
+				"hi": 0.5,
+				"k": 4,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 15,
+				"rate": 0.26666666666666666
+			},
+			"tooEarly": {
+				"hi": 0.5,
+				"k": 4,
+				"lo": 0.16666666666666666,
+				"method": "bootstrap",
+				"n": 15,
+				"rate": 0.26666666666666666
+			},
+			"caught": {
+				"hi": 0.20388926630434784,
+				"k": 0,
+				"lo": 0,
+				"method": "wilson",
+				"n": 15,
+				"rate": 0
+			}
+		},
+		{
+			"cue": "pen-hourglass",
+			"decisions": 21,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 0.5,
+				"k": 9,
+				"lo": 0.25,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.42857142857142855
+			},
+			"tooLate": {
+				"hi": 0.5,
+				"k": 9,
+				"lo": 0.36363636363636365,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.42857142857142855
+			},
+			"tooEarly": {
+				"hi": 0.25,
+				"k": 3,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.14285714285714285
+			},
+			"caught": {
+				"hi": 0.2727272727272727,
+				"k": 3,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 21,
+				"rate": 0.14285714285714285
+			}
+		},
+		{
+			"cue": "timer-bar",
+			"decisions": 15,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 1,
+				"k": 8,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 15,
+				"rate": 0.5333333333333333
+			},
+			"tooLate": {
+				"hi": 0.8333333333333334,
+				"k": 6,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 15,
+				"rate": 0.4
+			},
+			"tooEarly": {
+				"hi": 0.16666666666666666,
+				"k": 1,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 15,
+				"rate": 0.06666666666666667
+			},
+			"caught": {
+				"hi": 0.3333333333333333,
+				"k": 2,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 15,
+				"rate": 0.13333333333333333
+			}
+		},
+		{
+			"cue": "waking-ghosts",
+			"decisions": 16,
+			"decisionParticipants": 3,
+			"wellTimed": {
+				"hi": 0.75,
+				"k": 10,
+				"lo": 0.5,
+				"method": "bootstrap",
+				"n": 16,
+				"rate": 0.625
+			},
+			"tooLate": {
+				"hi": 0.5,
+				"k": 6,
+				"lo": 0.25,
+				"method": "bootstrap",
+				"n": 16,
+				"rate": 0.375
+			},
+			"tooEarly": {
+				"hi": 0.19361341827271994,
+				"k": 0,
+				"lo": 0,
+				"method": "wilson",
+				"n": 16,
+				"rate": 0
+			},
+			"caught": {
+				"hi": 0.125,
+				"k": 1,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 16,
+				"rate": 0.0625
+			}
+		},
+		{
+			"cue": "wall-tide",
+			"decisions": 22,
+			"decisionParticipants": 4,
+			"wellTimed": {
+				"hi": 0.7272727272727273,
+				"k": 11,
+				"lo": 0.13333333333333333,
+				"method": "bootstrap",
+				"n": 22,
+				"rate": 0.5
+			},
+			"tooLate": {
+				"hi": 0.8666666666666667,
+				"k": 9,
+				"lo": 0.18181818181818182,
+				"method": "bootstrap",
+				"n": 22,
+				"rate": 0.4090909090909091
+			},
+			"tooEarly": {
+				"hi": 0.13333333333333333,
+				"k": 2,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 22,
+				"rate": 0.09090909090909091
+			},
+			"caught": {
+				"hi": 0.4,
+				"k": 2,
+				"lo": 0,
+				"method": "bootstrap",
+				"n": 22,
+				"rate": 0.09090909090909091
+			}
+		}
+	],
+	"pairs": {
+		"tooEarly": [],
+		"tooLate": [],
+		"wellTimed": []
+	},
+	"vs": {
+		"classic-blink": [
+			{
+				"a": "burning-fuse",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": -0.0278,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": -0.0675,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": -0.096,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": -0.377,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "final-count",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": 0.1463,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "heartbeat",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": -0.213,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "ink-refill",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": 0.1283,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "none",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": -0.1611,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "pen-hourglass",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": -0.2374,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "timer-bar",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": -0.0389,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "waking-ghosts",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": -0.0556,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "wall-tide",
+				"b": "classic-blink",
+				"people": 3,
+				"diff": -0.1667,
+				"sd": null,
+				"clear": false
+			}
+		],
+		"none": [
+			{
+				"a": "burning-fuse",
+				"b": "none",
+				"people": 3,
+				"diff": 0.1333,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "classic-blink",
+				"b": "none",
+				"people": 3,
+				"diff": 0.1611,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "none",
+				"people": 3,
+				"diff": 0.0937,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "none",
+				"people": 3,
+				"diff": 0.0651,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "none",
+				"people": 3,
+				"diff": -0.2159,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "final-count",
+				"b": "none",
+				"people": 3,
+				"diff": 0.3074,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "heartbeat",
+				"b": "none",
+				"people": 3,
+				"diff": -0.0519,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "ink-refill",
+				"b": "none",
+				"people": 3,
+				"diff": 0.2894,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "pen-hourglass",
+				"b": "none",
+				"people": 3,
+				"diff": -0.0763,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "timer-bar",
+				"b": "none",
+				"people": 3,
+				"diff": 0.1222,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "waking-ghosts",
+				"b": "none",
+				"people": 3,
+				"diff": 0.1056,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "wall-tide",
+				"b": "none",
+				"people": 3,
+				"diff": -0.0056,
+				"sd": null,
+				"clear": false
+			}
+		],
+		"timer-bar": [
+			{
+				"a": "burning-fuse",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": 0.0111,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "classic-blink",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": 0.0389,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": -0.0286,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": -0.0571,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": -0.3381,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "final-count",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": 0.1852,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "heartbeat",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": -0.1741,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "ink-refill",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": 0.1672,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "none",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": -0.1222,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "pen-hourglass",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": -0.1985,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "waking-ghosts",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": -0.0167,
+				"sd": null,
+				"clear": false
+			},
+			{
+				"a": "wall-tide",
+				"b": "timer-bar",
+				"people": 3,
+				"diff": -0.1278,
+				"sd": null,
+				"clear": false
+			}
+		]
+	},
+	"top": null
+}

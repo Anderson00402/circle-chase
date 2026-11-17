@@ -12,16 +12,27 @@
 		lastAt: number | null;
 		now: number;
 		source: 'human' | 'bot';
+		/** Simulated view: the run shown is finished, so no simulated player can be playing in it. */
+		finished?: boolean;
+		/** The database connection is lost: say so instead of "nobody is playing". */
+		offline?: boolean;
 	}
-	let { lastAt, now, source }: Props = $props();
+	let { lastAt, now, source, finished = false, offline = false }: Props = $props();
 	const playing = useQuery(api.presence.nowPlaying, {});
-	const rows = $derived((playing.data ?? []).filter((r) => r.source === source));
+	/**
+	 * Heartbeats older than this (convex/presence.ts STALE_MS, plus one tick of the page clock) are a page that went away. The query's own cut-off is fixed when it
+	 * last ran (a cached result does not age), so the page applies it again with its own clock.
+	 */
+	const STALE = 25_000;
+	const rows = $derived(finished ? [] : (playing.data ?? []).filter((r) => r.source === source && now - r.updatedAt < STALE));
 	const fresh = $derived(lastAt !== null && now - lastAt < 60_000);
 </script>
 
 <div class="np" aria-live="polite">
-	<Badge tone={rows.length ? 'live' : 'neutral'}>{rows.length ? 'Live' : 'Idle'}</Badge>
-	{#if rows.length}
+	<Badge tone={rows.length && !offline ? 'live' : 'neutral'}>{offline ? 'Offline' : rows.length ? 'Live' : 'Idle'}</Badge>
+	{#if offline}
+		<span class="who">Can't reach the database, so who is playing is unknown. This updates by itself when it is back.</span>
+	{:else if rows.length}
 		<span class="who">
 			{rows.length} playing now:
 			{#each rows.slice(0, 4) as r, i (r.sessionKey)}

@@ -52,7 +52,7 @@
 	// Approach curves of every condition (shared with the evidence section's query) and ratings.
 	const approach = useQuery(api.dashboard.approach, () => (seen ? { ...filter } : 'skip'));
 	const ratings = useQuery(api.dashboard.ratings, () => (seen ? { ...filter } : 'skip'));
-	const rating = $derived(ratings.data?.find((r) => r.cue === cue) ?? null);
+	const rating = $derived(ratings.data?.cues.find((r) => r.cue === cue) ?? null);
 
 	const strip = $derived.by(() => {
 		const all = (points.data ?? []).filter((p) => p.inRates);
@@ -124,7 +124,7 @@
 			{#if s.gaveUpEarly}
 				<Stat label="Gave up very early" value={pct(s.gaveUpEarly.k / Math.max(1, s.gaveUpEarly.n))} sub="{s.gaveUpEarly.k} of {s.gaveUpEarly.n} counted; part of too early" info={DEFS.gaveUpEarly} />
 			{/if}
-			<Stat label="Caught the ghost" value={pct(s.catches.share)} sub="{plural(s.catches.n, 'catch', 'catches')} of {s.inRates} engaged, {s.catches.late} late; in no rate" info={DEFS.catches} />
+			<Stat label="Caught the ghost" value={pct(s.catches.share)} sub="{plural(s.catches.n, 'catch', 'catches')} of {s.inRates} eligible, {s.catches.late} late; in no rate" info={DEFS.catches} />
 			<Stat label="Turn-away, median" value={s.turnAway.median === null ? null : s.turnAway.median.toFixed(2)} unit="s left"
 				sub={s.turnAway.n ? `middle half ${s.turnAway.q25?.toFixed(1)} to ${s.turnAway.q75?.toFixed(1)} s, n ${s.turnAway.n}` : 'no turn-aways'} info={DEFS.turnAway} />
 			<Stat label="Wasted power, mean" value={s.wasted.mean === null ? null : s.wasted.mean.toFixed(1)} unit="s"

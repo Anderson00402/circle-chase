@@ -21,6 +21,8 @@
 		q75: number | null;
 		thin?: boolean;
 		group?: string;
+		/** Short text in a value column at the right (e.g. "62% had time"). */
+		value?: string;
 	}
 </script>
 
@@ -69,9 +71,11 @@
 	const labelW = $derived(narrow ? 36 : names ? 170 : 44);
 	const hasExtra = $derived(rows.some((r) => (r.extra?.length ?? 0) > 0));
 	const extraW = $derived(hasExtra ? (narrow ? 44 : 76) : 0);
+	const hasValue = $derived(rows.some((r) => !!r.value));
+	const valueW = $derived(hasValue ? (narrow ? 40 : 92) : 0);
 	const padR = 14;
 	const top = 26;
-	const plotW = $derived(Math.max(60, width - labelW - padR - extraW - (hasExtra ? 12 : 0)));
+	const plotW = $derived(Math.max(60, width - labelW - padR - extraW - (hasExtra ? 12 : 0) - valueW));
 	const extraX = $derived(labelW + plotW + 12);
 
 	/** Vertical position of each row, leaving room for group captions. */
@@ -84,7 +88,7 @@
 			return out;
 		});
 	});
-	const height = $derived((layout.length ? layout[layout.length - 1].y + ROW_H : top) + 34);
+	const height = $derived((layout.length ? layout[layout.length - 1].y + ROW_H : top) + 22);
 	const x = (v: number) => labelW + ((v - domain[0]) / (domain[1] - domain[0])) * plotW;
 	const clampV = (v: number) => Math.min(Math.max(v, Math.min(...domain)), Math.max(...domain));
 	const xticks = $derived(ticks(Math.min(...domain), Math.max(...domain), narrow ? 5 : 10));
@@ -180,26 +184,21 @@
 			{#if window}
 				{@const x1 = x(window.from)}
 				{@const x2 = x(window.to)}
-				<rect x={Math.min(x1, x2)} y={top - 6} width={Math.abs(x2 - x1)} height={height - top - 28} fill="var(--chart-window)" />
-				<line x1={x1} x2={x1} y1={top - 6} y2={height - 34} stroke="var(--chart-window-edge)" stroke-dasharray="2 3" />
-				<line x1={x2} x2={x2} y1={top - 6} y2={height - 34} stroke="var(--chart-window-edge)" stroke-dasharray="2 3" />
+				<rect x={Math.min(x1, x2)} y={top - 6} width={Math.abs(x2 - x1)} height={height - top - 16} fill="var(--chart-window)" />
+				<line x1={x1} x2={x1} y1={top - 6} y2={height - 22} stroke="var(--chart-window-edge)" stroke-dasharray="2 3" />
+				<line x1={x2} x2={x2} y1={top - 6} y2={height - 22} stroke="var(--chart-window-edge)" stroke-dasharray="2 3" />
 				<text x={(x1 + x2) / 2} y={top - 12} text-anchor="middle" class="win-label">{window.label}</text>
 			{/if}
 			{#each xticks as t (t)}
-				<line x1={x(t)} x2={x(t)} y1={top - 6} y2={height - 34} stroke="var(--chart-grid)" />
-				<text x={x(t)} y={height - 18} text-anchor="middle" class="tick">{format(t)}</text>
+				<line x1={x(t)} x2={x(t)} y1={top - 6} y2={height - 22} stroke="var(--chart-grid)" />
+				<text x={x(t)} y={height - 6} text-anchor="middle" class="tick">{format(t)}</text>
 			{/each}
 			{#if zero}
-				<line x1={x(0)} x2={x(0)} y1={top - 6} y2={height - 34} stroke="var(--ink-faint)" stroke-width="1.5" />
+				<line x1={x(0)} x2={x(0)} y1={top - 6} y2={height - 22} stroke="var(--ink-faint)" stroke-width="1.5" />
 				{#if !window}<text x={x(0)} y={top - 12} text-anchor="middle" class="win-label">{zero.label}</text>{/if}
 			{/if}
-			<text x={labelW + plotW / 2} y={height - 2} text-anchor="middle" class="axis-label">{xLabel}</text>
-			{#if ends && !narrow}
-				<text x={labelW} y={height - 2} class="end">{ends[0]}</text>
-				<text x={labelW + plotW} y={height - 2} text-anchor="end" class="end">{ends[1]}</text>
-			{/if}
 			{#if hasExtra}
-				<rect x={extraX} y={top - 6} width={extraW} height={height - top - 28} rx="4" fill="var(--surface-2, rgba(255,255,255,0.03))" />
+				<rect x={extraX} y={top - 6} width={extraW} height={height - top - 16} rx="4" fill="var(--surface-2, rgba(255,255,255,0.03))" />
 				<text x={extraX + extraW / 2} y={top - 12} text-anchor="middle" class="win-label">{narrow ? 'never' : extraLabel}</text>
 			{/if}
 
@@ -218,6 +217,9 @@
 					{/if}
 					{#if !row.points.length && !row.extra?.length}
 						<text x={labelW + 6} y={y + ROW_H / 2 + 4} class="none">no counted power-ups yet</text>
+					{/if}
+					{#if row.value}
+						<text x={width - 2} y={y + ROW_H / 2 + 4} text-anchor="end" class="value">{row.value}</text>
 					{/if}
 					{#each row.points as p (p.key)}
 						{@const c = at(row, p, y)}
@@ -251,6 +253,12 @@
 				</g>
 			{/each}
 		</svg>
+		<!-- The axis caption is HTML so it wraps on a narrow screen instead of being cut off. -->
+		<div class="x-cap" style:padding-left="{labelW}px" style:padding-right="{width - labelW - plotW}px">
+			{#if ends}<span class="end">{ends[0]}</span>{/if}
+			<span class="axis-label">{xLabel}</span>
+			{#if ends}<span class="end r">{ends[1]}</span>{/if}
+		</div>
 		{#if hover}
 			<Tooltip x={hover.x} y={hover.y} {width}>
 				<div class="t-title">{hover.row.cond.code}. {hover.row.cond.name}</div>
@@ -262,6 +270,36 @@
 </div>
 
 <style>
+	.x-cap {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: 2px var(--space-3);
+		margin-top: 2px;
+		font-size: var(--text-xs);
+		line-height: 1.3;
+	}
+	.x-cap .axis-label {
+		flex: 1 1 200px;
+		order: 0;
+		color: var(--ink-dim);
+		text-align: center;
+	}
+	.x-cap .end {
+		color: var(--ink-faint);
+	}
+	.x-cap .end:first-child {
+		order: -1;
+	}
+	.x-cap .end.r {
+		order: 1;
+		text-align: right;
+	}
+	.value {
+		fill: var(--ink-dim);
+		font-family: var(--font-mono);
+		font-size: 11px;
+	}
 	.strip {
 		position: relative;
 		width: 100%;

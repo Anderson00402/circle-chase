@@ -20,6 +20,11 @@
 		note?: string;
 		/** Text in place of a value when a column has nothing counted (default "none yet"). */
 		empty?: string;
+		/**
+		 * A group marked on the chart: a shaded band with a bar at the left edge. 'lead' is drawn
+		 * stronger than 'top' (e.g. the leaders inside the top group).
+		 */
+		band?: 'lead' | 'top';
 	}
 	export interface ForestRef {
 		id: string;
@@ -131,6 +136,8 @@
 				<tr
 					class="row"
 					class:thin={row.thin}
+					class:band-top={row.band === 'top'}
+					class:band-lead={row.band === 'lead'}
 					class:selected={selected === row.id}
 					tabindex={onselect ? 0 : undefined}
 					onclick={() => onselect?.(row.id)}
@@ -200,7 +207,9 @@
 				<div class="t-row">No counted power-ups yet</div>
 			{/if}
 			{#if hover.row.thin && v && v.n > 0}<div class="t-note">Fewer than 10 counted power-ups: not enough data to rank.</div>{/if}
-			{#if hover.row.note}<div class="t-note">{hover.row.note}</div>{/if}
+			{#if hover.row.band === 'lead'}<div class="t-note">A leader: clearly ahead of every condition below the top group.</div>
+		{:else if hover.row.band === 'top'}<div class="t-note">Top group: not clearly behind the best.</div>{/if}
+		{#if hover.row.note}<div class="t-note">{hover.row.note}</div>{/if}
 		</Tooltip>
 	{/if}
 </div>
@@ -289,6 +298,19 @@
 	.row:hover > *,
 	.row:focus-visible > * {
 		background: color-mix(in srgb, var(--surface-3) 55%, transparent);
+	}
+	/* Groups: a neutral band (not a status colour) and a bar at the left edge. */
+	.row.band-top > * {
+		background: color-mix(in srgb, var(--ink) 4%, transparent);
+	}
+	.row.band-lead > * {
+		background: color-mix(in srgb, var(--ink) 8%, transparent);
+	}
+	.row.band-top > :first-child {
+		box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ink) 35%, transparent);
+	}
+	.row.band-lead > :first-child {
+		box-shadow: inset 3px 0 0 var(--ink-dim);
 	}
 	.row.selected > * {
 		background: var(--accent-soft);

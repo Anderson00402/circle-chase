@@ -3,7 +3,7 @@
 	export interface DiffRow {
 		id: string;
 		cond: Condition;
-		/** Mean difference in points (percentage points); null when nobody played both. */
+		/** Mean difference (a fraction, drawn in points, unless the chart has its own `scale`); null when nobody played both. */
 		diff: number | null;
 		lo: number | null;
 		hi: number | null;
@@ -42,11 +42,17 @@
 		selected?: string | null;
 		onselect?: (id: string) => void;
 		caption: string;
+		/** Values are multiplied by this to draw (100: fractions in points; 1: seconds or ratings). */
+		scale?: number;
+		/** Unit after a value ("pts", "s", ""). */
+		unit?: string;
+		/** Decimals of the value column. */
+		decimals?: number;
 	}
-	let { rows, span, ends, zeroLabel, label, selected = null, onselect, caption }: Props = $props();
+	let { rows, span, ends, zeroLabel, label, selected = null, onselect, caption, scale = 100, unit = 'pts', decimals = 0 }: Props = $props();
 
 	let boxW = $state(0);
-	const step = $derived(span > 60 ? 25 : span > 30 ? 20 : 10);
+	const step = $derived(span > 60 ? 25 : span > 30 ? 20 : span > 10 ? 10 : span > 4 ? 2 : span > 2 ? 1 : 0.5);
 	const ticks = $derived.by(() => {
 		// On a phone the plot is narrow: the two ends and zero only.
 		if (boxW > 0 && boxW < 560) return [-span, 0, span];
@@ -55,7 +61,8 @@
 		return out;
 	});
 	const pos = (v: number) => `${((Math.max(-span, Math.min(span, v)) + span) / (2 * span)) * 100}%`;
-	const fmt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v)}`;
+	const fmt = (v: number, d = 0) => `${v > 0 ? '+' : ''}${(Math.round(v * 10 ** d) / 10 ** d).toFixed(d)}`;
+	const tickFmt = (v: number) => fmt(v, Number.isInteger(v) ? 0 : 1);
 
 	let box = $state<HTMLDivElement>();
 	let hover = $state<{ row: DiffRow; x: number; y: number } | null>(null);
@@ -75,7 +82,7 @@
 				<th scope="col" class="plot-h">
 					<div class="ends"><span>← {ends[0]}</span><span class="zero-l">{zeroLabel}</span><span>{ends[1]} →</span></div>
 					<div class="axis">
-						{#each ticks as t (t)}<span class="tick" style:left={pos(t)}>{t === 0 ? '0' : fmt(t)}</span>{/each}
+						{#each ticks as t (t)}<span class="tick" style:left={pos(t)}>{t === 0 ? '0' : tickFmt(t)}</span>{/each}
 					</div>
 				</th>
 				<th scope="col" class="val-h"><span class="visually-hidden">Difference</span></th>
@@ -101,10 +108,10 @@
 						<div class="track">
 							{#each ticks as t (t)}<span class="grid" class:zero={t === 0} style:left={pos(t)}></span>{/each}
 							{#if row.diff !== null && row.lo !== null && row.hi !== null}
-								<span class="ci" style:left={pos(row.lo * 100)} style:width="calc({pos(row.hi * 100)} - {pos(row.lo * 100)})" style:--c={row.cond.color}></span>
+								<span class="ci" style:left={pos(row.lo * scale)} style:width="calc({pos(row.hi * scale)} - {pos(row.lo * scale)})" style:--c={row.cond.color}></span>
 							{/if}
 							{#if row.diff !== null}
-								<svg class="pt" style:left={pos(row.diff * 100)} width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+								<svg class="pt" style:left={pos(row.diff * scale)} width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
 									<path
 										d={shapePath(row.cond.shape, 8, 8, 5.5)}
 										fill={row.thin ? 'var(--surface)' : row.cond.color}
@@ -117,7 +124,7 @@
 					</td>
 					<td class="val">
 						{#if row.diff !== null}
-							<span class="num d">{fmt(row.diff * 100)} pts</span>
+							<span class="num d">{fmt(row.diff * scale, decimals)}{unit ? ` ${unit}` : ''}</span>
 							<span class="kn">{row.clear ? 'clear' : row.lo === null ? `${row.people} ${row.people === 1 ? 'person' : 'people'}` : 'could be chance'}</span>
 						{:else}
 							<span class="none">nobody played both</span>

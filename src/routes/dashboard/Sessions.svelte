@@ -20,8 +20,8 @@
 	const sessions = useQuery(api.dashboard.sessions, () => ({
 		source: filter.source, mode: filter.mode, participantId: filter.participantId, from: filter.from, run: filter.run
 	}));
-	/** The replay list filtered to this participant (replays show one person's power-ups, newest first). */
-	const replaysHref = (r: Row) => `/replays?${new URLSearchParams({ ...(r.source !== 'human' ? { source: r.source } : {}), ...(r.p !== null ? { p: String(r.p) } : {}) })}`;
+	/** The replay list filtered to this participant (by participant id; replays show one person's power-ups, newest first). */
+	const replaysHref = (r: Row) => `/replays?${new URLSearchParams({ ...(r.source !== 'human' ? { source: r.source } : {}), p: r.participantId })}`;
 	type Row = NonNullable<typeof sessions.data>[number];
 	const rows = $derived(sessions.data ?? []);
 
@@ -80,7 +80,7 @@
 		{columns}
 		dense
 		maxHeight="460px"
-		empty="Loading…"
+		empty={sessions.error ? `Could not load the sessions: ${sessions.error.message.split('\n')[0].slice(0, 140)}. Reload to try again.` : 'Loading…'}
 		onrowclick={(r: Row) => onparticipant(r.participantId)}
 	>
 		{#snippet cell(r: Row, c)}
@@ -96,7 +96,7 @@
 			{:else if c.key === 'trials'}
 				<span class="num">{r.trials} <span class="dim">({r.inRates})</span></span>
 			{:else if c.key === 'fps'}
-				<span class="num" class:bad={r.fpsMin !== null && r.fpsMin < 50}>{r.fpsMean ?? '–'}{#if r.fpsMin !== null && r.fpsMin < (r.fpsMean ?? 0) - 3}<span class="dim"> min {r.fpsMin}</span>{/if}</span>
+				<span class="num" class:bad={r.fpsMin !== null && r.fpsMin < 50}>{r.fpsMean ?? '–'}</span>{#if r.fpsMin !== null && r.fpsMin < (r.fpsMean ?? 0) - 3}<span class="dim fps-min">lowest {r.fpsMin}</span>{/if}
 			{:else if c.key === 'sound'}
 				{r.sound ? 'On' : 'Off'}
 			{:else if c.key === 'input'}
@@ -129,6 +129,10 @@
 	}
 	.warn b {
 		color: var(--warn);
+	}
+	.fps-min {
+		display: block;
+		font-size: 11px;
 	}
 	.dim {
 		color: var(--ink-faint);

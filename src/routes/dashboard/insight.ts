@@ -1,17 +1,24 @@
 /**
- * The takeaway sentences at the top of the dashboard, generated from the data and never stronger
- * than the data allows:
- * - fewer than ENOUGH decision trials: the condition is not ranked and not named as a leader;
- * - a difference between two conditions is called "clear" only when the paired comparison (inside
- *   each person, then over people) stays below 5% after Holm's adjustment for every comparison made
- *   at once (78 pairs for 13 conditions; 12 against the timer bar). convex/lib/compare.ts computes them;
- * - when no condition is clearly ahead of every other, the headline says so first ("No condition is
- *   clearly best yet") and the highest rate comes second, as a plain fact.
+ * The takeaway at the top of the dashboard, generated from the data and never stronger than the
+ * data allows. It is written around groups, because that is what a within-person study with 13
+ * conditions can usually say long before it can name one best:
+ * - a condition is ranked only with ENOUGH decision trials from RANK_PEOPLE people;
+ * - a difference between two conditions is "clear" only when the paired comparison (inside each
+ *   person, then over people) stays below 5% after Holm's adjustment for its whole family (78 pairs
+ *   of 13 conditions; 12 against each yardstick). convex/lib/compare.ts computes them;
+ * - the top group is the highest-ranked condition and every condition not clearly behind it. When
+ *   the top group is also clearly ahead of every condition outside it (each member of the one
+ *   against each of the other), the headline says so; otherwise it names the group and how many are
+ *   clearly behind the highest;
+ * - with fewer than 5 people who played both conditions no test can run, and the page says "too
+ *   few people to compare yet", never "no difference".
  * Rates are over decision trials (convex/lib/rules.ts); "counted" means decision trials.
  * Pure, so it can be tested (insight.test.ts).
  */
 
 export const ENOUGH = 10;
+/** People with counted power-ups a condition needs to be ranked (the same 5 a paired test needs). */
+export const RANK_PEOPLE = 5;
 
 export interface RateLike {
 	k: number;
@@ -24,6 +31,8 @@ export interface CondStats {
 	cue: string;
 	/** Decision trials: the denominator of every rate. */
 	decisions: number;
+	/** People with decision trials under this condition. */
+	decisionParticipants?: number;
 	/** Turned away in time (the headline). */
 	wellTimed: RateLike;
 	/** Stayed too long or caught. */
@@ -45,34 +54,51 @@ export interface Cmp {
 	people: number;
 	diff: number | null;
 	clear: boolean;
+	sd?: number | null;
 }
 export type CmpKey = 'wellTimed' | 'tooLate' | 'tooEarly';
+export type YardId = 'timer-bar' | 'classic-blink' | 'none';
 export interface Comparisons {
 	/** Every pair of ranked conditions, per rate (one Holm family per rate). */
 	pairs: Record<CmpKey, Cmp[]>;
-	/** Every condition against the timer bar on the well-timed rate (one Holm family). */
-	vsTimer: Cmp[];
+	/** Every condition against each yardstick on the well-timed rate (one Holm family per yardstick). */
+	vs: Partial<Record<YardId, Cmp[]>>;
+	/** People needed to order the top two at their observed gap, if known. */
+	top?: { a: string; b: string; gap: number | null; people: number; needed: number } | null;
 }
 
-export type Tone = 'empty' | 'thin' | 'one' | 'none' | 'some' | 'clear';
+export type Tone = 'empty' | 'thin' | 'one' | 'few' | 'none' | 'group' | 'clear';
 
 export interface Insight {
 	tone: Tone;
 	/** One sentence, the answer as strongly as the data allows. */
 	headline: string;
-	/** Supporting sentences (the highest rate, what is separated, yardsticks, what is missing). */
+	/** Supporting sentences shown with it (the groups, each yardstick, what is still undecided). */
 	details: string[];
+	/** Further sentences shown on request (how many pairs differ, the two ways to misjudge the end, thin conditions). */
+	more: string[];
 	/** Conditions ranked (enough data), best well-timed rate first. */
 	ranked: string[];
 	/** Ideas clearly better than the timer bar (paired, Holm-adjusted). */
 	beatsTimer: string[];
-	/** Pairs that differ clearly on the well-timed rate, and how many were compared. */
-	separated: { k: number; of: number };
+	/** Pairs that differ clearly on the well-timed rate, how many could be tested, and how many were compared. */
+	separated: { k: number; tested: number; of: number };
+	/**
+	 * The groups the ranking chart marks, in rank order: `top`, the highest and every condition not
+	 * clearly behind it ("not clearly different from the best"); `behind`, clearly behind the highest;
+	 * `leaders`, the longest run from the top of `top` whose members are each clearly ahead of every
+	 * member of `behind` and not clearly apart from each other. `clean`: leaders and top are the same.
+	 * Null when no group can be told apart.
+	 */
+	groups: { top: string[]; leaders: string[]; behind: string[]; clean: boolean } | null;
 }
+
+/** Fewer people who played both than this: no paired test (compare.ts PAIR_MIN_PEOPLE). */
+const PAIR_PEOPLE = 5;
 
 const p = (x: number | null) => (x === null ? '–' : `${Math.round(x * 100)}%`);
 
-function list(xs: string[]): string {
+export function list(xs: string[]): string {
 	if (xs.length <= 1) return xs.join('');
 	return `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
 }
@@ -90,38 +116,67 @@ const clearlyHigher = (cmps: Cmp[], a: string, b: string) => {
 	return !!c && c.clear && (c.diff ?? 0) > 0;
 };
 
-const NO_CMP: Comparisons = { pairs: { wellTimed: [], tooLate: [], tooEarly: [] }, vsTimer: [] };
+const NO_CMP: Comparisons = { pairs: { wellTimed: [], tooLate: [], tooEarly: [] }, vs: {} };
+
+/** Ranked: enough counted power-ups, from enough people (people unknown: counted alone decides). */
+export const rankable = (s: CondStats) => s.decisions >= ENOUGH && (s.decisionParticipants ?? RANK_PEOPLE) >= RANK_PEOPLE;
+
+/** The top group and who is clearly behind it, from the pairs family (rank order kept). */
+export function topGroups(ranked: string[], pairs: Cmp[]): Insight['groups'] {
+	if (ranked.length < 2 || !pairs.some((c) => c.clear)) return null;
+	const top = ranked[0];
+	const group = ranked.filter((id) => id === top || !clearlyHigher(pairs, top, id));
+	const behind = ranked.filter((id) => !group.includes(id));
+	if (!behind.length) return null;
+	let k = 1;
+	while (k < group.length) {
+		const next = group.slice(0, k + 1);
+		const ahead = next.every((g) => behind.every((b) => clearlyHigher(pairs, g, b)));
+		const inner = next.some((x) => next.some((y) => clearlyHigher(pairs, x, y)));
+		if (!ahead || inner) break;
+		k++;
+	}
+	const leaders = group.slice(0, k);
+	return { top: group, leaders, behind, clean: k === group.length };
+}
 
 export function insight(stats: CondStats[], named: (id: string) => Named, allIds: string[], cmp: Comparisons = NO_CMP): Insight {
 	const byId = new Map(stats.map((s) => [s.cue, s]));
 	const label = (id: string) => `${named(id).name} (${named(id).code})`;
+	const nameOf = (id: string) => named(id).name;
 	const ranked = stats
-		.filter((s) => s.decisions >= ENOUGH && s.wellTimed.rate !== null)
+		.filter((s) => rankable(s) && s.wellTimed.rate !== null)
 		.sort((a, b) => (b.wellTimed.rate ?? 0) - (a.wellTimed.rate ?? 0) || b.decisions - a.decisions)
 		.map((s) => s.cue);
-	const thin = allIds.filter((id) => (byId.get(id)?.decisions ?? 0) < ENOUGH);
+	const thin = allIds.filter((id) => !rankable(byId.get(id) ?? { cue: id, decisions: 0 } as CondStats));
 	const thinNote = thin.length
-		? `${thin.length} of ${allIds.length} conditions have fewer than ${ENOUGH} counted power-ups and are not ranked yet.`
+		? `${thin.length} of ${allIds.length} conditions have fewer than ${ENOUGH} counted power-ups or fewer than ${RANK_PEOPLE} people and are not ranked yet.`
 		: '';
 	const rankedSet = new Set(ranked);
 	const wellPairs = cmp.pairs.wellTimed.filter((c) => rankedSet.has(c.a) && rankedSet.has(c.b));
-	const separated = { k: wellPairs.filter((c) => c.clear).length, of: (ranked.length * (ranked.length - 1)) / 2 };
+	const tested = wellPairs.filter((c) => c.people >= PAIR_PEOPLE).length;
+	const m = (ranked.length * (ranked.length - 1)) / 2;
+	const separated = { k: wellPairs.filter((c) => c.clear).length, tested, of: m };
 	const timer = byId.get('timer-bar');
-	const beatsTimer = timer && timer.decisions >= ENOUGH
-		? ranked.filter((id) => named(id).role === 'idea' && clearlyHigher(cmp.vsTimer, id, 'timer-bar'))
-		: [];
-	const base = { ranked, beatsTimer, separated };
+	const timerRanked = rankedSet.has('timer-bar');
+	const vsTimer = cmp.vs['timer-bar'] ?? [];
+	const beatsTimer = timerRanked ? ranked.filter((id) => named(id).role === 'idea' && clearlyHigher(vsTimer, id, 'timer-bar')) : [];
+	const base = { ranked, beatsTimer, separated, groups: null as Insight['groups'], more: [] as string[] };
 
 	const total = stats.reduce((a, s) => a + s.decisions, 0);
+	const people = Math.max(0, ...stats.map((s) => s.decisionParticipants ?? 0));
 	if (total === 0) {
 		return { ...base, tone: 'empty', headline: 'No counted power-ups yet, so there is no answer yet.', details: [] };
 	}
 	if (ranked.length === 0) {
 		const most = [...stats].sort((a, b) => b.decisions - a.decisions)[0];
+		const fewPeople = stats.some((s) => s.decisions >= ENOUGH);
 		return {
 			...base,
 			tone: 'thin',
-			headline: `Not enough data yet: no condition has ${ENOUGH} counted power-ups.`,
+			headline: fewPeople
+				? `Too few people to compare conditions yet: a condition needs counted power-ups from ${RANK_PEOPLE} people, and the most so far is ${people}.`
+				: `Not enough data yet: no condition has ${ENOUGH} counted power-ups.`,
 			details: [`${total} counted so far; the most for one condition is ${most.decisions} (${label(most.cue)}). Rates are shown but not ranked.`]
 		};
 	}
@@ -134,57 +189,89 @@ export function insight(stats: CondStats[], named: (id: string) => Named, allIds
 			details: thinNote ? [thinNote] : []
 		};
 	}
+	if (tested === 0) {
+		const most = Math.max(0, ...wellPairs.map((c) => c.people));
+		return {
+			...base,
+			tone: 'few',
+			headline: `Too few people to compare conditions yet: a comparison needs ${PAIR_PEOPLE} people who played both, and the most so far is ${most}.`,
+			details: [
+				`Most often turned away in time: ${label(ranked[0])} at ${p(byId.get(ranked[0])!.wellTimed.rate)}; least often: ${label(ranked[ranked.length - 1])} at ${p(byId.get(ranked[ranked.length - 1])!.wellTimed.rate)}. With so few people that order can easily change.`,
+				...(thinNote ? [thinNote] : [])
+			]
+		};
+	}
 
-	// A clear best: clearly ahead of every other ranked condition (usually the highest rate).
-	const winner = ranked.find((id) => ranked.every((o) => o === id || clearlyHigher(wellPairs, id, o))) ?? null;
 	const top = byId.get(ranked[0])!;
 	const low = byId.get(ranked[ranked.length - 1])!;
-	const m = separated.of;
+	const untested = m - tested;
+	const untestedNote = untested ? ` (${untested} more ${untested === 1 ? 'pair has' : 'pairs have'} too few people who played both to test)` : '';
+	// A clear best: clearly ahead of every other ranked condition.
+	const winner = ranked.find((id) => ranked.every((o) => o === id || clearlyHigher(wellPairs, id, o))) ?? null;
+	const groups = topGroups(ranked, wellPairs);
 	let tone: Tone, headline: string;
 	const details: string[] = [];
+	const more: string[] = [];
 	if (winner) {
 		const w = byId.get(winner)!;
 		tone = 'clear';
 		headline = `${label(winner)} tells players best: ${p(w.wellTimed.rate)} of counted power-ups turned away in time, clearly ahead of every other condition, even allowing for ${m} comparisons.`;
-	} else if (separated.k === 0) {
+	} else if (!groups) {
 		tone = 'none';
-		headline = `No condition is clearly best yet: across all ${m} pairs of conditions, no difference is larger than chance would explain.`;
-		details.push(`The highest well-timed rate is ${label(top.cue)} at ${p(top.wellTimed.rate)}, the lowest ${label(low.cue)} at ${p(low.wellTimed.rate)}; with ${m} pairs compared, a gap this size is within chance.`);
+		headline = untested
+			? `No condition stands out yet: none of the ${tested} pairs of conditions that could be tested differs by more than chance (${untested} more ${untested === 1 ? 'has' : 'have'} too few people who played both).`
+			: `No condition stands out yet: none of the ${m} pairs of conditions differs by more than chance would explain.`;
+		details.push(`Most often turned away in time: ${label(top.cue)} at ${p(top.wellTimed.rate)}; least often: ${label(low.cue)} at ${p(low.wellTimed.rate)}. With ${m} pairs compared, a gap this size is within chance.`);
 	} else {
-		tone = 'some';
-		headline = 'No condition is clearly best yet.';
-		const behindTop = ranked.filter((o) => o !== top.cue && !clearlyHigher(wellPairs, top.cue, o)).length;
-		details.push(`The highest well-timed rate is ${label(top.cue)} at ${p(top.wellTimed.rate)}, but it is not clearly ahead of ${behindTop === 1 ? 'one other condition' : `${behindTop} others`}.`);
-		// What is separated: who is clearly ahead of something, who is clearly behind.
-		const wins = new Map<string, number>(), losses = new Map<string, number>();
-		for (const c of wellPairs) {
-			if (!c.clear || c.diff === null || c.diff === 0) continue;
-			const [hi, lo] = c.diff > 0 ? [c.a, c.b] : [c.b, c.a];
-			wins.set(hi, (wins.get(hi) ?? 0) + 1);
-			losses.set(lo, (losses.get(lo) ?? 0) + 1);
+		tone = 'group';
+		const { top: g, leaders: L, behind: b, clean } = groups;
+		const middle = g.filter((id) => !L.includes(id));
+		const nb = b.length === 1 ? '1 other' : `${b.length} others`;
+		const rated = (ids: string[]) => list(ids.map((id) => `${label(id)} ${p(byId.get(id)!.wellTimed.rate)}`));
+		if (clean) {
+			headline = `${list(L.map(nameOf))} are clearly ahead of the ${b.length === 1 ? 'one other condition' : `other ${b.length}`}; they cannot be told apart from each other yet.`;
+		} else if (L.length > 1) {
+			headline = `${list(L.map(nameOf))} lead: each is clearly ahead of ${nb}, and they cannot be told apart from each other yet.`;
+		} else {
+			headline = `${nameOf(L[0])} leads: it is clearly ahead of ${nb}, but not yet of ${middle.length === 1 ? '1 more' : `${middle.length} more`}.`;
 		}
-		const byCount = (mp: Map<string, number>) => [...mp.entries()].sort((a, b) => b[1] - a[1] || ranked.indexOf(a[0]) - ranked.indexOf(b[0]));
-		const behind = byCount(losses).filter(([id]) => !wins.has(id));
-		const ahead = byCount(wins).filter(([id]) => !losses.has(id));
-		const part = (xs: [string, number][], word: string) => list(xs.slice(0, 4).map(([id, k]) => `${label(id)}, ${word} ${k}`)) + (xs.length > 4 ? ` and ${xs.length - 4} more` : '');
-		details.push(`${separated.k} of ${m} pairs differ clearly (paired within people, adjusted for ${m} comparisons).`
-			+ (ahead.length ? ` Clearly ahead of at least one other: ${part(ahead, 'ahead of')}.` : '')
-			+ (behind.length ? ` Clearly behind at least one other: ${part(behind, 'behind')}.` : '')
-			+ ' Every other pair could be chance.');
+		if (middle.length) details.push(`Not clearly behind ${label(g[0])}, the highest, but not clearly ahead of all of the rest either: ${rated(middle)}.`);
+		details.push(`Clearly behind ${L.length > 1 ? 'each of the leaders' : label(L[0])}: ${rated(b)}.`);
+		more.push(`${separated.k} of ${m} pairs differ clearly on turning away in time (paired within people, adjusted for ${m} comparisons)${untestedNote}; every other pair could be chance.`);
 	}
 
-	// The yardsticks.
-	const yard = ['none', 'classic-blink', 'timer-bar'];
-	const ys = yard.map((y) => byId.get(y)).filter((s): s is CondStats => !!s && s.decisions >= ENOUGH);
-	if (ys.length) details.push(`Yardsticks: ${list(ys.map((s) => `${named(s.cue).name.toLowerCase()} ${p(s.wellTimed.rate)}`))} turned away in time.`);
-	const ideasRanked = ranked.filter((id) => named(id).role === 'idea').length;
-	if (timer && timer.decisions >= ENOUGH && ideasRanked) {
-		const worse = ranked.filter((id) => id !== 'timer-bar' && clearlyHigher(cmp.vsTimer, 'timer-bar', id));
-		const nT = cmp.vsTimer.length;
-		const better = beatsTimer.length
-			? `${beatsTimer.length} of ${ideasRanked} ranked ideas ${beatsTimer.length === 1 ? 'does' : 'do'} clearly better: ${list(beatsTimer.map(label))}`
-			: 'no idea does clearly better yet';
-		details.push(`Against the timer bar alone (${nT} comparisons, paired within people): ${better}${worse.length ? `; clearly worse: ${list(worse.map(label))}` : ''}.`);
+	// The yardsticks: how the ideas stand against each (each its own family of comparisons).
+	const ideas = ranked.filter((id) => named(id).role === 'idea');
+	const YARDS: YardId[] = ['timer-bar', 'classic-blink', 'none'];
+	for (const y of YARDS) {
+		const fam = cmp.vs[y];
+		if (!fam || !rankedSet.has(y) || !ideas.length) continue;
+		const ys = byId.get(y)!;
+		const better = ideas.filter((id) => clearlyHigher(fam, id, y));
+		const worse = ideas.filter((id) => clearlyHigher(fam, y, id));
+		const level = ideas.length - better.length - worse.length;
+		const parts: string[] = [];
+		parts.push(better.length ? `${better.length} clearly better (${list(better.map(nameOf))})` : 'none clearly better');
+		if (worse.length) parts.push(`${worse.length} clearly worse (${list(worse.map(nameOf))})`);
+		if (level) parts.push(`${level} not told apart`);
+		const the = y === 'none' ? 'no signal' : `the ${nameOf(y).toLowerCase()}`;
+		details.push(`Against ${the} (${p(ys.wellTimed.rate)}), of ${ideas.length} ranked ${ideas.length === 1 ? 'idea' : 'ideas'}: ${list(parts)}.`);
+	}
+
+	// What is still undecided.
+	if (tone === 'group' || tone === 'none') {
+		const open: string[] = [];
+		if (tone === 'group' && groups!.top.length > 1) {
+			// The order of the two highest: what it would take to tell them apart.
+			const t = cmp.top;
+			const ask = t && t.needed && t.gap !== null && rankedSet.has(t.a) && rankedSet.has(t.b)
+				? ` (${nameOf(t.a)} and ${nameOf(t.b)} are ${Math.round(Math.abs(t.gap) * 100)} points apart; telling them apart would take about ${t.needed.toLocaleString('en-GB')} people)`
+				: '';
+			open.push(`the order inside the top group${ask}`);
+		}
+		if (tone === 'none') open.push('which conditions differ at all');
+		if (timerRanked && ideas.length && !beatsTimer.length) open.push('whether any idea beats the timer bar');
+		if (open.length) details.push(`Still undecided: ${list(open)}.`);
 	}
 
 	// The two ways to misjudge the end: too late (stayed too long or caught) and too early.
@@ -196,13 +283,13 @@ export function insight(stats: CondStats[], named: (id: string) => Named, allIds
 		const k = fam.filter((c) => c.clear).length;
 		const caught = (s: CondStats) => (key === 'tooLate' ? ` (${p(s.caught.rate)} caught)` : '');
 		if (clearlyHigher(fam, hi.cue, lo.cue)) {
-			details.push(`Fewest ${word}: ${label(lo.cue)} at ${p(lo[key].rate)}${caught(lo)}, clearly fewer than ${label(hi.cue)} at ${p(hi[key].rate)}${caught(hi)}.`);
+			more.push(`Fewest ${word}: ${label(lo.cue)} at ${p(lo[key].rate)}${caught(lo)}, clearly fewer than ${label(hi.cue)} at ${p(hi[key].rate)}${caught(hi)}${k > 1 ? ` (${k} of ${m} pairs differ clearly)` : ''}.`);
 		} else {
-			details.push(`${word[0].toUpperCase()}${word.slice(1)} ranges from ${p(lo[key].rate)} for ${label(lo.cue)} to ${p(hi[key].rate)} for ${label(hi.cue)}; ${k === 0 ? 'no pair differs by more than chance' : `${k} of ${m} pairs differ clearly, but not these two`}.`);
+			more.push(`${word[0].toUpperCase()}${word.slice(1)} ranges from ${p(lo[key].rate)} for ${label(lo.cue)} to ${p(hi[key].rate)} for ${label(hi.cue)}; ${k === 0 ? 'no pair differs by more than chance' : `${k} of ${m} pairs differ clearly, but not these two`}.`);
 		}
 	};
 	spreadLine('tooLate', 'too late');
 	spreadLine('tooEarly', 'too early');
-	if (thinNote) details.push(thinNote);
-	return { ...base, tone, headline, details };
+	if (thinNote) more.push(thinNote);
+	return { ...base, groups, tone, headline, details, more };
 }

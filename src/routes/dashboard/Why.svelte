@@ -3,6 +3,7 @@
 	 * The evidence behind the ranking. Each panel answers one question:
 	 * - Outcome mix: how do power-ups end under each signal?
 	 * - Turn-away times: when do players quit the chase, and is it inside the well-timed window?
+	 * - Time to spare: at each turn-away, could the chase still have succeeded?
 	 * - Wasted power: how much power do early quitters throw away?
 	 * - Approach curves: how do players move as the power runs out?
 	 * - Learning: do players get better with practice (and could practice explain a difference)?
@@ -14,6 +15,7 @@
 	import { spread, wilson } from '#convex/lib/stats.ts';
 	import type { CueChannel } from '#lib/game/types.ts';
 	import { CueChip, EmptyState, InfoTip, Panel, Segmented } from '#lib/ui/index.ts';
+	import DiffChart, { type DiffRow } from '#lib/charts/DiffChart.svelte';
 	import ForestChart, { type ForestRow } from '#lib/charts/ForestChart.svelte';
 	import Legend from '#lib/charts/Legend.svelte';
 	import LineChart, { type LineSeries } from '#lib/charts/LineChart.svelte';
@@ -28,8 +30,11 @@
 	import { DEFS, OUTCOME_ORDER_NOTE } from './defs';
 	import { ENOUGH } from './insight';
 	import { inview } from './inview';
-	import { orderedRows } from './rows';
+	import QueryState from './QueryState.svelte';
+	import { retrier } from './retry.svelte';
+	import { orderedRows, takeOf } from './rows';
 	import type { DashFilter, Main, RowOrder } from './types';
+	import { slow } from '#lib/ui/index.ts';
 
 	interface Props {
 		main: Main;
@@ -40,7 +45,7 @@
 	}
 	let { main, filter, order = $bindable(), selected, onselect }: Props = $props();
 
-	const rows = $derived(orderedRows(main.cues, order));
+	const rows = $derived(orderedRows(main.cues, order, takeOf(main).groups));
 
 	// Outcome mix ---------------------------------------------------------------------------------
 	let includeExcluded = $state(false);
@@ -57,8 +62,10 @@
 
 	// Turn-away and wasted power (one small row per trial, fetched when the panel is in view) ------
 	let showPoints = $state(false);
-	const points = useQuery(api.dashboard.points, () => (showPoints ? { ...filter } : 'skip'));
-	let stripView = $state<'turn' | 'wasted'>('turn');
+	const pointsAgain = retrier();
+	const points = useQuery(api.dashboard.points, () => (showPoints && !pointsAgain.paused ? { ...filter } : 'skip'));
+	const pointsWait = slow(() => points.isLoading);
+	let stripView = $state<'turn' | 'spare' | 'wasted'>('turn');
 	type Pt = NonNullable<typeof points.data>[number];
 	const pointOf = (p: Pt, v: number) => ({
 		key: p.id,
@@ -68,7 +75,10 @@
 		info: [
 			stripView === 'turn'
 				? ['Turned away', p.turnLeft === null ? 'never (still chasing at the end)' : `${p.turnLeft.toFixed(2)} s ${p.turnLeft >= 0 ? 'left' : 'after the end'}`]
-				: ['Power wasted', secs(p.wasted, 2)],
+				: stripView === 'spare'
+					? ['Time to spare', p.spare === null ? '–' : `${p.spare > 0 ? '+' : ''}${p.spare.toFixed(2)} s (${p.spare >= 0 ? 'still had time for it' : 'could not have caught it'})`]
+					: ['Power wasted', secs(p.wasted, 2)],
+			...(stripView === 'spare' ? [['At the turn', `${p.turnLeft?.toFixed(2) ?? '–'} s left, ${p.turnDist?.toFixed(1) ?? '–'} tiles from the ghost`] as [string, string]] : []),
 			['Outcome', outcomeLabel(p.outcome)],
 			['Power length', secs(p.total)],
 			['Participant', p.p !== null ? `P${p.p}, power-up ${p.trialIndex + 1}` : '–']
@@ -76,12 +86,14 @@
 	});
 	const pointRows = $derived.by((): StripRow[] => {
 		const pts = points.data ?? [];
+		const valOf = (p: Pt) => (stripView === 'turn' ? p.turnLeft : stripView === 'spare' ? p.spare : p.wasted);
 		return rows.map((r) => {
 			const mine = pts.filter((p) => p.cue === r.cond.id);
-			const onAxis = mine.filter((p) => (stripView === 'turn' ? p.inRates && p.turnLeft !== null : p.wasted !== null));
+			const onAxis = mine.filter((p) => (stripView === 'wasted' ? p.wasted !== null : p.inRates && valOf(p) !== null));
 			const never = stripView === 'turn' ? mine.filter((p) => p.inRates && p.turnLeft === null) : [];
-			const vals = onAxis.map((p) => (stripView === 'turn' ? p.turnLeft! : p.wasted!));
+			const vals = onAxis.map((p) => valOf(p)!);
 			const sp = spread(vals);
+			const had = vals.filter((v) => v >= 0).length;
 			return {
 				id: r.cond.id,
 				cond: r.cond,
@@ -90,8 +102,9 @@
 				median: sp.median,
 				q25: sp.q25,
 				q75: sp.q75,
-				points: onAxis.map((p) => pointOf(p, stripView === 'turn' ? p.turnLeft! : p.wasted!)),
-				extra: never.map((p) => pointOf(p, 0))
+				points: onAxis.map((p) => pointOf(p, valOf(p)!)),
+				extra: never.map((p) => pointOf(p, 0)),
+				...(stripView === 'spare' && vals.length ? { value: `${Math.round((had / vals.length) * 100)}% had time` } : {})
 			};
 		});
 	});
@@ -107,10 +120,24 @@
 		return [0, Math.max(3, Math.ceil(Math.max(0, ...vs)))];
 	});
 	const neverCount = $derived(pointRows.reduce((a, r) => a + (r.extra?.length ?? 0), 0));
+	/** Time to spare: axis around zero, and the share on each side over every turn-away. */
+	const spareDomain = $derived.by((): [number, number] => {
+		const vs = (points.data ?? []).filter((p) => p.inRates).map((p) => p.spare).filter((v): v is number => v !== null);
+		const lo = Math.max(-6, Math.min(-2, Math.floor(Math.min(0, ...vs))));
+		const hi = Math.min(6, Math.max(2, Math.ceil(Math.max(0, ...vs))));
+		return [lo, hi];
+	});
+	const spareAll = $derived.by(() => {
+		const vs = (points.data ?? []).filter((p) => p.inRates).map((p) => p.spare).filter((v): v is number => v !== null);
+		const had = vs.filter((v) => v >= 0).length;
+		return { n: vs.length, had, share: vs.length ? had / vs.length : null };
+	});
 
 	// Approach curves: small multiples, each condition against the timer bar ----------------------------
 	let showApproach = $state(false);
-	const approach = useQuery(api.dashboard.approach, () => (showApproach ? { ...filter } : 'skip'));
+	const approachAgain = retrier();
+	const approach = useQuery(api.dashboard.approach, () => (showApproach && !approachAgain.paused ? { ...filter } : 'skip'));
+	const approachWait = slow(() => approach.isLoading);
 	let approachView = $state<'chasing' | 'dist'>('chasing');
 	type ApproachCue = NonNullable<typeof approach.data>['cues'][number];
 	const lineOf = (c: ApproachCue, emphasis: boolean): LineSeries => {
@@ -150,7 +177,32 @@
 
 	// Said vs did (questionnaire answers come from their own query) -----------------------------------
 	let showRatings = $state(false);
-	const ratings = useQuery(api.dashboard.ratings, () => (showRatings ? { ...filter } : 'skip'));
+	const ratingsAgain = retrier();
+	const ratings = useQuery(api.dashboard.ratings, () => (showRatings && !ratingsAgain.paused ? { ...filter } : 'skip'));
+	/** Ratings compared within people, against the timer bar. */
+	let ratingKey = $state<'clarity' | 'distraction'>('clarity');
+	const ratingDiffRows = $derived.by((): DiffRow[] => {
+		const fam = ratings.data?.vsTimer[ratingKey] ?? [];
+		const byId = new Map(fam.map((c) => [c.a, c]));
+		const f2 = (x: number | null) => (x === null ? '–' : `${x > 0 ? '+' : ''}${x.toFixed(1)}`);
+		return orderedRows(main.cues, order, takeOf(main).groups)
+			.filter((r) => r.cond.id !== 'timer-bar')
+			.map((r) => {
+				const c = byId.get(r.cond.id);
+				return {
+					id: r.cond.id, cond: r.cond, group: r.group,
+					diff: c?.diff ?? null, lo: c?.lo ?? null, hi: c?.hi ?? null, people: c?.people ?? 0, clear: !!c?.clear,
+					thin: !c || c.lo === null,
+					info: [
+						[`${ratingKey === 'clarity' ? 'Clarity' : 'Distraction'} minus the timer bar`, f2(c?.diff ?? null)],
+						['95% interval', c && c.lo !== null ? `${f2(c.lo)} to ${f2(c.hi)}` : 'needs 5 people'],
+						['People who rated both', String(c?.people ?? 0)],
+						['Verdict', c?.clear ? 'clear' : !c || c.p === null ? 'too few people to test' : 'could be chance']
+					] as [string, string][]
+				};
+			});
+	});
+	const ratingSpan = $derived(Math.max(1, Math.ceil(Math.max(0, ...ratingDiffRows.flatMap((r) => [Math.abs(r.lo ?? 0), Math.abs(r.hi ?? 0), Math.abs(r.diff ?? 0)])))));
 
 	// Learning ---------------------------------------------------------------------------------------
 	function learningSeries(b: Main['learning']['byTrial']): LineSeries[] {
@@ -180,7 +232,7 @@
 
 	// Said vs did ------------------------------------------------------------------------------------
 	function ratingPoints(key: 'clarity' | 'distraction'): ScatterPoint[] {
-		const byCue = new Map((ratings.data ?? []).map((r) => [r.cue, r]));
+		const byCue = new Map((ratings.data?.cues ?? []).map((r) => [r.cue, r]));
 		return main.cues
 			.filter((c) => (byCue.get(c.cue)?.[key].n ?? 0) > 0 && c.wellTimed.rate !== null)
 			.map((c) => {
@@ -275,27 +327,33 @@
 
 	<div use:inview={() => (showPoints = true)}>
 		<Panel
-			title={stripView === 'turn' ? 'When players quit the chase' : 'Power thrown away'}
+			title={stripView === 'turn' ? 'When players quit the chase' : stripView === 'spare' ? 'Could the chase still have succeeded?' : 'Power thrown away'}
 			sub={stripView === 'turn'
 				? 'Every counted power-up is a dot, coloured by its outcome. Box: middle half. Tick: median. Never turned: still chasing when the power ended. Click a dot for its replay.'
-				: 'Seconds of power left after each early retreat. Box: middle half. Tick: median.'}
+				: stripView === 'spare'
+					? 'Every turn-away (in time or too early) is a dot: the power left minus the time the pursuit still needed to reach the ghost. Right of zero the player still had time for that ghost; left of zero the chase could not have reached it in time.'
+					: 'Seconds of power left after each early retreat. Box: middle half. Tick: median.'}
 		>
 			{#snippet actions()}
 				<Segmented
 					label="Measure"
 					size="sm"
-					options={[{ value: 'turn', label: 'Turn-away time' }, { value: 'wasted', label: 'Wasted power' }]}
+					options={[{ value: 'turn', label: 'Turn-away time' }, { value: 'spare', label: 'Time to spare' }, { value: 'wasted', label: 'Wasted power' }]}
 					bind:value={stripView}
 				/>
-				<InfoTip term={stripView === 'turn' ? 'Turn-away time' : 'Wasted power'} align="end">
-					{stripView === 'turn' ? `${DEFS.turnAway} ${DEFS.neverTurned}` : DEFS.wasted}
+				<InfoTip term={stripView === 'turn' ? 'Turn-away time' : stripView === 'spare' ? 'Time to spare' : 'Wasted power'} align="end">
+					{stripView === 'turn' ? `${DEFS.turnAway} ${DEFS.neverTurned}` : stripView === 'spare' ? DEFS.timeToSpare : DEFS.wasted}
 				</InfoTip>
 			{/snippet}
 			{#if !points.data}
-				<div class="loading tall">Loading every power-up…</div>
-			{:else if !points.data.some((p) => (stripView === 'turn' ? p.inRates : p.wasted !== null))}
-				<EmptyState compact icon="chart" title={stripView === 'turn' ? 'No counted power-ups yet' : 'No early retreats yet'}>
-					{stripView === 'turn' ? 'They appear once players chase scared ghosts near the end of a power-up.' : 'Wasted power is measured on early retreats.'}
+				<QueryState error={points.error} wait={pointsWait} what="every power-up" onretry={pointsAgain.retry} tall />
+			{:else if !points.data.some((p) => (stripView === 'wasted' ? p.wasted !== null : stripView === 'spare' ? p.inRates && p.spare !== null : p.inRates))}
+				<EmptyState compact icon="chart" title={stripView === 'wasted' ? 'No early retreats yet' : stripView === 'spare' ? 'No turn-aways with a distance yet' : 'No counted power-ups yet'}>
+					{stripView === 'wasted'
+						? 'Wasted power is measured on early retreats.'
+						: stripView === 'spare'
+							? 'Time to spare needs turn-aways (in time or too early) whose distance to the ghost was stored.'
+							: 'They appear once players chase scared ghosts near the end of a power-up.'}
 				</EmptyState>
 			{:else}
 				<div class="legend-row">
@@ -318,6 +376,23 @@
 						caption="Turn-away time of every counted power-up per condition, with those that never turned in their own column"
 					/>
 					<p class="foot">{plural(neverCount, 'counted power-up')} never turned away (the column at the right).</p>
+				{:else if stripView === 'spare'}
+					<StripPlot
+						rows={pointRows}
+						domain={spareDomain}
+						zero={{ label: 'just enough time' }}
+						xLabel="Seconds to spare at the turn-away: power left minus the time the pursuit still needed"
+						ends={['could not have caught it', 'still had time for it']}
+						format={(v) => (v === 0 ? '0' : `${v > 0 ? '+' : ''}${v.toFixed(0)}`)}
+						rowHeight={40}
+						caption="Time to spare at every turn-away per condition"
+					/>
+					<p class="foot">
+						Over every turn-away here, {spareAll.share === null ? '–' : `${Math.round(spareAll.share * 100)}%`} still had time for the
+						ghost ({spareAll.had} of {spareAll.n}) and {spareAll.share === null ? '–' : `${Math.round((1 - spareAll.share) * 100)}%`} could
+						not have caught it. A turn-away left of zero that counts as "too early" broke off a chase that could not succeed: a
+						judgement of the chase, not of the clock. Right column: the share that still had time, per condition.
+					</p>
 				{:else}
 					<StripPlot
 						rows={pointRows}
@@ -349,7 +424,7 @@
 				<InfoTip term="Approach curves" align="end">{approachView === 'dist' ? DEFS.approach : DEFS.stillChasing}</InfoTip>
 			{/snippet}
 			{#if !approach.data}
-				<div class="loading tall">Averaging the 10 Hz series…</div>
+				<QueryState error={approach.error} wait={approachWait} what="the approach curves" onretry={approachAgain.retry} tall />
 			{:else if !approach.data.cues.length}
 				<EmptyState compact icon="chart" title="No counted power-ups yet">The curves need counted power-ups.</EmptyState>
 			{:else}
@@ -445,7 +520,7 @@
 	</div>
 
 	<div class="two" use:inview={() => (showRatings = true)}>
-		<Panel title="Felt clear vs was well timed" sub="Each point is a condition: questionnaire clarity against measured well-timed rate.">
+		<Panel title="Felt clear vs turned away in time" sub="Each point is a condition: questionnaire clarity against how often players turned away in time.">
 			{#snippet actions()}<InfoTip term="Clarity" align="end">{DEFS.clarity}</InfoTip>{/snippet}
 			{#if clarityPts.length}
 				<ScatterPlot
@@ -454,18 +529,20 @@
 					yDomain={[0, 100]}
 					xLabel="Clarity rating (1-7)"
 					xEnds={['unclear', 'clear']}
-					yLabel="% well timed"
+					yLabel="% in time"
 					yFormat={(v) => `${v.toFixed(0)}%`}
-					caption="Clarity rating against well-timed rate per condition"
+					caption="Clarity rating against turned away in time per condition"
 				/>
 				<p class="foot">Whiskers: 95% intervals. If players' sense of clarity matched their play, points would rise to the right.</p>
 			{:else}
-				<EmptyState compact icon="study" title={ratings.data ? 'No questionnaire answers in this view yet' : 'Loading answers…'}>
-					{#if ratings.data}After each run the researcher can ask the two questions (1 to 7); answers show up here.{/if}
-				</EmptyState>
+				{#if ratings.data}
+					<EmptyState compact icon="study" title="No questionnaire answers in this view yet">After each run the researcher can ask the two questions (1 to 7); answers show up here.</EmptyState>
+				{:else}
+					<QueryState error={ratings.error} wait={{ offline: false, late: false }} what="the answers" onretry={ratingsAgain.retry} />
+				{/if}
 			{/if}
 		</Panel>
-		<Panel title="Felt distracting vs was well timed" sub="Questionnaire distraction against measured well-timed rate.">
+		<Panel title="Felt distracting vs turned away in time" sub="Questionnaire distraction against how often players turned away in time.">
 			{#snippet actions()}<InfoTip term="Distraction" align="end">{DEFS.distraction}</InfoTip>{/snippet}
 			{#if distractPts.length}
 				<ScatterPlot
@@ -474,16 +551,51 @@
 					yDomain={[0, 100]}
 					xLabel="Distraction rating (1-7)"
 					xEnds={['not at all', 'very']}
-					yLabel="% well timed"
+					yLabel="% in time"
 					yFormat={(v) => `${v.toFixed(0)}%`}
-					caption="Distraction rating against well-timed rate per condition"
+					caption="Distraction rating against turned away in time per condition"
 				/>
-				<p class="foot">The ideal signal sits top left: well timed and not in the way.</p>
+				<p class="foot">The ideal signal sits top left: turned away in time and not in the way.</p>
+			{:else if ratings.data}
+				<EmptyState compact icon="study" title="No questionnaire answers in this view yet" />
 			{:else}
-				<EmptyState compact icon="study" title={ratings.data ? 'No questionnaire answers in this view yet' : 'Loading answers…'} />
+				<QueryState error={ratings.error} wait={{ offline: false, late: false }} what="the answers" onretry={ratingsAgain.retry} />
 			{/if}
 		</Panel>
 	</div>
+
+	{#if ratings.data && ratings.data.cues.length}
+		<Panel
+			title="Ratings against the timer bar, person by person"
+			sub="For everyone who rated both, their rating of the condition minus their rating of the timer bar (1 to 7 scale), averaged over those people. Bars: 95% intervals over people."
+		>
+			{#snippet actions()}
+				<div class="ctl-row">
+					<Segmented label="Question" size="sm" options={[{ value: 'clarity', label: 'Clarity' }, { value: 'distraction', label: 'Distraction' }]} bind:value={ratingKey} />
+					<InfoTip term="Ratings within people" align="end">{DEFS.ratingsPaired}</InfoTip>
+				</div>
+			{/snippet}
+			{#if ratingDiffRows.some((r) => r.people > 0)}
+				<DiffChart
+					rows={ratingDiffRows}
+					span={ratingSpan}
+					ends={ratingKey === 'clarity' ? ['less clear', 'clearer'] : ['less in the way', 'more in the way']}
+					zeroLabel="rated like the timer bar"
+					scale={1}
+					unit=""
+					decimals={1}
+					{selected}
+					{onselect}
+					caption="{ratingKey === 'clarity' ? 'Clarity' : 'Distraction'} rating minus the timer bar's, per condition, with 95% intervals over people"
+				>
+					{#snippet label(row)}<CueChip cue={row.cond} size="sm" />{/snippet}
+				</DiffChart>
+				<p class="foot">Hollow points: fewer than 5 people rated both, so there is no interval or test. Clear means the difference survives Holm's adjustment over the conditions compared.</p>
+			{:else}
+				<EmptyState compact icon="study" title="Nobody has rated the timer bar and another condition yet" />
+			{/if}
+		</Panel>
+	{/if}
 
 	<Panel title="Where the signal lives" sub="Conditions pooled by where the signal is shown, with Wilson intervals. No signal (A) is the yardstick line.">
 		{#snippet actions()}<InfoTip term="Channel" align="end">{DEFS.channel}</InfoTip>{/snippet}
@@ -519,6 +631,12 @@
 	}
 	.two > * {
 		min-width: 0;
+	}
+	.ctl-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
 	}
 	.sec-head {
 		display: flex;
@@ -604,14 +722,6 @@
 		margin-top: var(--space-2);
 		color: var(--ink-faint);
 		font-size: var(--text-xs);
-	}
-	.loading {
-		padding: var(--space-6) 0;
-		color: var(--ink-faint);
-		text-align: center;
-	}
-	.loading.tall {
-		min-height: 420px;
 	}
 	.ch {
 		display: flex;

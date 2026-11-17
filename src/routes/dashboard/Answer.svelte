@@ -1,10 +1,11 @@
 <script lang="ts">
 	/**
-	 * The answer first: the takeaway in words (only as strong as the adjusted comparisons allow),
-	 * what it rests on (and what was recorded but not counted, with the reason), and the ranking of
-	 * all thirteen conditions on the well-timed rate, with the two ways to misjudge the end beside it
-	 * (too late, of which caught is the worst part, and too early), with the references and the timer
-	 * bar drawn as yardstick lines. Every rate is over decision trials.
+	 * The answer first (the takeaway itself is Takeaway.svelte, placed by the page): what it rests on
+	 * (and what was recorded but not counted, with the reason), and the ranking of all thirteen
+	 * conditions on the well-timed rate, grouped as the takeaway groups them (the top group shaded,
+	 * the leaders darker, then those clearly behind the best), with the two ways to misjudge the end
+	 * beside it (too late, of which caught is the worst part, and too early) and the references and
+	 * the timer bar drawn as yardstick lines. Every rate is over decision trials.
 	 */
 	import type { Snippet } from 'svelte';
 	import { CueChip, InfoTip, Panel, Stat } from '#lib/ui/index.ts';
@@ -12,30 +13,23 @@
 	import ForestChart, { type ForestColumn, type ForestRef, type ForestRow } from '#lib/charts/ForestChart.svelte';
 	import Legend from '#lib/charts/Legend.svelte';
 	import RoleMark from '#lib/charts/RoleMark.svelte';
-	import { CONDITIONS, condition, pct, plural, ROLE_COLOR, YARDSTICKS } from '#lib/charts/encoding.ts';
+	import { condition, pct, plural, ROLE_COLOR, YARDSTICKS } from '#lib/charts/encoding.ts';
 	import { DEFS } from './defs';
-	import { ENOUGH, insight, type Cmp } from './insight';
-	import { orderedRows } from './rows';
-	import type { Main, RunInfo } from './types';
+	import { ENOUGH, RANK_PEOPLE } from './insight';
+	import { orderedRows, takeOf } from './rows';
+	import type { Main } from './types';
 
 	interface Props {
 		main: Main;
 		selected: string | null;
 		onselect: (id: string) => void;
-		simulated: boolean;
-		/** The simulator run shown (simulated view). */
-		run?: RunInfo | null;
-		otherRun?: boolean;
 		/** Extra line under the "not counted" note (e.g. a route to the simulated view). */
 		uncounted?: Snippet;
 	}
-	let { main, selected, onselect, simulated, run = null, otherRun = false, uncounted }: Props = $props();
+	let { main, selected, onselect, uncounted }: Props = $props();
 
-	const take = $derived(insight(main.cues, (id) => condition(id), CONDITIONS.map((c) => c.id), {
-		pairs: main.pairs as Record<'wellTimed' | 'tooLate' | 'tooEarly', Cmp[]>,
-		vsTimer: main.paired['timer-bar'].wellTimed as Cmp[]
-	}));
-	const rows = $derived(orderedRows(main.cues, 'rank'));
+	const take = $derived(takeOf(main));
+	const rows = $derived(orderedRows(main.cues, 'rank', take.groups));
 	const ranked = $derived(rows.filter((r) => !r.thin).length);
 
 	/** Why power-ups were recorded but not counted, largest first, in plain words. */
@@ -66,6 +60,7 @@
 		cond: r.cond,
 		thin: r.thin,
 		group: r.group,
+		band: r.band,
 		values: { wellTimed: r.s?.wellTimed ?? null, tooLate: r.s?.tooLate ?? null, tooEarly: r.s?.tooEarly ?? null },
 		empty: r.s && r.s.trials > 0 ? `none counted (${r.s.trials} recorded)` : undefined,
 		note: r.s
@@ -73,39 +68,10 @@
 			: undefined
 	})));
 	const yardsticksDrawn = $derived(columns[0].refs.length > 0);
-	const presetWord = (p: string) => (p === 'flat' ? 'flat' : p === 'planted' ? 'planted' : p);
 </script>
 
 <section class="answer" aria-labelledby="answer-h">
 	<h2 id="answer-h" class="visually-hidden">The answer</h2>
-	<div class="takeaway tone-{take.tone}">
-		<p class="eyebrow">
-			{#if simulated && otherRun}
-				Pipeline check: simulated play outside any run
-			{:else if simulated && run}
-				Pipeline check on one simulator run: {presetWord(run.preset)}, {plural(run.sessions, 'player')}, {plural(run.trials, 'power-up')}
-			{:else if simulated}
-				Pipeline check on simulated players
-			{:else}
-				The answer so far
-			{/if}
-			<InfoTip term="How strong is this?" align="start">
-				A condition is ranked only with {ENOUGH} or more counted power-ups. A difference is called clear only when it holds
-				inside each person (paired) and survives Holm's adjustment for every comparison made at once (78 pairs of the 13
-				conditions; 12 against the timer bar). Anything weaker is reported as possibly chance. <a href="#method">How this is measured</a>
-			</InfoTip>
-		</p>
-		<p class="headline">{take.headline}</p>
-		{#if take.details.length}
-			<ul class="details">
-				{#each take.details as d (d)}<li>{d}</li>{/each}
-			</ul>
-		{/if}
-		{#if simulated && run?.preset === 'flat'}
-			<p class="flat-note">This run gave every condition the same awareness, so any difference here is noise. Seeing none is the expected result.</p>
-		{/if}
-	</div>
-
 	<div class="basis">
 		<Stat label="Participants" value={main.totals.participants} info={DEFS.participants} sub={plural(main.totals.sessions, 'session')} />
 		<Stat label="Power-ups" value={main.totals.trials} info={DEFS.trial} sub="{main.totals.engaged} engaged" />
@@ -115,7 +81,7 @@
 			value={ranked}
 			unit="of 13"
 			info={DEFS.notEnough}
-			sub={ranked < 13 ? `${13 - ranked} under ${ENOUGH} counted` : 'all have enough data'}
+			sub={ranked < 13 ? `${13 - ranked} under ${ENOUGH} counted or ${RANK_PEOPLE} people` : 'all have enough data'}
 			tone={ranked === 0 ? 'warn' : 'ink'}
 		/>
 	</div>
@@ -162,8 +128,15 @@
 					{/each}
 					Separate intervals here are not enough to call a difference clear: see "Within people" below for the paired comparisons.
 				</p>
+			{/if}
+			{#if take.groups}
+				<p class="yard-note groups-note">
+					<span class="swatch lead" aria-hidden="true"></span> Darker band: the leaders, each clearly ahead of every condition below the top group.
+					<span class="swatch top" aria-hidden="true"></span> Lighter band: the rest of the top group, not clearly behind the best.
+					Groups come from the paired comparisons, adjusted for all {take.separated.of} pairs.
+				</p>
 			{:else}
-				<p class="yard-note">Yardstick lines appear once no signal, classic blink or the timer bar has {ENOUGH} counted power-ups.</p>
+				<p class="yard-note">Yardstick lines appear once no signal, classic blink or the timer bar is ranked.</p>
 			{/if}
 		</div>
 		<ForestChart
@@ -187,52 +160,6 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		gap: var(--space-5);
-	}
-	.takeaway {
-		padding: var(--space-5) var(--space-5) var(--space-5) calc(var(--space-5) + 4px);
-		border-radius: var(--radius-lg);
-		background: linear-gradient(90deg, var(--accent-soft), transparent 70%), var(--surface);
-		border: 1px solid var(--rule);
-		box-shadow: inset 4px 0 0 var(--accent);
-	}
-	.takeaway.tone-thin,
-	.takeaway.tone-empty,
-	.takeaway.tone-none,
-	.takeaway.tone-some {
-		background: var(--surface);
-		box-shadow: inset 4px 0 0 var(--ink-faint);
-	}
-	.takeaway.tone-thin,
-	.takeaway.tone-empty {
-		box-shadow: inset 4px 0 0 var(--warn);
-	}
-	.eyebrow {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 4px;
-		margin-bottom: var(--space-2);
-	}
-	.headline {
-		max-width: 62ch;
-		font-size: var(--text-xl);
-		font-weight: 700;
-		line-height: 1.3;
-		text-wrap: pretty;
-	}
-	.details {
-		display: grid;
-		gap: 2px;
-		max-width: 86ch;
-		margin: var(--space-3) 0 0;
-		padding-left: 1.1em;
-		color: var(--ink-dim);
-	}
-	.flat-note {
-		max-width: 86ch;
-		margin-top: var(--space-3);
-		color: var(--ink-dim);
-		font-size: var(--text-sm);
 	}
 	.basis {
 		display: grid;
@@ -271,6 +198,21 @@
 		color: var(--ink-faint);
 		font-size: var(--text-xs);
 	}
+	.groups-note .swatch {
+		display: inline-block;
+		width: 14px;
+		height: 10px;
+		margin: 0 2px -1px 4px;
+		border-radius: 2px;
+	}
+	.swatch.lead {
+		background: color-mix(in srgb, var(--ink) 8%, transparent);
+		box-shadow: inset 3px 0 0 var(--ink-dim);
+	}
+	.swatch.top {
+		background: color-mix(in srgb, var(--ink) 4%, transparent);
+		box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ink) 35%, transparent);
+	}
 	.yard {
 		display: inline-flex;
 		align-items: center;
@@ -282,15 +224,9 @@
 		min-width: 0;
 		max-width: 100%;
 	}
-	a {
-		color: var(--focus);
-	}
 	@media (max-width: 760px) {
 		.basis {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-		.headline {
-			font-size: var(--text-lg);
 		}
 	}
 </style>

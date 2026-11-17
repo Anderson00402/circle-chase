@@ -9,7 +9,10 @@
  * Kept in step by the writers: `trials.save` calls `syncDigest` with the new trial and its series;
  * anything that changes a stored trial (reclassify, migrations) calls `syncDigest` without a series
  * (the curve is kept) or `rebuildSessionDigest`. `dashboard.rebuildDigests` rebuilds them all.
- * The trial rows stay the source of truth: a digest can always be rebuilt from them.
+ * The trial rows stay the source of truth: a digest can always be rebuilt from them. Each digest has
+ * a small companion in `trialCells` (per-session totals for the headline; convex/lib/cells.ts),
+ * rewritten on every digest change here, so code elsewhere changes digests only through these
+ * functions (`patchDigestRows` for a batch of rows).
  *
  * The digest's `mode` is its first trial's; each row carries its own `mode` too, and filters use
  * the row's (a console session can mix study and arcade runs).
@@ -20,6 +23,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { mode, source } from '../validators';
 import { unpackSeries } from './series';
+import { cellsOfRows, type CellRow } from './cells';
 
 /** Approach-curve grid: from 8 s of power left to 3 s after the end, every 0.25 s. */
 export const CURVE_FROM = 8;
@@ -57,6 +61,17 @@ export const digestRow = v.object({
 	/** The trial's own rules mode (a console session can mix study and arcade runs). */
 	mode: v.optional(mode),
 	/**
+	 * The raw measures the outcome rules read (convex/lib/rules.ts `RuleInput`), so the dashboard can
+	 * recompute a class with a moved threshold (the "too early" line check) and the time to spare at a
+	 * turn-away, without reading trial rows. Absent on digests built before they were carried.
+	 */
+	endReason: v.optional(v.string()),
+	lastChaseEnd: v.optional(v.union(v.literal('turn'), v.literal('eat'), v.literal('open'), v.null())),
+	turnDist: v.optional(maybeNum),
+	chaseEndDist: v.optional(maybeNum),
+	endDist: v.optional(maybeNum),
+	cut: v.optional(v.union(v.literal('power'), v.literal('clear'), v.literal('quit'), v.null())),
+	/**
 	 * Approach curve on the grid above, packed (`packCurve`): per bin the path distance to the
 	 * nearest scared ghost in tenths of a tile (-1: no target; -2: no sample) and whether the player
 	 * was chasing (1, 0; -1: no sample). About 135 bytes. Absent when the series is missing.
@@ -76,6 +91,30 @@ export const trialDigestTable = defineTable({
 	firstAt: v.number(),
 	lastAt: v.number(),
 	rows: v.array(digestRow)
+})
+	.index('by_session', ['sessionId'])
+	.index('by_source', ['source', 'lastAt'])
+	.index('by_run', ['simRun', 'lastAt'])
+	.index('by_participant', ['participantId', 'lastAt']);
+
+/**
+ * Per-session totals for the dashboard's headline numbers (convex/lib/cells.ts): one small document
+ * per session, rebuilt from the session's digest rows whenever the digest changes, so the headline
+ * query reads a few kilobytes per session whatever the number of trials. `data` is the JSON of
+ * `CellsData` (condition ids and level names as keys, which Convex field names do not allow).
+ */
+export const trialCellsTable = defineTable({
+	sessionId: v.id('sessions'),
+	participantId: v.id('participants'),
+	participantNumber: maybeNum,
+	source,
+	mode,
+	simRun: v.optional(v.string()),
+	firstAt: v.number(),
+	lastAt: v.number(),
+	/** Digest rows the totals were built from (a quick check that the two agree). */
+	rows: v.number(),
+	data: v.string()
 })
 	.index('by_session', ['sessionId'])
 	.index('by_source', ['source', 'lastAt'])
@@ -159,9 +198,40 @@ export function rowOf(t: Doc<'trials'>, packed?: ArrayBuffer | null, keep?: Dige
 		caught: t.after.caught,
 		nearMiss: t.after.nearMiss,
 		mode: t.mode,
+		endReason: t.endReason,
+		turnDist: t.turnDist ?? null,
+		endDist: t.endDist ?? null,
+		cut: t.after.cut ?? null,
+		...(t.lastChaseEnd !== undefined ? { lastChaseEnd: t.lastChaseEnd } : {}),
+		...(t.chaseEndDist !== undefined ? { chaseEndDist: t.chaseEndDist } : {}),
 		...(t.gaveUpEarly !== undefined ? { gaveUpEarly: t.gaveUpEarly } : {}),
 		...(curve ? { curve } : {})
 	};
+}
+
+/**
+ * Write a session's cells from its digest rows (insert, replace, or delete when no rows are left).
+ * Every change to a digest goes through here, so the two never disagree.
+ */
+export async function syncCells(ctx: MutationCtx, d: Pick<Doc<'trialDigests'>, 'sessionId' | 'participantId' | 'participantNumber' | 'source' | 'mode' | 'simRun'>, rows: DigestRow[]): Promise<void> {
+	const have = await ctx.db.query('trialCells').withIndex('by_session', (i) => i.eq('sessionId', d.sessionId)).unique();
+	if (!rows.length) {
+		if (have) await ctx.db.delete(have._id);
+		return;
+	}
+	const doc = {
+		sessionId: d.sessionId, participantId: d.participantId, participantNumber: d.participantNumber, source: d.source, mode: d.mode,
+		...(d.simRun ? { simRun: d.simRun } : {}), ...bounds(rows), rows: rows.length,
+		data: JSON.stringify(cellsOfRows(rows as CellRow[], d.mode))
+	};
+	if (have) await ctx.db.replace(have._id, doc);
+	else await ctx.db.insert('trialCells', doc);
+}
+
+/** Replace a digest's rows (and its cells). For writers outside this file, e.g. `admin.reclassify`. */
+export async function patchDigestRows(ctx: MutationCtx, d: Doc<'trialDigests'>, rows: DigestRow[]): Promise<void> {
+	await ctx.db.patch(d._id, { rows, ...bounds(rows) });
+	await syncCells(ctx, d, rows);
 }
 
 function bounds(rows: DigestRow[]) {
@@ -177,10 +247,12 @@ export async function syncDigest(ctx: MutationCtx, t: Doc<'trials'>, packed?: Ar
 	if (!d) {
 		const p = await ctx.db.get(t.participantId);
 		const rows = [rowOf(t, packed ?? null)];
-		await ctx.db.insert('trialDigests', {
+		const doc = {
 			sessionId: t.sessionId, participantId: t.participantId, participantNumber: p?.number ?? null,
 			source: t.source, mode: t.mode, ...(t.simRun ? { simRun: t.simRun } : {}), ...bounds(rows), rows
-		});
+		};
+		await ctx.db.insert('trialDigests', doc);
+		await syncCells(ctx, doc, rows);
 		return;
 	}
 	const i = d.rows.findIndex((r) => r.id === t._id);
@@ -190,7 +262,7 @@ export async function syncDigest(ctx: MutationCtx, t: Doc<'trials'>, packed?: Ar
 		rows.push(rowOf(t, rows.length < MAX_ROWS_WITH_CURVE ? (packed ?? null) : null));
 		rows.sort((a, b) => a.createdAt - b.createdAt);
 	}
-	await ctx.db.patch(d._id, { rows, ...bounds(rows) });
+	await patchDigestRows(ctx, d, rows);
 }
 
 /** Rebuild one session's digest from its trial rows and series (about 2 reads per trial). */
@@ -198,7 +270,10 @@ export async function rebuildSessionDigest(ctx: MutationCtx, sessionId: Id<'sess
 	const trials = await ctx.db.query('trials').withIndex('by_session', (i) => i.eq('sessionId', sessionId)).collect();
 	const d = await ctx.db.query('trialDigests').withIndex('by_session', (i) => i.eq('sessionId', sessionId)).unique();
 	if (!trials.length) {
-		if (d) await ctx.db.delete(d._id);
+		if (d) {
+			await ctx.db.delete(d._id);
+			await syncCells(ctx, d, []);
+		}
 		return 0;
 	}
 	const rows: DigestRow[] = [];
@@ -208,14 +283,16 @@ export async function rebuildSessionDigest(ctx: MutationCtx, sessionId: Id<'sess
 	}
 	rows.sort((a, b) => a.createdAt - b.createdAt);
 	if (d) {
-		await ctx.db.patch(d._id, { rows, ...bounds(rows) });
+		await patchDigestRows(ctx, d, rows);
 	} else {
 		const p = await ctx.db.get(trials[0].participantId);
 		const t = trials[0];
-		await ctx.db.insert('trialDigests', {
+		const doc = {
 			sessionId, participantId: t.participantId, participantNumber: p?.number ?? null,
 			source: t.source, mode: t.mode, ...(t.simRun ? { simRun: t.simRun } : {}), ...bounds(rows), rows
-		});
+		};
+		await ctx.db.insert('trialDigests', doc);
+		await syncCells(ctx, doc, rows);
 	}
 	return rows.length;
 }
@@ -225,6 +302,9 @@ export async function dropFromDigest(ctx: MutationCtx, t: Pick<Doc<'trials'>, '_
 	const d = await ctx.db.query('trialDigests').withIndex('by_session', (i) => i.eq('sessionId', t.sessionId)).unique();
 	if (!d) return;
 	const rows = d.rows.filter((r) => r.id !== t._id);
-	if (rows.length) await ctx.db.patch(d._id, { rows, ...bounds(rows) });
-	else await ctx.db.delete(d._id);
+	if (rows.length) await patchDigestRows(ctx, d, rows);
+	else {
+		await ctx.db.delete(d._id);
+		await syncCells(ctx, d, []);
+	}
 }

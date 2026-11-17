@@ -1,421 +1,485 @@
 {
-	"run": "ubzd01cu",
-	"note": "Simulator run ubzd01cu (flat), dashboard:main on 2026-11-16, trimmed to what insight() reads.",
+	"note": "Simulator run yqglh095 (flat, 40 players), dashboard:main on 2026-11-17, trimmed to what insight() reads.",
 	"cues": [
 		{
 			"cue": "burning-fuse",
-			"decisions": 23,
+			"decisions": 236,
+			"decisionParticipants": 38,
 			"wellTimed": {
-				"k": 10,
-				"n": 23,
-				"rate": 0.43478260869565216,
-				"lo": 0.22727272727272727,
-				"hi": 0.6670454545454524
+				"hi": 0.5840090534979423,
+				"k": 123,
+				"lo": 0.4549447174447175,
+				"method": "bootstrap",
+				"n": 236,
+				"rate": 0.5211864406779662
 			},
 			"tooLate": {
-				"k": 7,
-				"n": 23,
-				"rate": 0.30434782608695654,
-				"lo": 0.09090909090909091,
-				"hi": 0.5416666666666666
+				"hi": 0.2964468747906478,
+				"k": 55,
+				"lo": 0.17010865743019904,
+				"method": "bootstrap",
+				"n": 236,
+				"rate": 0.2330508474576271
 			},
 			"tooEarly": {
-				"k": 6,
-				"n": 23,
-				"rate": 0.2608695652173913,
-				"lo": 0.08695652173913043,
-				"hi": 0.4583333333333333
+				"hi": 0.30837004405286345,
+				"k": 58,
+				"lo": 0.1885245901639344,
+				"method": "bootstrap",
+				"n": 236,
+				"rate": 0.2457627118644068
 			},
 			"caught": {
-				"k": 1,
-				"n": 23,
-				"rate": 0.043478260869565216,
-				"lo": 0,
-				"hi": 0.13636363636363635
+				"hi": 0.04583333333333333,
+				"k": 6,
+				"lo": 0.00823045267489712,
+				"method": "bootstrap",
+				"n": 236,
+				"rate": 0.025423728813559324
 			}
 		},
 		{
 			"cue": "classic-blink",
-			"decisions": 23,
+			"decisions": 229,
+			"decisionParticipants": 40,
 			"wellTimed": {
-				"k": 12,
-				"n": 23,
-				"rate": 0.5217391304347826,
-				"lo": 0.2799444444444445,
-				"hi": 0.7273601398601394
+				"hi": 0.5487886541811847,
+				"k": 111,
+				"lo": 0.41818181818181815,
+				"method": "bootstrap",
+				"n": 229,
+				"rate": 0.4847161572052402
 			},
 			"tooLate": {
-				"k": 5,
-				"n": 23,
-				"rate": 0.21739130434782608,
-				"lo": 0.047619047619047616,
-				"hi": 0.4166666666666667
+				"hi": 0.3286401278038602,
+				"k": 59,
+				"lo": 0.18951390862583486,
+				"method": "bootstrap",
+				"n": 229,
+				"rate": 0.2576419213973799
 			},
 			"tooEarly": {
-				"k": 6,
-				"n": 23,
-				"rate": 0.2608695652173913,
-				"lo": 0.0967741935483871,
-				"hi": 0.47619047619047616
+				"hi": 0.3179876432445658,
+				"k": 59,
+				"lo": 0.19909449891067538,
+				"method": "bootstrap",
+				"n": 229,
+				"rate": 0.2576419213973799
 			},
 			"caught": {
-				"k": 1,
-				"n": 23,
-				"rate": 0.043478260869565216,
-				"lo": 0,
-				"hi": 0.15789473684210525
+				"hi": 0.07531380753138076,
+				"k": 9,
+				"lo": 0.009173264630723472,
+				"method": "bootstrap",
+				"n": 229,
+				"rate": 0.039301310043668124
 			}
 		},
 		{
 			"cue": "clock-halos",
-			"decisions": 33,
+			"decisions": 236,
+			"decisionParticipants": 38,
 			"wellTimed": {
-				"k": 6,
-				"n": 33,
-				"rate": 0.18181818181818182,
-				"lo": 0.04335284280936456,
-				"hi": 0.34375
+				"hi": 0.5905172413793104,
+				"k": 124,
+				"lo": 0.45762054920509787,
+				"method": "bootstrap",
+				"n": 236,
+				"rate": 0.5254237288135594
 			},
 			"tooLate": {
-				"k": 9,
-				"n": 33,
-				"rate": 0.2727272727272727,
-				"lo": 0.13793103448275862,
-				"hi": 0.42105263157894735
+				"hi": 0.2758655172413793,
+				"k": 50,
+				"lo": 0.1551663428848956,
+				"method": "bootstrap",
+				"n": 236,
+				"rate": 0.211864406779661
 			},
 			"tooEarly": {
-				"k": 18,
-				"n": 33,
-				"rate": 0.5454545454545454,
-				"lo": 0.38461538461538464,
-				"hi": 0.70594362745098
+				"hi": 0.3231506085663848,
+				"k": 62,
+				"lo": 0.2063375350140056,
+				"method": "bootstrap",
+				"n": 236,
+				"rate": 0.2627118644067797
 			},
 			"caught": {
-				"k": 4,
-				"n": 33,
-				"rate": 0.12121212121212122,
-				"lo": 0.02857142857142857,
-				"hi": 0.25
+				"hi": 0.04471863720879359,
+				"k": 6,
+				"lo": 0.008368200836820083,
+				"method": "bootstrap",
+				"n": 236,
+				"rate": 0.025423728813559324
 			}
 		},
 		{
 			"cue": "deflating-player",
-			"decisions": 27,
+			"decisions": 219,
+			"decisionParticipants": 38,
 			"wellTimed": {
-				"k": 11,
-				"n": 27,
-				"rate": 0.4074074074074074,
-				"lo": 0.2306818181818182,
-				"hi": 0.5863244514106576
+				"hi": 0.5458845644566347,
+				"k": 107,
+				"lo": 0.42989120173699613,
+				"method": "bootstrap",
+				"n": 219,
+				"rate": 0.4885844748858447
 			},
 			"tooLate": {
-				"k": 5,
-				"n": 27,
-				"rate": 0.18518518518518517,
-				"lo": 0.037037037037037035,
-				"hi": 0.3480014025245432
+				"hi": 0.26009254598700465,
+				"k": 45,
+				"lo": 0.15315315315315314,
+				"method": "bootstrap",
+				"n": 219,
+				"rate": 0.2054794520547945
 			},
 			"tooEarly": {
-				"k": 11,
-				"n": 27,
-				"rate": 0.4074074074074074,
-				"lo": 0.23076923076923078,
-				"hi": 0.6071428571428571
+				"hi": 0.36408787768805,
+				"k": 67,
+				"lo": 0.24545454545454545,
+				"method": "bootstrap",
+				"n": 219,
+				"rate": 0.3059360730593607
 			},
 			"caught": {
-				"k": 2,
-				"n": 27,
-				"rate": 0.07407407407407407,
-				"lo": 0,
-				"hi": 0.1724512743628184
+				"hi": 0.07317632579995521,
+				"k": 9,
+				"lo": 0.0136986301369863,
+				"method": "bootstrap",
+				"n": 219,
+				"rate": 0.0410958904109589
 			}
 		},
 		{
 			"cue": "dot-sweep",
-			"decisions": 22,
+			"decisions": 247,
+			"decisionParticipants": 40,
 			"wellTimed": {
-				"k": 8,
-				"n": 22,
-				"rate": 0.36363636363636365,
-				"lo": 0.16666666666666666,
-				"hi": 0.5416666666666666
+				"hi": 0.6046511627906976,
+				"k": 136,
+				"lo": 0.4980225152421949,
+				"method": "bootstrap",
+				"n": 247,
+				"rate": 0.5506072874493927
 			},
 			"tooLate": {
-				"k": 8,
-				"n": 22,
-				"rate": 0.36363636363636365,
-				"lo": 0.17391304347826086,
-				"hi": 0.6111111111111112
+				"hi": 0.24299696893154835,
+				"k": 48,
+				"lo": 0.1452991452991453,
+				"method": "bootstrap",
+				"n": 247,
+				"rate": 0.19433198380566802
 			},
 			"tooEarly": {
-				"k": 6,
-				"n": 22,
-				"rate": 0.2727272727272727,
-				"lo": 0.11764705882352941,
-				"hi": 0.409280303030302
+				"hi": 0.3063997528030369,
+				"k": 63,
+				"lo": 0.20408163265306123,
+				"method": "bootstrap",
+				"n": 247,
+				"rate": 0.2550607287449393
 			},
 			"caught": {
-				"k": 2,
-				"n": 22,
-				"rate": 0.09090909090909091,
-				"lo": 0,
-				"hi": 0.2222222222222222
+				"hi": 0.057474811976727665,
+				"k": 8,
+				"lo": 0.012095559657986785,
+				"method": "bootstrap",
+				"n": 247,
+				"rate": 0.032388663967611336
 			}
 		},
 		{
 			"cue": "final-count",
-			"decisions": 32,
+			"decisions": 251,
+			"decisionParticipants": 40,
 			"wellTimed": {
-				"k": 17,
-				"n": 32,
-				"rate": 0.53125,
-				"lo": 0.3333333333333333,
-				"hi": 0.7272727272727273
+				"hi": 0.5357142857142857,
+				"k": 118,
+				"lo": 0.40243552004485567,
+				"method": "bootstrap",
+				"n": 251,
+				"rate": 0.4701195219123506
 			},
 			"tooLate": {
-				"k": 3,
-				"n": 32,
-				"rate": 0.09375,
-				"lo": 0,
-				"hi": 0.19458333333333258
+				"hi": 0.2906079234972677,
+				"k": 56,
+				"lo": 0.15787457148618672,
+				"method": "bootstrap",
+				"n": 251,
+				"rate": 0.22310756972111553
 			},
 			"tooEarly": {
-				"k": 12,
-				"n": 32,
-				"rate": 0.375,
-				"lo": 0.21052631578947367,
-				"hi": 0.5588235294117647
+				"hi": 0.36364507140369207,
+				"k": 77,
+				"lo": 0.2479965811965812,
+				"method": "bootstrap",
+				"n": 251,
+				"rate": 0.30677290836653387
 			},
 			"caught": {
-				"k": 1,
-				"n": 32,
-				"rate": 0.03125,
-				"lo": 0,
-				"hi": 0.10344827586206896
+				"hi": 0.05263157894736842,
+				"k": 8,
+				"lo": 0.014652014652014652,
+				"method": "bootstrap",
+				"n": 251,
+				"rate": 0.03187250996015936
 			}
 		},
 		{
 			"cue": "heartbeat",
-			"decisions": 19,
+			"decisions": 222,
+			"decisionParticipants": 38,
 			"wellTimed": {
-				"k": 9,
-				"n": 19,
-				"rate": 0.47368421052631576,
-				"lo": 0.25,
-				"hi": 0.7001470588235286
+				"hi": 0.5579477269886244,
+				"k": 108,
+				"lo": 0.4120302287581699,
+				"method": "bootstrap",
+				"n": 222,
+				"rate": 0.4864864864864865
 			},
 			"tooLate": {
-				"k": 6,
-				"n": 19,
-				"rate": 0.3157894736842105,
-				"lo": 0.11764705882352941,
-				"hi": 0.5501388888888882
+				"hi": 0.2692351598173516,
+				"k": 47,
+				"lo": 0.1583647561588738,
+				"method": "bootstrap",
+				"n": 222,
+				"rate": 0.21171171171171171
 			},
 			"tooEarly": {
-				"k": 4,
-				"n": 19,
-				"rate": 0.21052631578947367,
-				"lo": 0.05555555555555555,
-				"hi": 0.36363636363636365
+				"hi": 0.37339055793991416,
+				"k": 67,
+				"lo": 0.23376623376623376,
+				"method": "bootstrap",
+				"n": 222,
+				"rate": 0.30180180180180183
 			},
 			"caught": {
-				"k": 1,
-				"n": 19,
-				"rate": 0.05263157894736842,
+				"hi": 0.028302841646933002,
+				"k": 3,
 				"lo": 0,
-				"hi": 0.17647058823529413
+				"method": "bootstrap",
+				"n": 222,
+				"rate": 0.013513513513513514
 			}
 		},
 		{
 			"cue": "ink-refill",
-			"decisions": 25,
+			"decisions": 210,
+			"decisionParticipants": 37,
 			"wellTimed": {
-				"k": 5,
-				"n": 25,
-				"rate": 0.2,
-				"lo": 0.06896551724137931,
-				"hi": 0.36363636363636365
+				"hi": 0.552997940540761,
+				"k": 99,
+				"lo": 0.39009892689470155,
+				"method": "bootstrap",
+				"n": 210,
+				"rate": 0.4714285714285714
 			},
 			"tooLate": {
-				"k": 9,
-				"n": 25,
-				"rate": 0.36,
-				"lo": 0.19047619047619047,
-				"hi": 0.5416666666666666
+				"hi": 0.30917874396135264,
+				"k": 50,
+				"lo": 0.17331818181818182,
+				"method": "bootstrap",
+				"n": 210,
+				"rate": 0.23809523809523808
 			},
 			"tooEarly": {
-				"k": 11,
-				"n": 25,
-				"rate": 0.44,
-				"lo": 0.2692307692307692,
-				"hi": 0.6086956521739131
+				"hi": 0.3575042130097741,
+				"k": 61,
+				"lo": 0.22274881516587677,
+				"method": "bootstrap",
+				"n": 210,
+				"rate": 0.2904761904761905
 			},
 			"caught": {
-				"k": 1,
-				"n": 25,
-				"rate": 0.04,
-				"lo": 0,
-				"hi": 0.13636363636363635
+				"hi": 0.07042253521126761,
+				"k": 9,
+				"lo": 0.019801980198019802,
+				"method": "bootstrap",
+				"n": 210,
+				"rate": 0.04285714285714286
 			}
 		},
 		{
 			"cue": "none",
-			"decisions": 33,
+			"decisions": 248,
+			"decisionParticipants": 40,
 			"wellTimed": {
-				"k": 15,
-				"n": 33,
-				"rate": 0.45454545454545453,
-				"lo": 0.294022770398482,
-				"hi": 0.6190886699507387
+				"hi": 0.5138367478701794,
+				"k": 112,
+				"lo": 0.3930126756494996,
+				"method": "bootstrap",
+				"n": 248,
+				"rate": 0.45161290322580644
 			},
 			"tooLate": {
-				"k": 6,
-				"n": 33,
-				"rate": 0.18181818181818182,
-				"lo": 0.05878151260504202,
-				"hi": 0.34285714285714286
+				"hi": 0.30901656128165644,
+				"k": 62,
+				"lo": 0.19230349344978168,
+				"method": "bootstrap",
+				"n": 248,
+				"rate": 0.25
 			},
 			"tooEarly": {
-				"k": 12,
-				"n": 33,
-				"rate": 0.36363636363636365,
-				"lo": 0.20588235294117646,
-				"hi": 0.5185185185185185
+				"hi": 0.37037037037037035,
+				"k": 74,
+				"lo": 0.22726856476856477,
+				"method": "bootstrap",
+				"n": 248,
+				"rate": 0.29838709677419356
 			},
 			"caught": {
-				"k": 0,
-				"n": 33,
-				"rate": 0,
-				"lo": 0,
-				"hi": 0.10427343003561192
+				"hi": 0.07692307692307693,
+				"k": 12,
+				"lo": 0.022418607364929066,
+				"method": "bootstrap",
+				"n": 248,
+				"rate": 0.04838709677419355
 			}
 		},
 		{
 			"cue": "pen-hourglass",
-			"decisions": 31,
+			"decisions": 228,
+			"decisionParticipants": 38,
 			"wellTimed": {
-				"k": 12,
-				"n": 31,
-				"rate": 0.3870967741935484,
-				"lo": 0.1935483870967742,
-				"hi": 0.5882352941176471
+				"hi": 0.5523065092375002,
+				"k": 111,
+				"lo": 0.42221169036334916,
+				"method": "bootstrap",
+				"n": 228,
+				"rate": 0.4868421052631579
 			},
 			"tooLate": {
-				"k": 8,
-				"n": 31,
-				"rate": 0.25806451612903225,
-				"lo": 0.0967741935483871,
-				"hi": 0.43333333333333335
+				"hi": 0.2546383908809207,
+				"k": 43,
+				"lo": 0.12497417355371901,
+				"method": "bootstrap",
+				"n": 228,
+				"rate": 0.18859649122807018
 			},
 			"tooEarly": {
-				"k": 11,
-				"n": 31,
-				"rate": 0.3548387096774194,
-				"lo": 0.18175990675990678,
-				"hi": 0.5757575757575758
+				"hi": 0.3884052579365079,
+				"k": 74,
+				"lo": 0.26398482142857144,
+				"method": "bootstrap",
+				"n": 228,
+				"rate": 0.32456140350877194
 			},
 			"caught": {
-				"k": 2,
-				"n": 31,
-				"rate": 0.06451612903225806,
-				"lo": 0,
-				"hi": 0.15634374999999948
+				"hi": 0.06250653765690373,
+				"k": 8,
+				"lo": 0.012046987951807229,
+				"method": "bootstrap",
+				"n": 228,
+				"rate": 0.03508771929824561
 			}
 		},
 		{
 			"cue": "timer-bar",
-			"decisions": 32,
+			"decisions": 239,
+			"decisionParticipants": 38,
 			"wellTimed": {
-				"k": 14,
-				"n": 32,
-				"rate": 0.4375,
-				"lo": 0.2757836990595611,
-				"hi": 0.5862576064908719
+				"hi": 0.5569634132800355,
+				"k": 118,
+				"lo": 0.43314835248047423,
+				"method": "bootstrap",
+				"n": 239,
+				"rate": 0.49372384937238495
 			},
 			"tooLate": {
-				"k": 7,
-				"n": 32,
-				"rate": 0.21875,
-				"lo": 0.0967741935483871,
-				"hi": 0.34615384615384615
+				"hi": 0.25892857142857145,
+				"k": 46,
+				"lo": 0.1333266129032258,
+				"method": "bootstrap",
+				"n": 239,
+				"rate": 0.19246861924686193
 			},
 			"tooEarly": {
-				"k": 11,
-				"n": 32,
-				"rate": 0.34375,
-				"lo": 0.1724137931034483,
-				"hi": 0.5385135135135132
+				"hi": 0.3893849735224082,
+				"k": 75,
+				"lo": 0.2386734961912267,
+				"method": "bootstrap",
+				"n": 239,
+				"rate": 0.3138075313807531
 			},
 			"caught": {
-				"k": 3,
-				"n": 32,
-				"rate": 0.09375,
-				"lo": 0,
-				"hi": 0.2
+				"hi": 0.07662065756823817,
+				"k": 12,
+				"lo": 0.025313796404637805,
+				"method": "bootstrap",
+				"n": 239,
+				"rate": 0.0502092050209205
 			}
 		},
 		{
 			"cue": "waking-ghosts",
-			"decisions": 41,
+			"decisions": 223,
+			"decisionParticipants": 37,
 			"wellTimed": {
-				"k": 18,
-				"n": 41,
-				"rate": 0.43902439024390244,
-				"lo": 0.275,
-				"hi": 0.6153846153846154
+				"hi": 0.5796490306807617,
+				"k": 110,
+				"lo": 0.40453820116054157,
+				"method": "bootstrap",
+				"n": 223,
+				"rate": 0.49327354260089684
 			},
 			"tooLate": {
-				"k": 8,
-				"n": 41,
-				"rate": 0.1951219512195122,
-				"lo": 0.08333333333333333,
-				"hi": 0.325
+				"hi": 0.2926829268292683,
+				"k": 48,
+				"lo": 0.14566833575414723,
+				"method": "bootstrap",
+				"n": 223,
+				"rate": 0.21524663677130046
 			},
 			"tooEarly": {
-				"k": 15,
-				"n": 41,
-				"rate": 0.36585365853658536,
-				"lo": 0.22723607038123167,
-				"hi": 0.5
+				"hi": 0.3561643835616438,
+				"k": 65,
+				"lo": 0.22658813450417647,
+				"method": "bootstrap",
+				"n": 223,
+				"rate": 0.2914798206278027
 			},
 			"caught": {
-				"k": 2,
-				"n": 41,
-				"rate": 0.04878048780487805,
+				"hi": 0.03983189791403282,
+				"k": 4,
 				"lo": 0,
-				"hi": 0.12121212121212122
+				"method": "bootstrap",
+				"n": 223,
+				"rate": 0.017937219730941704
 			}
 		},
 		{
 			"cue": "wall-tide",
-			"decisions": 26,
+			"decisions": 195,
+			"decisionParticipants": 36,
 			"wellTimed": {
-				"k": 11,
-				"n": 26,
-				"rate": 0.4230769230769231,
-				"lo": 0.2592293906810036,
-				"hi": 0.6363636363636364
+				"hi": 0.470873786407767,
+				"k": 82,
+				"lo": 0.3693159965034965,
+				"method": "bootstrap",
+				"n": 195,
+				"rate": 0.4205128205128205
 			},
 			"tooLate": {
-				"k": 8,
-				"n": 26,
-				"rate": 0.3076923076923077,
-				"lo": 0.14801587301587302,
-				"hi": 0.4800370370370368
+				"hi": 0.28922573127611695,
+				"k": 45,
+				"lo": 0.17412935323383086,
+				"method": "bootstrap",
+				"n": 195,
+				"rate": 0.23076923076923078
 			},
 			"tooEarly": {
-				"k": 7,
-				"n": 26,
-				"rate": 0.2692307692307692,
-				"lo": 0.043478260869565216,
-				"hi": 0.5
+				"hi": 0.4047678571428571,
+				"k": 68,
+				"lo": 0.29714002828854313,
+				"method": "bootstrap",
+				"n": 195,
+				"rate": 0.3487179487179487
 			},
 			"caught": {
-				"k": 0,
-				"n": 26,
-				"rate": 0,
-				"lo": 0,
-				"hi": 0.12873304380462175
+				"hi": 0.07142857142857142,
+				"k": 8,
+				"lo": 0.015226503614828489,
+				"method": "bootstrap",
+				"n": 195,
+				"rate": 0.041025641025641026
 			}
 		}
 	],
@@ -424,547 +488,625 @@
 			{
 				"a": "burning-fuse",
 				"b": "classic-blink",
-				"people": 5,
-				"diff": -0.3,
+				"people": 38,
+				"diff": -0.0155,
+				"sd": 0.2581,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "clock-halos",
-				"people": 14,
-				"diff": -0.3286,
+				"people": 38,
+				"diff": -0.0212,
+				"sd": 0.2271,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "deflating-player",
-				"people": 11,
-				"diff": -0.3182,
+				"people": 37,
+				"diff": -0.0733,
+				"sd": 0.2912,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "dot-sweep",
-				"people": 8,
-				"diff": -0.0625,
+				"people": 38,
+				"diff": -0.0244,
+				"sd": 0.2354,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "final-count",
-				"people": 12,
-				"diff": -0.0139,
+				"people": 38,
+				"diff": -0.0635,
+				"sd": 0.1958,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "heartbeat",
-				"people": 7,
-				"diff": -0.1429,
+				"people": 37,
+				"diff": -0.0488,
+				"sd": 0.2581,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "ink-refill",
-				"people": 12,
-				"diff": -0.1806,
+				"people": 36,
+				"diff": -0.0583,
+				"sd": 0.2474,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "none",
-				"people": 8,
-				"diff": -0.0937,
+				"people": 38,
+				"diff": -0.0702,
+				"sd": 0.2588,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "pen-hourglass",
-				"people": 12,
-				"diff": -0.1528,
+				"people": 37,
+				"diff": -0.091,
+				"sd": 0.2611,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "timer-bar",
-				"people": 11,
-				"diff": -0.0758,
+				"people": 37,
+				"diff": -0.0661,
+				"sd": 0.2574,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": 0.0385,
+				"people": 36,
+				"diff": -0.0372,
+				"sd": 0.1812,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "wall-tide",
-				"people": 10,
-				"diff": -0.0667,
+				"people": 36,
+				"diff": -0.0947,
+				"sd": 0.2253,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "clock-halos",
-				"people": 13,
-				"diff": -0.2,
+				"people": 38,
+				"diff": -0.0056,
+				"sd": 0.2453,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "deflating-player",
-				"people": 10,
-				"diff": -0.1667,
+				"people": 38,
+				"diff": -0.0705,
+				"sd": 0.261,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "dot-sweep",
-				"people": 9,
-				"diff": 0.1111,
+				"people": 40,
+				"diff": -0.0122,
+				"sd": 0.2655,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "final-count",
-				"people": 10,
-				"diff": -0.2333,
+				"people": 40,
+				"diff": -0.0602,
+				"sd": 0.282,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "heartbeat",
-				"people": 9,
-				"diff": 0.1111,
+				"people": 38,
+				"diff": -0.0583,
+				"sd": 0.3119,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "ink-refill",
-				"people": 8,
-				"diff": -0.3125,
+				"people": 37,
+				"diff": -0.0568,
+				"sd": 0.2556,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "none",
-				"people": 13,
-				"diff": -0.0769,
+				"people": 40,
+				"diff": -0.0665,
+				"sd": 0.2868,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "pen-hourglass",
-				"people": 11,
-				"diff": -0.1667,
+				"people": 38,
+				"diff": -0.0921,
+				"sd": 0.2946,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "timer-bar",
-				"people": 12,
-				"diff": -0.0417,
+				"people": 38,
+				"diff": -0.0552,
+				"sd": 0.2832,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "waking-ghosts",
-				"people": 12,
-				"diff": -0.0764,
+				"people": 37,
+				"diff": -0.0442,
+				"sd": 0.2934,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "wall-tide",
-				"people": 9,
-				"diff": 0.0556,
+				"people": 36,
+				"diff": -0.0922,
+				"sd": 0.2781,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "deflating-player",
-				"people": 14,
-				"diff": 0.2095,
+				"people": 37,
+				"diff": -0.0513,
+				"sd": 0.3219,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "dot-sweep",
-				"people": 12,
-				"diff": 0.2167,
+				"people": 38,
+				"diff": -0.0032,
+				"sd": 0.2412,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "final-count",
-				"people": 17,
-				"diff": 0.2059,
+				"people": 38,
+				"diff": -0.0423,
+				"sd": 0.2362,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "heartbeat",
-				"people": 12,
-				"diff": 0.3556,
+				"people": 37,
+				"diff": -0.0348,
+				"sd": 0.322,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "ink-refill",
-				"people": 14,
-				"diff": 0.0714,
+				"people": 36,
+				"diff": -0.0364,
+				"sd": 0.2604,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "none",
-				"people": 13,
-				"diff": 0.1744,
+				"people": 38,
+				"diff": -0.049,
+				"sd": 0.3095,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "pen-hourglass",
-				"people": 15,
-				"diff": 0.3178,
+				"people": 37,
+				"diff": -0.069,
+				"sd": 0.3246,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "timer-bar",
-				"people": 17,
-				"diff": 0.2902,
+				"people": 37,
+				"diff": -0.0515,
+				"sd": 0.2876,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "waking-ghosts",
-				"people": 18,
-				"diff": 0.2324,
+				"people": 36,
+				"diff": -0.0225,
+				"sd": 0.2567,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "wall-tide",
-				"people": 14,
-				"diff": 0.4119,
+				"people": 36,
+				"diff": -0.0734,
+				"sd": 0.3033,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "dot-sweep",
-				"people": 9,
-				"diff": 0.1852,
+				"people": 38,
+				"diff": 0.0505,
+				"sd": 0.3082,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "final-count",
-				"people": 12,
-				"diff": 0.0417,
+				"people": 38,
+				"diff": 0.0006,
+				"sd": 0.2739,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "heartbeat",
-				"people": 9,
-				"diff": 0.2037,
+				"people": 37,
+				"diff": 0.0112,
+				"sd": 0.3038,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "ink-refill",
-				"people": 9,
-				"diff": -0.0185,
+				"people": 35,
+				"diff": 0.0044,
+				"sd": 0.268,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "none",
-				"people": 11,
-				"diff": -0.0076,
+				"people": 38,
+				"diff": -0.0026,
+				"sd": 0.3094,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "pen-hourglass",
-				"people": 12,
-				"diff": 0.0139,
+				"people": 38,
+				"diff": -0.0216,
+				"sd": 0.3501,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "timer-bar",
-				"people": 12,
-				"diff": 0.0278,
+				"people": 36,
+				"diff": 0.0155,
+				"sd": 0.3525,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": 0.3141,
+				"people": 37,
+				"diff": 0.0359,
+				"sd": 0.3074,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "wall-tide",
-				"people": 11,
-				"diff": 0.1212,
+				"people": 35,
+				"diff": -0.0221,
+				"sd": 0.3067,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "final-count",
-				"people": 10,
-				"diff": -0.0667,
+				"people": 40,
+				"diff": -0.048,
+				"sd": 0.27,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "heartbeat",
-				"people": 8,
-				"diff": 0.3125,
+				"people": 38,
+				"diff": -0.0442,
+				"sd": 0.2854,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "ink-refill",
-				"people": 10,
-				"diff": -0.1833,
+				"people": 37,
+				"diff": -0.0249,
+				"sd": 0.27,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "none",
-				"people": 11,
-				"diff": -0.1515,
+				"people": 40,
+				"diff": -0.0543,
+				"sd": 0.2731,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "pen-hourglass",
-				"people": 8,
-				"diff": 0.0625,
+				"people": 38,
+				"diff": -0.0721,
+				"sd": 0.3077,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "timer-bar",
-				"people": 11,
-				"diff": -0.2273,
+				"people": 38,
+				"diff": -0.0439,
+				"sd": 0.2491,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": -0.1474,
+				"people": 37,
+				"diff": -0.0237,
+				"sd": 0.2635,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "wall-tide",
-				"people": 10,
-				"diff": 0.05,
+				"people": 36,
+				"diff": -0.0621,
+				"sd": 0.2625,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "heartbeat",
-				"people": 9,
-				"diff": 0.3704,
+				"people": 38,
+				"diff": 0.0104,
+				"sd": 0.2536,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "ink-refill",
-				"people": 13,
-				"diff": -0.1795,
+				"people": 37,
+				"diff": -0.0005,
+				"sd": 0.2553,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "none",
-				"people": 11,
-				"diff": -0.0379,
+				"people": 40,
+				"diff": -0.0064,
+				"sd": 0.2895,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "pen-hourglass",
-				"people": 14,
-				"diff": -0.1429,
+				"people": 38,
+				"diff": -0.0222,
+				"sd": 0.2979,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "timer-bar",
-				"people": 13,
-				"diff": 0.1282,
+				"people": 38,
+				"diff": -0.007,
+				"sd": 0.2649,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "waking-ghosts",
-				"people": 14,
-				"diff": 0.0417,
+				"people": 37,
+				"diff": 0.0353,
+				"sd": 0.2372,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "wall-tide",
-				"people": 10,
-				"diff": 0.2333,
+				"people": 36,
+				"diff": -0.0267,
+				"sd": 0.2501,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "ink-refill",
-				"people": 10,
-				"diff": -0.1167,
+				"people": 35,
+				"diff": -0.0244,
+				"sd": 0.2558,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "none",
-				"people": 10,
-				"diff": -0.3417,
+				"people": 38,
+				"diff": -0.0057,
+				"sd": 0.255,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "pen-hourglass",
-				"people": 9,
-				"diff": 0.0185,
+				"people": 37,
+				"diff": -0.0064,
+				"sd": 0.2523,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "timer-bar",
-				"people": 12,
-				"diff": -0.0417,
+				"people": 36,
+				"diff": -0.0053,
+				"sd": 0.2583,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "waking-ghosts",
-				"people": 11,
-				"diff": -0.197,
+				"people": 37,
+				"diff": 0.0246,
+				"sd": 0.2781,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "wall-tide",
-				"people": 8,
-				"diff": -0.0625,
+				"people": 36,
+				"diff": -0.0655,
+				"sd": 0.2605,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "none",
-				"people": 10,
-				"diff": -0.0833,
+				"people": 37,
+				"diff": -0.0109,
+				"sd": 0.2794,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "pen-hourglass",
-				"people": 13,
-				"diff": 0.1282,
+				"people": 35,
+				"diff": -0.0245,
+				"sd": 0.2918,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "timer-bar",
-				"people": 14,
-				"diff": -0.0238,
+				"people": 37,
+				"diff": -0.0112,
+				"sd": 0.3003,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "waking-ghosts",
-				"people": 15,
-				"diff": 0.0778,
+				"people": 34,
+				"diff": 0.0068,
+				"sd": 0.262,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "wall-tide",
-				"people": 11,
-				"diff": 0.2424,
+				"people": 35,
+				"diff": -0.0348,
+				"sd": 0.2913,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "pen-hourglass",
-				"people": 11,
-				"diff": -0.0455,
+				"people": 38,
+				"diff": -0.019,
+				"sd": 0.2593,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "timer-bar",
-				"people": 13,
-				"diff": -0.0769,
+				"people": 38,
+				"diff": 0.0085,
+				"sd": 0.2641,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": 0.1282,
+				"people": 37,
+				"diff": 0.0223,
+				"sd": 0.2766,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "wall-tide",
-				"people": 9,
-				"diff": -0.037,
+				"people": 36,
+				"diff": -0.041,
+				"sd": 0.2504,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "timer-bar",
-				"people": 14,
-				"diff": 0.1429,
+				"people": 36,
+				"diff": 0.035,
+				"sd": 0.2893,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "waking-ghosts",
-				"people": 14,
-				"diff": 0.0476,
+				"people": 37,
+				"diff": 0.031,
+				"sd": 0.295,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "wall-tide",
-				"people": 12,
-				"diff": 0.0556,
+				"people": 35,
+				"diff": -0.032,
+				"sd": 0.2428,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "waking-ghosts",
-				"people": 17,
-				"diff": 0.0833,
+				"people": 35,
+				"diff": 0.0163,
+				"sd": 0.2856,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "wall-tide",
-				"people": 12,
-				"diff": 0.125,
+				"people": 35,
+				"diff": -0.0346,
+				"sd": 0.2648,
 				"clear": false
 			},
 			{
 				"a": "waking-ghosts",
 				"b": "wall-tide",
-				"people": 12,
-				"diff": -0.0069,
+				"people": 35,
+				"diff": -0.041,
+				"sd": 0.2243,
 				"clear": false
 			}
 		],
@@ -972,547 +1114,625 @@
 			{
 				"a": "burning-fuse",
 				"b": "classic-blink",
-				"people": 5,
-				"diff": 0.1,
+				"people": 38,
+				"diff": -0.0457,
+				"sd": 0.2069,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "clock-halos",
-				"people": 14,
-				"diff": 0.1048,
+				"people": 38,
+				"diff": -0.0058,
+				"sd": 0.21,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "deflating-player",
-				"people": 11,
-				"diff": 0.0152,
+				"people": 37,
+				"diff": 0.0079,
+				"sd": 0.2147,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "dot-sweep",
-				"people": 8,
-				"diff": -0.3125,
+				"people": 38,
+				"diff": 0.0274,
+				"sd": 0.1967,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "final-count",
-				"people": 12,
-				"diff": 0.3056,
+				"people": 38,
+				"diff": -0.0037,
+				"sd": 0.2038,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "heartbeat",
-				"people": 7,
-				"diff": 0.2143,
+				"people": 37,
+				"diff": 0.0057,
+				"sd": 0.2138,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "ink-refill",
-				"people": 12,
-				"diff": -0.0694,
+				"people": 36,
+				"diff": -0.0372,
+				"sd": 0.2035,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "none",
-				"people": 8,
-				"diff": 0.2813,
+				"people": 38,
+				"diff": -0.0267,
+				"sd": 0.1909,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "pen-hourglass",
-				"people": 12,
-				"diff": -0.0556,
+				"people": 37,
+				"diff": 0.0208,
+				"sd": 0.2349,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "timer-bar",
-				"people": 11,
-				"diff": 0.1212,
+				"people": 37,
+				"diff": 0.0025,
+				"sd": 0.2474,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": -0.0641,
+				"people": 36,
+				"diff": 0.0007,
+				"sd": 0.255,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "wall-tide",
-				"people": 10,
-				"diff": -0.0833,
+				"people": 36,
+				"diff": -0.0134,
+				"sd": 0.2835,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "clock-halos",
-				"people": 13,
-				"diff": -0.1885,
+				"people": 38,
+				"diff": 0.0398,
+				"sd": 0.2701,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "deflating-player",
-				"people": 10,
-				"diff": -0.0583,
+				"people": 38,
+				"diff": 0.0622,
+				"sd": 0.1963,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "dot-sweep",
-				"people": 9,
-				"diff": -0.3056,
+				"people": 40,
+				"diff": 0.0719,
+				"sd": 0.2095,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "final-count",
-				"people": 10,
-				"diff": 0.225,
+				"people": 40,
+				"diff": 0.0358,
+				"sd": 0.2261,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "heartbeat",
-				"people": 9,
-				"diff": -0.3056,
+				"people": 38,
+				"diff": 0.0437,
+				"sd": 0.2299,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "ink-refill",
-				"people": 8,
-				"diff": 0.0313,
+				"people": 37,
+				"diff": 0.012,
+				"sd": 0.2651,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "none",
-				"people": 13,
-				"diff": -0.0577,
+				"people": 40,
+				"diff": 0.0222,
+				"sd": 0.2525,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "pen-hourglass",
-				"people": 11,
-				"diff": -0.0227,
+				"people": 38,
+				"diff": 0.0747,
+				"sd": 0.2314,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "timer-bar",
-				"people": 12,
-				"diff": -0.2083,
+				"people": 38,
+				"diff": 0.0573,
+				"sd": 0.3102,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "waking-ghosts",
-				"people": 12,
-				"diff": -0.1111,
+				"people": 37,
+				"diff": 0.0399,
+				"sd": 0.2854,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "wall-tide",
-				"people": 9,
-				"diff": -0.0833,
+				"people": 36,
+				"diff": 0.0269,
+				"sd": 0.2889,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "deflating-player",
-				"people": 14,
-				"diff": -0.0452,
+				"people": 37,
+				"diff": 0.0148,
+				"sd": 0.2591,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "dot-sweep",
-				"people": 12,
-				"diff": -0.2333,
+				"people": 38,
+				"diff": 0.0332,
+				"sd": 0.2133,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "final-count",
-				"people": 17,
-				"diff": 0.1471,
+				"people": 38,
+				"diff": 0.0022,
+				"sd": 0.2357,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "heartbeat",
-				"people": 12,
-				"diff": -0.0389,
+				"people": 37,
+				"diff": 0.0156,
+				"sd": 0.2696,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "ink-refill",
-				"people": 14,
-				"diff": -0.1786,
+				"people": 36,
+				"diff": -0.0426,
+				"sd": 0.2098,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "none",
-				"people": 13,
-				"diff": 0.0538,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "pen-hourglass",
-				"people": 15,
-				"diff": -0.1533,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "timer-bar",
-				"people": 17,
-				"diff": -0.0176,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "waking-ghosts",
-				"people": 18,
-				"diff": 0.0065,
-				"clear": false
-			},
-			{
-				"a": "clock-halos",
-				"b": "wall-tide",
-				"people": 14,
-				"diff": -0.081,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "dot-sweep",
-				"people": 9,
-				"diff": -0.2407,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "final-count",
-				"people": 12,
-				"diff": 0.125,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "heartbeat",
-				"people": 9,
-				"diff": -0.1296,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "ink-refill",
-				"people": 9,
-				"diff": -0.2778,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "none",
-				"people": 11,
-				"diff": 0.0985,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "pen-hourglass",
-				"people": 12,
-				"diff": -0.0694,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "timer-bar",
-				"people": 12,
-				"diff": -0.0417,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "waking-ghosts",
-				"people": 13,
-				"diff": -0.1859,
-				"clear": false
-			},
-			{
-				"a": "deflating-player",
-				"b": "wall-tide",
-				"people": 11,
-				"diff": -0.0455,
-				"clear": false
-			},
-			{
-				"a": "dot-sweep",
-				"b": "final-count",
-				"people": 10,
-				"diff": 0.2667,
-				"clear": false
-			},
-			{
-				"a": "dot-sweep",
-				"b": "heartbeat",
-				"people": 8,
-				"diff": -0.0625,
-				"clear": false
-			},
-			{
-				"a": "dot-sweep",
-				"b": "ink-refill",
-				"people": 10,
-				"diff": 0.0167,
-				"clear": false
-			},
-			{
-				"a": "dot-sweep",
-				"b": "none",
-				"people": 11,
-				"diff": 0.2273,
-				"clear": false
-			},
-			{
-				"a": "dot-sweep",
-				"b": "pen-hourglass",
-				"people": 8,
+				"people": 38,
 				"diff": -0.0208,
+				"sd": 0.2402,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "pen-hourglass",
+				"people": 37,
+				"diff": 0.0277,
+				"sd": 0.2841,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "timer-bar",
+				"people": 37,
+				"diff": 0.0175,
+				"sd": 0.2406,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "waking-ghosts",
+				"people": 36,
+				"diff": 0.0118,
+				"sd": 0.3041,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "wall-tide",
+				"people": 36,
+				"diff": -0.0241,
+				"sd": 0.244,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "dot-sweep",
+				"people": 38,
+				"diff": 0.0056,
+				"sd": 0.1816,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "final-count",
+				"people": 38,
+				"diff": -0.0089,
+				"sd": 0.2138,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "heartbeat",
+				"people": 37,
+				"diff": -0.0143,
+				"sd": 0.214,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "ink-refill",
+				"people": 35,
+				"diff": -0.0481,
+				"sd": 0.2206,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "none",
+				"people": 38,
+				"diff": -0.0441,
+				"sd": 0.1945,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "pen-hourglass",
+				"people": 38,
+				"diff": 0.0126,
+				"sd": 0.2143,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "timer-bar",
+				"people": 36,
+				"diff": -0.0194,
+				"sd": 0.2788,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "waking-ghosts",
+				"people": 37,
+				"diff": -0.0232,
+				"sd": 0.2067,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "wall-tide",
+				"people": 35,
+				"diff": -0.0176,
+				"sd": 0.2125,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "final-count",
+				"people": 40,
+				"diff": -0.0361,
+				"sd": 0.1942,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "heartbeat",
+				"people": 38,
+				"diff": -0.0241,
+				"sd": 0.1893,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "ink-refill",
+				"people": 37,
+				"diff": -0.0779,
+				"sd": 0.2038,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "none",
+				"people": 40,
+				"diff": -0.0497,
+				"sd": 0.2191,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "pen-hourglass",
+				"people": 38,
+				"diff": 0.007,
+				"sd": 0.1943,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "timer-bar",
-				"people": 11,
-				"diff": 0.1364,
+				"people": 38,
+				"diff": -0.0236,
+				"sd": 0.2349,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": 0.3526,
+				"people": 37,
+				"diff": -0.0297,
+				"sd": 0.221,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "wall-tide",
-				"people": 10,
-				"diff": 0.1,
+				"people": 36,
+				"diff": -0.0572,
+				"sd": 0.2252,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "heartbeat",
-				"people": 9,
-				"diff": -0.3889,
+				"people": 38,
+				"diff": -0.0002,
+				"sd": 0.1928,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "ink-refill",
-				"people": 13,
-				"diff": -0.141,
+				"people": 37,
+				"diff": -0.0284,
+				"sd": 0.2091,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "none",
-				"people": 11,
-				"diff": -0.0227,
+				"people": 40,
+				"diff": -0.0135,
+				"sd": 0.2489,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "pen-hourglass",
-				"people": 14,
-				"diff": -0.2143,
+				"people": 38,
+				"diff": 0.0214,
+				"sd": 0.2148,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "timer-bar",
-				"people": 13,
-				"diff": -0.0256,
+				"people": 38,
+				"diff": 0.0245,
+				"sd": 0.2455,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "waking-ghosts",
-				"people": 14,
-				"diff": 0.0536,
+				"people": 37,
+				"diff": -0.0168,
+				"sd": 0.2459,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "wall-tide",
-				"people": 10,
-				"diff": -0.3,
+				"people": 36,
+				"diff": -0.0264,
+				"sd": 0.2283,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "ink-refill",
-				"people": 10,
-				"diff": -0.1333,
+				"people": 35,
+				"diff": -0.0236,
+				"sd": 0.1773,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "none",
-				"people": 10,
-				"diff": 0.325,
+				"people": 38,
+				"diff": -0.0448,
+				"sd": 0.2078,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "pen-hourglass",
-				"people": 9,
-				"diff": 0,
+				"people": 37,
+				"diff": 0.0164,
+				"sd": 0.1811,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "timer-bar",
-				"people": 12,
-				"diff": -0.1528,
+				"people": 36,
+				"diff": 0.002,
+				"sd": 0.284,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "waking-ghosts",
-				"people": 11,
-				"diff": 0.1515,
+				"people": 37,
+				"diff": -0.0089,
+				"sd": 0.2327,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "wall-tide",
-				"people": 8,
-				"diff": 0.0625,
+				"people": 36,
+				"diff": -0.0124,
+				"sd": 0.2312,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "none",
-				"people": 10,
-				"diff": 0.1333,
+				"people": 37,
+				"diff": 0.0147,
+				"sd": 0.2145,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "pen-hourglass",
-				"people": 13,
-				"diff": 0,
+				"people": 35,
+				"diff": 0.0515,
+				"sd": 0.2114,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "timer-bar",
-				"people": 14,
-				"diff": 0.25,
+				"people": 37,
+				"diff": 0.0581,
+				"sd": 0.2526,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "waking-ghosts",
-				"people": 15,
-				"diff": 0.3222,
+				"people": 34,
+				"diff": 0.0286,
+				"sd": 0.2392,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "wall-tide",
-				"people": 11,
-				"diff": 0.0152,
+				"people": 35,
+				"diff": 0.019,
+				"sd": 0.2422,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "pen-hourglass",
-				"people": 11,
-				"diff": -0.0909,
+				"people": 38,
+				"diff": 0.0566,
+				"sd": 0.2017,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "timer-bar",
-				"people": 13,
-				"diff": 0,
+				"people": 38,
+				"diff": 0.0248,
+				"sd": 0.2711,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": -0.141,
+				"people": 37,
+				"diff": 0.0329,
+				"sd": 0.2071,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "wall-tide",
-				"people": 9,
-				"diff": 0.1111,
+				"people": 36,
+				"diff": 0.0256,
+				"sd": 0.2476,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "timer-bar",
-				"people": 14,
-				"diff": -0.0476,
+				"people": 36,
+				"diff": -0.0228,
+				"sd": 0.2905,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "waking-ghosts",
-				"people": 14,
-				"diff": 0.2024,
+				"people": 37,
+				"diff": -0.0253,
+				"sd": 0.2194,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "wall-tide",
-				"people": 12,
-				"diff": 0.0278,
+				"people": 35,
+				"diff": -0.0199,
+				"sd": 0.2527,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "waking-ghosts",
-				"people": 17,
-				"diff": 0.0343,
+				"people": 35,
+				"diff": 0.0079,
+				"sd": 0.3108,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "wall-tide",
-				"people": 12,
-				"diff": -0.0417,
+				"people": 35,
+				"diff": -0.0257,
+				"sd": 0.2558,
 				"clear": false
 			},
 			{
 				"a": "waking-ghosts",
 				"b": "wall-tide",
-				"people": 12,
-				"diff": -0.1042,
+				"people": 35,
+				"diff": -0.0026,
+				"sd": 0.2482,
 				"clear": false
 			}
 		],
@@ -1520,635 +1740,930 @@
 			{
 				"a": "burning-fuse",
 				"b": "classic-blink",
-				"people": 5,
-				"diff": 0.2,
+				"people": 38,
+				"diff": 0.0612,
+				"sd": 0.2679,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "clock-halos",
-				"people": 14,
-				"diff": 0.2238,
+				"people": 38,
+				"diff": 0.027,
+				"sd": 0.2424,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "deflating-player",
-				"people": 11,
-				"diff": 0.303,
+				"people": 37,
+				"diff": 0.0654,
+				"sd": 0.3249,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "dot-sweep",
-				"people": 8,
-				"diff": 0.375,
+				"people": 38,
+				"diff": -0.003,
+				"sd": 0.2757,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "final-count",
-				"people": 12,
-				"diff": -0.2917,
+				"people": 38,
+				"diff": 0.0672,
+				"sd": 0.2552,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "heartbeat",
-				"people": 7,
-				"diff": -0.0714,
+				"people": 37,
+				"diff": 0.0431,
+				"sd": 0.3036,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "ink-refill",
-				"people": 12,
-				"diff": 0.25,
+				"people": 36,
+				"diff": 0.0955,
+				"sd": 0.2736,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "none",
-				"people": 8,
-				"diff": -0.1875,
+				"people": 38,
+				"diff": 0.0969,
+				"sd": 0.2693,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "pen-hourglass",
-				"people": 12,
-				"diff": 0.2083,
+				"people": 37,
+				"diff": 0.0702,
+				"sd": 0.2928,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "timer-bar",
-				"people": 11,
-				"diff": -0.0455,
+				"people": 37,
+				"diff": 0.0635,
+				"sd": 0.3196,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": 0.0256,
+				"people": 36,
+				"diff": 0.0365,
+				"sd": 0.2703,
 				"clear": false
 			},
 			{
 				"a": "burning-fuse",
 				"b": "wall-tide",
-				"people": 10,
-				"diff": 0.15,
+				"people": 36,
+				"diff": 0.1082,
+				"sd": 0.3106,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "clock-halos",
-				"people": 13,
-				"diff": 0.3885,
+				"people": 38,
+				"diff": -0.0342,
+				"sd": 0.252,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "deflating-player",
-				"people": 10,
-				"diff": 0.225,
-				"clear": false
-			},
-			{
-				"a": "classic-blink",
-				"b": "dot-sweep",
-				"people": 9,
-				"diff": 0.1944,
-				"clear": false
-			},
-			{
-				"a": "classic-blink",
-				"b": "final-count",
-				"people": 10,
+				"people": 38,
 				"diff": 0.0083,
+				"sd": 0.2477,
+				"clear": false
+			},
+			{
+				"a": "classic-blink",
+				"b": "dot-sweep",
+				"people": 40,
+				"diff": -0.0597,
+				"sd": 0.2527,
+				"clear": false
+			},
+			{
+				"a": "classic-blink",
+				"b": "final-count",
+				"people": 40,
+				"diff": 0.0244,
+				"sd": 0.2665,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "heartbeat",
-				"people": 9,
-				"diff": 0.1944,
+				"people": 38,
+				"diff": 0.0145,
+				"sd": 0.2987,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "ink-refill",
-				"people": 8,
-				"diff": 0.2813,
+				"people": 37,
+				"diff": 0.0448,
+				"sd": 0.2935,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "none",
-				"people": 13,
-				"diff": 0.1346,
+				"people": 40,
+				"diff": 0.0443,
+				"sd": 0.3291,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "pen-hourglass",
-				"people": 11,
-				"diff": 0.1894,
+				"people": 38,
+				"diff": 0.0174,
+				"sd": 0.2746,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "timer-bar",
-				"people": 12,
-				"diff": 0.25,
+				"people": 38,
+				"diff": -0.002,
+				"sd": 0.2655,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "waking-ghosts",
-				"people": 12,
-				"diff": 0.1875,
+				"people": 37,
+				"diff": 0.0044,
+				"sd": 0.3723,
 				"clear": false
 			},
 			{
 				"a": "classic-blink",
 				"b": "wall-tide",
-				"people": 9,
-				"diff": 0.0278,
+				"people": 36,
+				"diff": 0.0654,
+				"sd": 0.3173,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "deflating-player",
-				"people": 14,
-				"diff": -0.1643,
+				"people": 37,
+				"diff": 0.0364,
+				"sd": 0.3193,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "dot-sweep",
-				"people": 12,
-				"diff": 0.0167,
+				"people": 38,
+				"diff": -0.03,
+				"sd": 0.2482,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "final-count",
-				"people": 17,
-				"diff": -0.3529,
+				"people": 38,
+				"diff": 0.0402,
+				"sd": 0.2621,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "heartbeat",
-				"people": 12,
-				"diff": -0.3167,
+				"people": 37,
+				"diff": 0.0192,
+				"sd": 0.2897,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "ink-refill",
-				"people": 14,
-				"diff": 0.1071,
+				"people": 36,
+				"diff": 0.079,
+				"sd": 0.2655,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "none",
-				"people": 13,
-				"diff": -0.2282,
+				"people": 38,
+				"diff": 0.0699,
+				"sd": 0.287,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "pen-hourglass",
-				"people": 15,
-				"diff": -0.1644,
+				"people": 37,
+				"diff": 0.0412,
+				"sd": 0.3043,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "timer-bar",
-				"people": 17,
-				"diff": -0.2725,
+				"people": 37,
+				"diff": 0.034,
+				"sd": 0.2623,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "waking-ghosts",
-				"people": 18,
-				"diff": -0.2389,
+				"people": 36,
+				"diff": 0.0107,
+				"sd": 0.3616,
 				"clear": false
 			},
 			{
 				"a": "clock-halos",
 				"b": "wall-tide",
-				"people": 14,
-				"diff": -0.331,
+				"people": 36,
+				"diff": 0.0975,
+				"sd": 0.2748,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "dot-sweep",
-				"people": 9,
-				"diff": 0.0556,
+				"people": 38,
+				"diff": -0.0561,
+				"sd": 0.2606,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "final-count",
-				"people": 12,
-				"diff": -0.1667,
+				"people": 38,
+				"diff": 0.0083,
+				"sd": 0.2969,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "heartbeat",
-				"people": 9,
-				"diff": -0.0741,
+				"people": 37,
+				"diff": 0.0031,
+				"sd": 0.3004,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "ink-refill",
-				"people": 9,
-				"diff": 0.2963,
+				"people": 35,
+				"diff": 0.0437,
+				"sd": 0.3172,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "none",
-				"people": 11,
-				"diff": -0.0909,
+				"people": 38,
+				"diff": 0.0467,
+				"sd": 0.3167,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "pen-hourglass",
-				"people": 12,
-				"diff": 0.0556,
+				"people": 38,
+				"diff": 0.0091,
+				"sd": 0.3348,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "timer-bar",
-				"people": 12,
-				"diff": 0.0139,
+				"people": 36,
+				"diff": 0.004,
+				"sd": 0.2949,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": -0.1282,
+				"people": 37,
+				"diff": -0.0127,
+				"sd": 0.3605,
 				"clear": false
 			},
 			{
 				"a": "deflating-player",
 				"b": "wall-tide",
-				"people": 11,
-				"diff": -0.0758,
+				"people": 35,
+				"diff": 0.0398,
+				"sd": 0.2888,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "final-count",
-				"people": 10,
-				"diff": -0.2,
+				"people": 40,
+				"diff": 0.0841,
+				"sd": 0.3241,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "heartbeat",
-				"people": 8,
-				"diff": -0.25,
+				"people": 38,
+				"diff": 0.0682,
+				"sd": 0.2763,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "ink-refill",
-				"people": 10,
-				"diff": 0.1667,
+				"people": 37,
+				"diff": 0.1028,
+				"sd": 0.3252,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "none",
-				"people": 11,
-				"diff": -0.0758,
+				"people": 40,
+				"diff": 0.104,
+				"sd": 0.2805,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "pen-hourglass",
-				"people": 8,
-				"diff": -0.0417,
+				"people": 38,
+				"diff": 0.0652,
+				"sd": 0.2684,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "timer-bar",
-				"people": 11,
-				"diff": 0.0909,
+				"people": 38,
+				"diff": 0.0676,
+				"sd": 0.2764,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": -0.2051,
+				"people": 37,
+				"diff": 0.0535,
+				"sd": 0.3007,
 				"clear": false
 			},
 			{
 				"a": "dot-sweep",
 				"b": "wall-tide",
-				"people": 10,
-				"diff": -0.15,
+				"people": 36,
+				"diff": 0.1193,
+				"sd": 0.2636,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "heartbeat",
-				"people": 9,
-				"diff": 0.0185,
+				"people": 38,
+				"diff": -0.0102,
+				"sd": 0.2882,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "ink-refill",
-				"people": 13,
-				"diff": 0.3205,
+				"people": 37,
+				"diff": 0.0289,
+				"sd": 0.275,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "none",
-				"people": 11,
-				"diff": 0.0606,
+				"people": 40,
+				"diff": 0.0199,
+				"sd": 0.3219,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "pen-hourglass",
-				"people": 14,
-				"diff": 0.3571,
+				"people": 38,
+				"diff": 0.0008,
+				"sd": 0.2823,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "timer-bar",
-				"people": 13,
-				"diff": -0.1026,
+				"people": 38,
+				"diff": -0.0176,
+				"sd": 0.303,
 				"clear": false
 			},
 			{
 				"a": "final-count",
 				"b": "waking-ghosts",
-				"people": 14,
-				"diff": -0.0952,
-				"clear": false
-			},
-			{
-				"a": "final-count",
-				"b": "wall-tide",
-				"people": 10,
-				"diff": 0.0667,
-				"clear": false
-			},
-			{
-				"a": "heartbeat",
-				"b": "ink-refill",
-				"people": 10,
-				"diff": 0.25,
-				"clear": false
-			},
-			{
-				"a": "heartbeat",
-				"b": "none",
-				"people": 10,
-				"diff": 0.0167,
-				"clear": false
-			},
-			{
-				"a": "heartbeat",
-				"b": "pen-hourglass",
-				"people": 9,
+				"people": 37,
 				"diff": -0.0185,
+				"sd": 0.3636,
+				"clear": false
+			},
+			{
+				"a": "final-count",
+				"b": "wall-tide",
+				"people": 36,
+				"diff": 0.0532,
+				"sd": 0.2897,
+				"clear": false
+			},
+			{
+				"a": "heartbeat",
+				"b": "ink-refill",
+				"people": 35,
+				"diff": 0.0479,
+				"sd": 0.2639,
+				"clear": false
+			},
+			{
+				"a": "heartbeat",
+				"b": "none",
+				"people": 38,
+				"diff": 0.0504,
+				"sd": 0.2637,
+				"clear": false
+			},
+			{
+				"a": "heartbeat",
+				"b": "pen-hourglass",
+				"people": 37,
+				"diff": -0.01,
+				"sd": 0.2707,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "timer-bar",
-				"people": 12,
-				"diff": 0.1944,
+				"people": 36,
+				"diff": 0.0033,
+				"sd": 0.2576,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "waking-ghosts",
-				"people": 11,
-				"diff": 0.0455,
+				"people": 37,
+				"diff": -0.0157,
+				"sd": 0.3405,
 				"clear": false
 			},
 			{
 				"a": "heartbeat",
 				"b": "wall-tide",
-				"people": 8,
-				"diff": 0,
+				"people": 36,
+				"diff": 0.0778,
+				"sd": 0.3379,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "none",
-				"people": 10,
-				"diff": -0.05,
+				"people": 37,
+				"diff": -0.0038,
+				"sd": 0.3394,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "pen-hourglass",
-				"people": 13,
-				"diff": -0.1282,
+				"people": 35,
+				"diff": -0.027,
+				"sd": 0.3273,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "timer-bar",
-				"people": 14,
-				"diff": -0.2262,
+				"people": 37,
+				"diff": -0.0469,
+				"sd": 0.3598,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "waking-ghosts",
-				"people": 15,
-				"diff": -0.4,
+				"people": 34,
+				"diff": -0.0353,
+				"sd": 0.2954,
 				"clear": false
 			},
 			{
 				"a": "ink-refill",
 				"b": "wall-tide",
-				"people": 11,
-				"diff": -0.2576,
+				"people": 35,
+				"diff": 0.0158,
+				"sd": 0.3348,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "pen-hourglass",
-				"people": 11,
-				"diff": 0.1364,
+				"people": 38,
+				"diff": -0.0376,
+				"sd": 0.3103,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "timer-bar",
-				"people": 13,
-				"diff": 0.0769,
+				"people": 38,
+				"diff": -0.0333,
+				"sd": 0.2729,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "waking-ghosts",
-				"people": 13,
-				"diff": 0.0128,
+				"people": 37,
+				"diff": -0.0552,
+				"sd": 0.3315,
 				"clear": false
 			},
 			{
 				"a": "none",
 				"b": "wall-tide",
-				"people": 9,
-				"diff": -0.0741,
+				"people": 36,
+				"diff": 0.0153,
+				"sd": 0.2823,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "timer-bar",
-				"people": 14,
-				"diff": -0.0952,
+				"people": 36,
+				"diff": -0.0122,
+				"sd": 0.3419,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "waking-ghosts",
-				"people": 14,
-				"diff": -0.25,
+				"people": 37,
+				"diff": -0.0057,
+				"sd": 0.3544,
 				"clear": false
 			},
 			{
 				"a": "pen-hourglass",
 				"b": "wall-tide",
-				"people": 12,
-				"diff": -0.0833,
+				"people": 35,
+				"diff": 0.0518,
+				"sd": 0.2971,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "waking-ghosts",
-				"people": 17,
-				"diff": -0.1176,
+				"people": 35,
+				"diff": -0.0241,
+				"sd": 0.405,
 				"clear": false
 			},
 			{
 				"a": "timer-bar",
 				"b": "wall-tide",
-				"people": 12,
-				"diff": -0.0833,
+				"people": 35,
+				"diff": 0.0603,
+				"sd": 0.2661,
 				"clear": false
 			},
 			{
 				"a": "waking-ghosts",
 				"b": "wall-tide",
-				"people": 12,
-				"diff": 0.1111,
+				"people": 35,
+				"diff": 0.0436,
+				"sd": 0.2977,
 				"clear": false
 			}
 		]
 	},
-	"vsTimer": [
-		{
-			"a": "burning-fuse",
-			"b": "timer-bar",
-			"people": 11,
-			"diff": -0.0455,
-			"clear": false
-		},
-		{
-			"a": "classic-blink",
-			"b": "timer-bar",
-			"people": 12,
-			"diff": 0.25,
-			"clear": false
-		},
-		{
-			"a": "clock-halos",
-			"b": "timer-bar",
-			"people": 17,
-			"diff": -0.2725,
-			"clear": false
-		},
-		{
-			"a": "deflating-player",
-			"b": "timer-bar",
-			"people": 12,
-			"diff": 0.0139,
-			"clear": false
-		},
-		{
-			"a": "dot-sweep",
-			"b": "timer-bar",
-			"people": 11,
-			"diff": 0.0909,
-			"clear": false
-		},
-		{
-			"a": "final-count",
-			"b": "timer-bar",
-			"people": 13,
-			"diff": -0.1026,
-			"clear": false
-		},
-		{
-			"a": "heartbeat",
-			"b": "timer-bar",
-			"people": 12,
-			"diff": 0.1944,
-			"clear": false
-		},
-		{
-			"a": "ink-refill",
-			"b": "timer-bar",
-			"people": 14,
-			"diff": -0.2262,
-			"clear": false
-		},
-		{
-			"a": "none",
-			"b": "timer-bar",
-			"people": 13,
-			"diff": 0.0769,
-			"clear": false
-		},
-		{
-			"a": "pen-hourglass",
-			"b": "timer-bar",
-			"people": 14,
-			"diff": -0.0952,
-			"clear": false
-		},
-		{
-			"a": "waking-ghosts",
-			"b": "timer-bar",
-			"people": 17,
-			"diff": 0.1176,
-			"clear": false
-		},
-		{
-			"a": "wall-tide",
-			"b": "timer-bar",
-			"people": 12,
-			"diff": 0.0833,
-			"clear": false
-		}
-	]
+	"vs": {
+		"classic-blink": [
+			{
+				"a": "burning-fuse",
+				"b": "classic-blink",
+				"people": 38,
+				"diff": 0.0612,
+				"sd": 0.2679,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "classic-blink",
+				"people": 38,
+				"diff": 0.0342,
+				"sd": 0.252,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "classic-blink",
+				"people": 38,
+				"diff": -0.0083,
+				"sd": 0.2477,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "classic-blink",
+				"people": 40,
+				"diff": 0.0597,
+				"sd": 0.2527,
+				"clear": false
+			},
+			{
+				"a": "final-count",
+				"b": "classic-blink",
+				"people": 40,
+				"diff": -0.0244,
+				"sd": 0.2665,
+				"clear": false
+			},
+			{
+				"a": "heartbeat",
+				"b": "classic-blink",
+				"people": 38,
+				"diff": -0.0145,
+				"sd": 0.2987,
+				"clear": false
+			},
+			{
+				"a": "ink-refill",
+				"b": "classic-blink",
+				"people": 37,
+				"diff": -0.0448,
+				"sd": 0.2935,
+				"clear": false
+			},
+			{
+				"a": "none",
+				"b": "classic-blink",
+				"people": 40,
+				"diff": -0.0443,
+				"sd": 0.3291,
+				"clear": false
+			},
+			{
+				"a": "pen-hourglass",
+				"b": "classic-blink",
+				"people": 38,
+				"diff": -0.0174,
+				"sd": 0.2746,
+				"clear": false
+			},
+			{
+				"a": "timer-bar",
+				"b": "classic-blink",
+				"people": 38,
+				"diff": 0.002,
+				"sd": 0.2655,
+				"clear": false
+			},
+			{
+				"a": "waking-ghosts",
+				"b": "classic-blink",
+				"people": 37,
+				"diff": -0.0044,
+				"sd": 0.3723,
+				"clear": false
+			},
+			{
+				"a": "wall-tide",
+				"b": "classic-blink",
+				"people": 36,
+				"diff": -0.0654,
+				"sd": 0.3173,
+				"clear": false
+			}
+		],
+		"none": [
+			{
+				"a": "burning-fuse",
+				"b": "none",
+				"people": 38,
+				"diff": 0.0969,
+				"sd": 0.2693,
+				"clear": false
+			},
+			{
+				"a": "classic-blink",
+				"b": "none",
+				"people": 40,
+				"diff": 0.0443,
+				"sd": 0.3291,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "none",
+				"people": 38,
+				"diff": 0.0699,
+				"sd": 0.287,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "none",
+				"people": 38,
+				"diff": 0.0467,
+				"sd": 0.3167,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "none",
+				"people": 40,
+				"diff": 0.104,
+				"sd": 0.2805,
+				"clear": false
+			},
+			{
+				"a": "final-count",
+				"b": "none",
+				"people": 40,
+				"diff": 0.0199,
+				"sd": 0.3219,
+				"clear": false
+			},
+			{
+				"a": "heartbeat",
+				"b": "none",
+				"people": 38,
+				"diff": 0.0504,
+				"sd": 0.2637,
+				"clear": false
+			},
+			{
+				"a": "ink-refill",
+				"b": "none",
+				"people": 37,
+				"diff": -0.0038,
+				"sd": 0.3394,
+				"clear": false
+			},
+			{
+				"a": "pen-hourglass",
+				"b": "none",
+				"people": 38,
+				"diff": 0.0376,
+				"sd": 0.3103,
+				"clear": false
+			},
+			{
+				"a": "timer-bar",
+				"b": "none",
+				"people": 38,
+				"diff": 0.0333,
+				"sd": 0.2729,
+				"clear": false
+			},
+			{
+				"a": "waking-ghosts",
+				"b": "none",
+				"people": 37,
+				"diff": 0.0552,
+				"sd": 0.3315,
+				"clear": false
+			},
+			{
+				"a": "wall-tide",
+				"b": "none",
+				"people": 36,
+				"diff": -0.0153,
+				"sd": 0.2823,
+				"clear": false
+			}
+		],
+		"timer-bar": [
+			{
+				"a": "burning-fuse",
+				"b": "timer-bar",
+				"people": 37,
+				"diff": 0.0635,
+				"sd": 0.3196,
+				"clear": false
+			},
+			{
+				"a": "classic-blink",
+				"b": "timer-bar",
+				"people": 38,
+				"diff": -0.002,
+				"sd": 0.2655,
+				"clear": false
+			},
+			{
+				"a": "clock-halos",
+				"b": "timer-bar",
+				"people": 37,
+				"diff": 0.034,
+				"sd": 0.2623,
+				"clear": false
+			},
+			{
+				"a": "deflating-player",
+				"b": "timer-bar",
+				"people": 36,
+				"diff": 0.004,
+				"sd": 0.2949,
+				"clear": false
+			},
+			{
+				"a": "dot-sweep",
+				"b": "timer-bar",
+				"people": 38,
+				"diff": 0.0676,
+				"sd": 0.2764,
+				"clear": false
+			},
+			{
+				"a": "final-count",
+				"b": "timer-bar",
+				"people": 38,
+				"diff": -0.0176,
+				"sd": 0.303,
+				"clear": false
+			},
+			{
+				"a": "heartbeat",
+				"b": "timer-bar",
+				"people": 36,
+				"diff": 0.0033,
+				"sd": 0.2576,
+				"clear": false
+			},
+			{
+				"a": "ink-refill",
+				"b": "timer-bar",
+				"people": 37,
+				"diff": -0.0469,
+				"sd": 0.3598,
+				"clear": false
+			},
+			{
+				"a": "none",
+				"b": "timer-bar",
+				"people": 38,
+				"diff": -0.0333,
+				"sd": 0.2729,
+				"clear": false
+			},
+			{
+				"a": "pen-hourglass",
+				"b": "timer-bar",
+				"people": 36,
+				"diff": -0.0122,
+				"sd": 0.3419,
+				"clear": false
+			},
+			{
+				"a": "waking-ghosts",
+				"b": "timer-bar",
+				"people": 35,
+				"diff": 0.0241,
+				"sd": 0.405,
+				"clear": false
+			},
+			{
+				"a": "wall-tide",
+				"b": "timer-bar",
+				"people": 35,
+				"diff": -0.0603,
+				"sd": 0.2661,
+				"clear": false
+			}
+		]
+	},
+	"top": {
+		"a": "dot-sweep",
+		"b": "clock-halos",
+		"gap": 0.03,
+		"needed": 1247,
+		"people": 38
+	}
 }

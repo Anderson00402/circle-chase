@@ -12,7 +12,7 @@ import { clipFields, device, inputType, measures, mode, packedSeries, source, tr
 import { runInfo, studyInfo } from './runs';
 import { simInfo } from './sim';
 import { counterFields, cueCounterFields } from './counters';
-import { trialDigestTable } from './lib/digest';
+import { trialCellsTable, trialDigestTable } from './lib/digest';
 import { replayDigestTable } from './lib/replayDigest';
 
 export default defineSchema({
@@ -154,6 +154,7 @@ export default defineSchema({
 
 	/** One per session: a compact row per trial for the dashboard (convex/lib/digest.ts, owned by the dashboard). */
 	trialDigests: trialDigestTable,
+	trialCells: trialCellsTable,
 
 	/** One per session: a slim row per trial with a replay clip, for the replay browser (convex/lib/replayDigest.ts). */
 	replayDigests: replayDigestTable,

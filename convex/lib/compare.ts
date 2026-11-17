@@ -172,7 +172,11 @@ export function differences(cells: Cells, a: string, b: string, j: number): numb
 	return ds;
 }
 
-export function pairedFrom(ds: number[], a: string, b: string): Paired {
+/**
+ * Paired difference from per-person differences. `bound`: the largest possible difference, which
+ * clips the interval (1 for rates as fractions; Infinity for seconds; 6 for 1-7 ratings).
+ */
+export function pairedFrom(ds: number[], a: string, b: string, bound = 1): Paired {
 	const P = ds.length;
 	if (!P) return { a, b, people: 0, diff: null, lo: null, hi: null, sd: null, p: null };
 	const mean = ds.reduce((x, y) => x + y, 0) / P;
@@ -186,9 +190,31 @@ export function pairedFrom(ds: number[], a: string, b: string): Paired {
 	}
 	const half = tCritical(P - 1) * se;
 	return {
-		a, b, people: P, diff: mean, lo: Math.max(-1, mean - half), hi: Math.min(1, mean + half), sd,
+		a, b, people: P, diff: mean, lo: Math.max(-bound, mean - half), hi: Math.min(bound, mean + half), sd,
 		p: tTwoSided(mean / se, P - 1)
 	};
+}
+
+/**
+ * Difference between two groups of different people (Welch's t-test on one value per person), for
+ * a breakdown where nobody played both levels (sound on and off, say). `xa`, `xb`: one value per
+ * person in each group; the difference is mean(a) - mean(b). Weaker than a paired comparison: the
+ * people differ as well as the level. Needs 2 people in each group and 5 in all.
+ */
+export function unpairedFrom(xa: number[], xb: number[], a: string, b: string, bound = 1): Paired {
+	const na = xa.length, nb = xb.length;
+	const people = na + nb;
+	const m = (xs: number[]) => xs.reduce((x, y) => x + y, 0) / xs.length;
+	if (!na || !nb) return { a, b, people, diff: null, lo: null, hi: null, sd: null, p: null };
+	const diff = m(xa) - m(xb);
+	if (na < 2 || nb < 2 || people < PAIR_MIN_PEOPLE) return { a, b, people, diff, lo: null, hi: null, sd: null, p: null };
+	const v = (xs: number[]) => { const mu = m(xs); return xs.reduce((x, y) => x + (y - mu) ** 2, 0) / (xs.length - 1); };
+	const va = v(xa) / na, vb = v(xb) / nb;
+	const se = Math.sqrt(va + vb);
+	if (se === 0) return { a, b, people, diff, lo: diff, hi: diff, sd: 0, p: diff === 0 ? 1 : null };
+	const df = (va + vb) ** 2 / ((va * va) / (na - 1) + (vb * vb) / (nb - 1));
+	const half = tCritical(df) * se;
+	return { a, b, people, diff, lo: Math.max(-bound, diff - half), hi: Math.min(bound, diff + half), sd: se * Math.sqrt(people), p: tTwoSided(diff / se, df) };
 }
 
 export function paired(cells: Cells, a: string, b: string, j: number): Paired {

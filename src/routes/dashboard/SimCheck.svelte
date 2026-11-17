@@ -6,29 +6,37 @@
 	 */
 	import { useQuery } from 'convex-svelte';
 	import { api } from '#convex/_generated/api.js';
-	import { Badge, CueChip, InfoTip, Panel } from '#lib/ui/index.ts';
+	import { Badge, CueChip, InfoTip, Panel, slow } from '#lib/ui/index.ts';
 	import ForestChart, { type ForestRow } from '#lib/charts/ForestChart.svelte';
 	import ScatterPlot, { type ScatterPoint } from '#lib/charts/ScatterPlot.svelte';
 	import { condition, pct, pctRange, plural } from '#lib/charts/encoding.ts';
 	import { ENOUGH } from './insight';
-	import type { Main } from './types';
+	import QueryState from './QueryState.svelte';
+	import { retrier } from './retry.svelte';
 
 	interface Props {
 		/** The simulator run the whole page shows. */
 		run: string;
 		preset: string | null;
-		/** The page's results for this run (for the adjusted pair comparisons). */
-		main: Main;
+		/** The "too early" line, when it is the check line. */
+		line?: number | null;
+		/** The page has a filter on (participant, rules, period): this panel still shows the whole run. */
+		filtered?: boolean;
 	}
-	let { run, preset, main }: Props = $props();
+	let { run, preset, line = null, filtered = false }: Props = $props();
 
-	const check = useQuery(api.dashboard.simCheck, () => ({ run }), { keepPreviousData: true });
-	const d = $derived(check.data && check.data.run === run ? check.data : null);
+	const again = retrier();
+	const check = useQuery(api.dashboard.simCheck, () => (again.paused ? 'skip' : { run, ...(line ? { line } : {}) }), { keepPreviousData: true });
+	const wait = slow(() => check.isLoading);
+	const d = $derived(check.data && check.data.run === run && (check.data.line ?? 2) === (line ?? 2) ? check.data : null);
 
 	const flat = $derived((d?.preset ?? preset) === 'flat');
 	const enough = $derived((d?.cues ?? []).filter((c) => c.inRates >= ENOUGH));
-	/** Pairs that differ clearly on the well-timed rate after Holm's adjustment (paired within players). */
-	const clearPairs = $derived({ k: main.pairs.wellTimed.filter((c) => c.clear).length, of: main.pairs.wellTimed.length });
+	/**
+	 * Pairs that differ clearly on the well-timed rate after Holm's adjustment (paired within
+	 * players), for the whole run: the check's own count, whatever the page's filter.
+	 */
+	const clearPairs = $derived({ k: d?.separated.wellTimed.k ?? 0, of: d?.separated.wellTimed.of ?? 0 });
 	const verdict = $derived.by(() => {
 		if (!d) return '';
 		if (enough.length < 2) return `Not enough simulated power-ups yet to judge (${enough.length} conditions with ${ENOUGH} or more counted).`;
@@ -71,7 +79,7 @@
 	<Panel>
 		<div class="head">
 			<div>
-				<p class="eyebrow"><Badge tone="sim">Simulated</Badge> Instrument check</p>
+				<p class="eyebrow"><Badge tone="sim">Simulated</Badge> Instrument check{filtered ? ': whole run' : ''}{line ? `, "too early" from ${line} s` : ''}</p>
 				<h2 id="sim-h">Does the pipeline find what was planted?</h2>
 			</div>
 		</div>
@@ -86,10 +94,13 @@
 			</InfoTip>
 		</p>
 		{#if !d}
-			<p class="dim">Loading…</p>
+			<QueryState error={check.error} {wait} what="the instrument check" onretry={again.retry} />
 		{:else}
 			<p class="verdict">{verdict}</p>
-			<p class="dim">{plural(d.trials, 'power-up')} from {plural(d.participants, 'simulated participant')} in this run.</p>
+			<p class="dim">
+				{plural(d.trials, 'power-up')} from {plural(d.participants, 'simulated participant')} in this run.
+				{#if filtered}This panel always shows the whole run: the filters above apply to the rest of the page, not to it.{/if}
+			</p>
 			<div class="two" class:single={flat}>
 				{#if !flat}
 					<div>

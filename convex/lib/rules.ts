@@ -25,6 +25,12 @@ export const WARN = 3;
 export const LATE = 1.5;
 /** Seconds left: turning away in this window is "turned away in time". */
 export const TIMELY: readonly [number, number] = [0.2, 2];
+/**
+ * Seconds left: the alternative "too early" line the dashboard can switch to as a sensitivity check
+ * (docs/STUDY.md "2 s, and the cues' final warning"). It never changes a stored outcome: the page
+ * recomputes the classes from the stored raw measures with `classify(m, { timely: TIMELY_CHECK })`.
+ */
+export const TIMELY_CHECK = 2.5;
 /** Tiles (path distance) to a ghost that just turned dangerous, at the end, for a death to count as "caught". */
 export const CAUGHT_DIST = 5;
 /**
@@ -39,6 +45,13 @@ export const OVERSTAY_DIST = 5;
  * it stood before the power ran out.
  */
 export const REACH_SPEED = 5.6;
+/**
+ * Tiles per second: how fast a pursuit closes on a scared ghost that flees (study rules: the player
+ * at 6.2 tiles/s with the power on, a fleeing ghost at 4.7). Used by the dashboard's "time to spare"
+ * view: time left at the turn-away minus the time the pursuit still needed (distance / this). Under
+ * arcade rules scared ghosts do not flee and the pursuit is taken to close at `REACH_SPEED`.
+ */
+export const PURSUIT_GAIN = 1.5;
 
 /**
  * What a chase is (measured by the tracker, src/lib/telemetry/tracker.ts; reasons in STUDY.md).
@@ -79,6 +92,12 @@ export const OUTCOMES: readonly Outcome[] = [
  * how much time was left.
  */
 export const DECISIONS: readonly Outcome[] = ['caught', 'overstayed', 'timely-retreat', 'early-retreat'];
+
+/** Thresholds a caller may move for a sensitivity check (defaults: the values above). */
+export interface RuleOptions {
+	/** Seconds left: the line between "turned away in time" and "too early" (default `TIMELY[1]`). */
+	timely?: number;
+}
 
 /** How the trial's last chase ended: the player turned away, ate the ghost, or was still chasing when the trial closed. */
 export type ChaseEnd = 'turn' | 'eat' | 'open';
@@ -146,7 +165,7 @@ export function gaveUpEarly(m: RuleInput): boolean {
  *    - turned from a ghost that was out of reach: other inside the warning window, not engaged before it.
  * A death after the end that does not meet rule 2 leaves the class as it is.
  */
-export function classify(m: RuleInput): Outcome {
+export function classify(m: RuleInput, o: RuleOptions = {}): Outcome {
 	if (m.endReason !== 'expired') return 'interrupted';
 	if (m.after.caught && m.endDist !== null && m.endDist <= CAUGHT_DIST) return 'caught';
 	const end = m.lastChaseEnd ?? null;
@@ -157,7 +176,7 @@ export function classify(m: RuleInput): Outcome {
 		return d !== null && d <= OVERSTAY_DIST ? 'overstayed' : 'other';
 	}
 	if (!reachableAtTurn(m)) return m.engaged ? 'other' : 'not-engaged';
-	return m.turnLeft! <= TIMELY[1] ? 'timely-retreat' : 'early-retreat';
+	return m.turnLeft! <= (o.timely ?? TIMELY[1]) ? 'timely-retreat' : 'early-retreat';
 }
 
 /**
@@ -179,8 +198,8 @@ export interface Derived {
 	gaveUpEarly: boolean;
 }
 
-export function derive(m: RuleInput): Derived {
-	const outcome = classify(m);
+export function derive(m: RuleInput, o: RuleOptions = {}): Derived {
+	const outcome = classify(m, o);
 	return { outcome, inRates: eligible(m), wasted: outcome === 'early-retreat' ? m.turnLeft : null, gaveUpEarly: gaveUpEarly(m) };
 }
 

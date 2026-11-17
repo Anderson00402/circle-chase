@@ -13,10 +13,14 @@
 	import { afterNavigate, beforeNavigate, replaceState } from '$app/navigation';
 	import { api } from '#convex/_generated/api.js';
 	import type { Id } from '#convex/_generated/dataModel.js';
-	import { Badge, Button, EmptyState, Page, PageHeader, Panel, Segmented, Select, slow } from '#lib/ui/index.ts';
+	import { Badge, Button, EmptyState, InfoTip, Page, PageHeader, Panel, Segmented, Select, slow } from '#lib/ui/index.ts';
 	import { MODE_LABEL } from '#lib/outcomes.ts';
 	import { ago, plural } from '#lib/charts/encoding.ts';
 	import Answer from './Answer.svelte';
+	import QueryState from './QueryState.svelte';
+	import Takeaway from './Takeaway.svelte';
+	import { takeOf } from './rows';
+	import { retrier } from './retry.svelte';
 	import Detail from './Detail.svelte';
 	import Method from './Method.svelte';
 	import NowPlaying from './NowPlaying.svelte';
@@ -27,13 +31,24 @@
 	import Why from './Why.svelte';
 	import { DEFS } from './defs';
 	import { inview } from './inview';
-	import type { DashFilter, ModeSel, RowOrder, RunInfo, SourceSel } from './types';
+	import { LINE_CHECK, LINE_DEFAULT, type DashFilter, type ModeSel, type RowOrder, type RunInfo, type SourceSel } from './types';
 
 	/** The run choice for simulated play outside any simulator run (matches convex/dashboard.ts OTHER_RUN). */
 	const OTHER_RUN = 'other';
 
-	// Filter state, read once from the URL and written back on change.
-	const q = page.url.searchParams;
+	// Filter state, read once from the URL and written back on change. Opened without any (from a
+	// link elsewhere, the replay page's "Dashboard" say), the page restores the filters it last had.
+	const FILTERS_KEY = 'dash-filters';
+	const restored = (() => {
+		if (page.url.search) return null;
+		try {
+			const saved = localStorage.getItem(FILTERS_KEY);
+			return saved ? new URLSearchParams(saved) : null;
+		} catch {
+			return null;
+		}
+	})();
+	const q = restored ?? page.url.searchParams;
 	const pick = <T extends string>(v: string | null, ok: readonly T[], d: T): T => (ok.includes(v as T) ? (v as T) : d);
 	let source = $state<SourceSel>(pick(q.get('data'), ['human', 'bot'], 'human'));
 	let run = $state<string>(q.get('run') ?? '');
@@ -43,6 +58,9 @@
 	let detailCue = $state<string>(q.get('cue') ?? 'timer-bar');
 	let order = $state<RowOrder>(pick(q.get('order'), ['rank', 'code'], 'rank'));
 	let selected = $state<string | null>(q.get('cue'));
+	/** Where "too early" starts: the rules' 2 s, or 2.5 s as a sensitivity check (recomputed, never stored). */
+	let line = $state<number>(q.get('line') === String(LINE_CHECK) ? LINE_CHECK : LINE_DEFAULT);
+	const altLine = $derived(line === LINE_CHECK ? LINE_CHECK : null);
 
 	/** Start of the period, computed when the period changes (not every render). */
 	let from = $state<number | undefined>(undefined);
@@ -68,7 +86,9 @@
 	const otherPlay = $derived(facets.data?.other ?? { sessions: 0, trials: 0, lastAt: 0 });
 	/** The run shown: the URL's, or by default the newest complete run (else the newest, else other play). */
 	const defaultRun = $derived(runs.find((r) => r.complete)?.run ?? runs[0]?.run ?? (otherPlay.trials ? OTHER_RUN : ''));
-	const activeRun = $derived(simulated ? (run || defaultRun) : '');
+	/** A run id from an old link that no longer exists (deleted, or another database): fall back, and say so. */
+	const missingRun = $derived(simulated && facets.data !== undefined && !!run && run !== OTHER_RUN && !runs.some((r) => r.run === run) ? run : '');
+	const activeRun = $derived(simulated ? (run && !missingRun ? run : defaultRun) : '');
 	const runInfo = $derived(runs.find((r) => r.run === activeRun) ?? null);
 
 	const filter = $derived<DashFilter>({
@@ -76,7 +96,8 @@
 		...(activeRun ? { run: activeRun } : {}),
 		...(mode !== 'both' ? { mode } : {}),
 		...(participant !== 'all' ? { participantId: participant as Id<'participants'> } : {}),
-		...(from !== undefined ? { from } : {})
+		...(from !== undefined ? { from } : {}),
+		...(altLine ? { line: altLine } : {})
 	});
 	/** Simulated view waits for the run list, so it never shows every run pooled for a moment. */
 	const ready = $derived(!simulated || facets.data !== undefined);
@@ -90,12 +111,19 @@
 		set('p', participant, 'all');
 		set('period', period, 'all');
 		set('order', order, 'rank');
+		set('line', String(line), String(LINE_DEFAULT));
 		if (selected) u.searchParams.set('cue', selected);
 		else u.searchParams.delete('cue');
 		if (u.search !== untrack(() => page.url.search)) replaceState(u, {});
+		try {
+			localStorage.setItem(FILTERS_KEY, u.search);
+		} catch {
+			/* storage may be off */
+		}
 	});
 
-	const main = useQuery(api.dashboard.main, () => (ready ? filter : 'skip'), { keepPreviousData: true });
+	const mainRetry = retrier();
+	const main = useQuery(api.dashboard.main, () => (ready && !mainRetry.paused ? filter : 'skip'), { keepPreviousData: true });
 	const loadingSlow = slow(() => main.isLoading);
 
 	// A clock for "x s ago" labels and the live strip. Not game time: this is page chrome.
@@ -138,6 +166,7 @@
 
 	const data = $derived(main.data);
 	const empty = $derived(data !== undefined && data.totals.trials === 0);
+	const take = $derived(data && !empty ? takeOf(data) : null);
 
 	function select(id: string) {
 		selected = id;
@@ -186,11 +215,12 @@
 		if (filter.from) p.set('from', String(filter.from));
 		return `${site}/export/${file}?${p}`;
 	};
-	const filtersActive = $derived(mode !== 'both' || participant !== 'all' || period !== 'all');
+	const filtersActive = $derived(mode !== 'both' || participant !== 'all' || period !== 'all' || line !== LINE_DEFAULT);
 	function clearFilters() {
 		mode = 'both';
 		participant = 'all';
 		period = 'all';
+		line = LINE_DEFAULT;
 	}
 
 	// Heavy lower sections subscribe only once they come near the screen.
@@ -206,7 +236,7 @@
 		lead="Do players know when the power-up is about to run out, and which signal tells them best? Updated live as people play."
 	>
 		{#snippet actions()}
-			<div class="downloads" role="group" aria-label="Download the data in this view">
+			<div class="downloads wide-only" role="group" aria-label="Download the data in this view">
 				<span class="dl-label">Download</span>
 				<Button size="sm" variant="quiet" href={exportHref('trials.csv')}>Power-ups CSV</Button>
 				<Button size="sm" variant="quiet" href={exportHref('trials.json')}>JSON</Button>
@@ -216,6 +246,7 @@
 		{/snippet}
 	</PageHeader>
 
+	<div class="flow">
 	<div class="filters" role="group" aria-label="Filters">
 		<div class="f">
 			<span class="f-label">Data</span>
@@ -261,6 +292,20 @@
 			<span class="f-label">When</span>
 			<Select size="sm" options={periodOptions} bind:value={period} aria-label="Period" />
 		</div>
+		<div class="f">
+			<span class="f-label">Too early from</span>
+			<Segmented
+				label="Where too early starts"
+				size="sm"
+				options={[
+					{ value: String(LINE_DEFAULT), label: `${LINE_DEFAULT} s` },
+					{ value: String(LINE_CHECK), label: `${LINE_CHECK} s, check` }
+				]}
+				value={String(line)}
+				onchange={(v: string) => (line = Number(v))}
+			/>
+			<InfoTip term="Too early from" align="start">{DEFS.line}</InfoTip>
+		</div>
 		{#if filtersActive}
 			<button class="reset" type="button" onclick={clearFilters}>Clear filters</button>
 		{/if}
@@ -270,7 +315,13 @@
 	</div>
 
 	<div class="live">
-		<NowPlaying lastAt={data?.totals.lastAt ?? null} {now} source={simulated ? 'bot' : 'human'} />
+		<NowPlaying
+			lastAt={data?.totals.lastAt ?? null}
+			{now}
+			source={simulated ? 'bot' : 'human'}
+			finished={simulated && activeRun !== OTHER_RUN && !!runInfo?.complete}
+			offline={loadingSlow.offline}
+		/>
 	</div>
 
 	{#if simulated}
@@ -287,11 +338,28 @@
 				{DEFS.simulated}
 			</p>
 			<button type="button" onclick={() => setSource('human')}>Back to humans</button>
+			{#if missingRun}
+				<p class="missing">The link asked for simulator run "{missingRun}", which is not in this database (deleted, or from another machine). Showing the newest complete run instead.</p>
+			{/if}
 		</div>
 	{/if}
 
+	{#if altLine}
+		<div class="line-banner" role="note">
+			<p>
+				<b>Sensitivity check: "too early" starts at {altLine} s left, not {LINE_DEFAULT} s.</b> Turned away in time now means 0.2 to
+				{altLine} s left. Every class, rate and comparison below is worked out again from the stored measures with this line;
+				the stored outcomes do not change.
+			</p>
+			<button type="button" onclick={() => (line = LINE_DEFAULT)}>Back to {LINE_DEFAULT} s</button>
+		</div>
+	{/if}
+
+	{#if main.error && data}
+		<QueryState error={main.error} wait={loadingSlow} what="the latest results (the numbers below are from before)" onretry={mainRetry.retry} />
+	{/if}
 	{#if !data}
-		<div class="loading" aria-busy="true">{loadingSlow.current ? "Can't reach the database. Results appear when it is back." : 'Loading results…'}</div>
+		<QueryState error={main.error} wait={loadingSlow} what="results" onretry={mainRetry.retry} tall />
 	{:else if empty}
 		<div class="empty">
 			<EmptyState icon="chart" title={source === 'human' ? (filtersActive ? 'No human power-ups in this filter' : 'No human power-ups yet') : 'No power-ups in this run or filter'}>
@@ -315,8 +383,11 @@
 			</EmptyState>
 		</div>
 	{:else}
-		<div id="top-answer" class="anchor">
-			<Answer main={data} {selected} onselect={select} {simulated} run={runInfo} otherRun={activeRun === OTHER_RUN}>
+		<div id="top-answer" class="anchor take-slot">
+			<Takeaway take={take!} {simulated} run={runInfo} otherRun={activeRun === OTHER_RUN} {altLine} />
+		</div>
+		<div class="answer-slot">
+			<Answer main={data} {selected} onselect={select}>
 				{#snippet uncounted()}
 					{#if source === 'human' && data.totals.decisions === 0 && (n('bot') ?? 0) > 0}
 						<p class="hint">
@@ -328,7 +399,7 @@
 		</div>
 
 		{#if simulated && activeRun && activeRun !== OTHER_RUN}
-			<SimCheck run={activeRun} preset={runInfo?.preset ?? null} main={data} />
+			<SimCheck run={activeRun} preset={runInfo?.preset ?? null} line={altLine} filtered={participant !== 'all' || mode !== 'both' || period !== 'all'} />
 		{/if}
 
 		{#if data.totals.decisions > 0}
@@ -371,8 +442,17 @@
 		</section>
 	{/if}
 
+	</div>
+
 	<div class="method-wrap">
 		<Method />
+	</div>
+	<div class="downloads narrow-only" role="group" aria-label="Download the data in this view">
+		<span class="dl-label">Download</span>
+		<Button size="sm" variant="quiet" href={exportHref('trials.csv')}>Power-ups CSV</Button>
+		<Button size="sm" variant="quiet" href={exportHref('trials.json')}>JSON</Button>
+		<Button size="sm" variant="quiet" href={exportHref('ratings.csv')}>Answers CSV</Button>
+		<Button size="sm" variant="quiet" href={exportHref('blocks.csv')}>Runs CSV</Button>
 	</div>
 </Page>
 
@@ -468,6 +548,44 @@
 		color: var(--ink);
 		font-size: var(--text-sm);
 	}
+	.sim-banner p.missing {
+		flex-basis: 100%;
+		color: var(--ink-dim);
+	}
+	.line-banner {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		margin-bottom: var(--space-5);
+		padding: var(--space-3) var(--space-4);
+		border: 1px solid var(--warn);
+		border-radius: var(--radius-md);
+		background: color-mix(in srgb, var(--warn) 8%, transparent);
+	}
+	.line-banner p {
+		flex: 1 1 320px;
+		color: var(--ink-dim);
+		font-size: var(--text-sm);
+	}
+	.line-banner b {
+		color: var(--ink);
+	}
+	.line-banner button {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--focus);
+		font: inherit;
+		font-size: var(--text-sm);
+		cursor: pointer;
+	}
+	.take-slot {
+		margin-bottom: var(--space-5);
+	}
+	.narrow-only {
+		display: none;
+	}
 	.sim-banner button,
 	.hint button {
 		padding: 0;
@@ -526,6 +644,27 @@
 		.filters {
 			position: static;
 			gap: var(--space-2) var(--space-3);
+		}
+		/* A phone shows the answer first: the takeaway moves above the filters, and the downloads
+		   go to the end of the page. */
+		.flow {
+			display: flex;
+			flex-direction: column;
+		}
+		.flow > .take-slot {
+			order: -1;
+			margin-bottom: var(--space-4);
+		}
+		.wide-only {
+			display: none;
+		}
+		.narrow-only {
+			display: flex;
+			margin-top: var(--space-6);
+		}
+		:global(.dash .ph .lead),
+		:global(.dash .ph .actions) {
+			display: none;
 		}
 	}
 </style>
