@@ -9,7 +9,7 @@
 
 <svg viewBox="0 0 440 330" role="img" aria-labelledby="hero-art-title">
 	<title id="hero-art-title">
-		A round player chases two scared chasers through a maze while a timer asks how much power is
+		A round player chases two pale, scared ghosts through a maze while a timer asks how much power is
 		left.
 	</title>
 	<defs>

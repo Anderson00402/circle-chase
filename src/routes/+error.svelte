@@ -11,7 +11,7 @@
 
 <Page width="narrow">
 	<div class="wrap">
-		<EmptyState {title}>
+		<EmptyState {title} heading="h1">
 			{#if missing}
 				{#if page.error?.message && page.error.message !== 'Not Found'}
 					<p>{page.error.message} Pick one on the run console.</p>

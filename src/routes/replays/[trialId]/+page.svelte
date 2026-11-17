@@ -465,7 +465,7 @@
 	</div>
 
 	{#if missing}
-		<EmptyState title="Replay not found" icon="replay">
+		<EmptyState title="Replay not found" icon="replay" heading="h1">
 			There is no trial with this link. It may have been deleted when the data was cleared.
 			{#snippet actions()}<Button variant="primary" href="/replays">Browse replays</Button>{/snippet}
 		</EmptyState>

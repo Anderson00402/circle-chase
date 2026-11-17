@@ -201,6 +201,7 @@
 {#if cue}
 	<div class="play">
 		<header class="head" aria-label="Run">
+			{#if !done}<h1 class="visually-hidden">{participantView ? 'Run in progress' : `Run: ${cue.code} ${cue.name}`}</h1>{/if}
 			<a class="back" href="/" title={done ? 'Back to the console (Esc)' : 'Back to the console: ends this run'}>
 				<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
 				Console

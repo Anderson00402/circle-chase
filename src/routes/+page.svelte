@@ -52,6 +52,14 @@
 	function commitLabel() {
 		if (labelDraft.trim() !== run.p.label) setLabel(client, labelDraft);
 	}
+	/**
+	 * The keyboard path of a run: the participant label is the first Tab stop, then the run length,
+	 * then Play (tabindex 1 to 3; everything else follows in page order). Enter in the label goes on
+	 * to the run length, and Enter there plays.
+	 */
+	function toLength() {
+		tick().then(() => (document.querySelector('.length input[type="radio"]:checked') as HTMLElement | null)?.focus());
+	}
 	function freshParticipant() {
 		newParticipant(client);
 		labelDraft = '';
@@ -142,6 +150,8 @@
 	function onkeydown(e: KeyboardEvent) {
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
 		const t = e.target as HTMLElement;
+		// Enter on the run length (the stop after the label) plays, as everywhere else on the console.
+		if (e.key === 'Enter' && t.matches('.length input[type="radio"]')) { e.preventDefault(); play(); return; }
 		if (t.closest('input, textarea, select, [contenteditable="true"], dialog')) return;
 		const inCases = !!t.closest('.cases-grid');
 		if (e.key.startsWith('Arrow') && (inCases || t === document.body)) {
@@ -238,7 +248,8 @@
 						bind:this={labelInput}
 						bind:value={labelDraft}
 						onchange={commitLabel}
-						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitLabel(); (e.currentTarget as HTMLInputElement).blur(); } }}
+						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitLabel(); toLength(); } }}
+						tabindex={1}
 						maxlength="24"
 						autocomplete="off"
 						spellcheck="false"
@@ -307,9 +318,9 @@
 				<span class="lab">Rules <InfoTip term="Rules">Study rules: each power-up lasts a random 4 to 8 s, power dots grow back, no game over, one maze. Arcade rules: the normal game with fixed power lengths, lives and levels. Both are measured.</InfoTip></span>
 				<Segmented label="Rules" size="sm" options={[{ value: 'study', label: MODE_LABEL.study }, { value: 'arcade', label: MODE_LABEL.arcade }]} bind:value={run.settings.rules} onchange={() => persist()} />
 			</div>
-			<div class="set">
+			<div class="set length">
 				<span class="lab" title={runLengthWords(run.settings.runLength ?? RUN_LENGTH)}>Run length <InfoTip term="Run length">A run ends by itself after this many power-ups (the one in progress is measured to its end first). About one power-up in three ends in a decision, and one comes about every 15 s, so {RUN_LENGTH} power-ups take about 4 minutes and measure 5 or 6 decisions. End run still ends a run early.</InfoTip></span>
-				<Segmented label="Run length in power-ups" size="sm" options={lengthOptions} value={String(run.settings.runLength ?? RUN_LENGTH)} onchange={setLength} />
+				<Segmented label="Run length in power-ups" size="sm" options={lengthOptions} value={String(run.settings.runLength ?? RUN_LENGTH)} onchange={setLength} tabindex={2} />
 			</div>
 			<div class="set">
 				<span class="lab">Sound</span>
@@ -317,7 +328,7 @@
 			</div>
 		</div>
 
-		<Button variant="primary" size="lg" block onclick={() => play()}>
+		<Button variant="primary" size="lg" block onclick={() => play()} tabindex={3}>
 			<span class="wide-only">Play this case</span><span class="phone-only">Play {selected.code} · {selected.name}</span>
 			<span class="enter"><Kbd>Enter</Kbd></span>
 		</Button>

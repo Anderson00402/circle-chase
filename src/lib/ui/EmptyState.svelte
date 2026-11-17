@@ -8,8 +8,10 @@
 		children?: Snippet;
 		actions?: Snippet;
 		compact?: boolean;
+		/** The title's heading level: h1 when it is all the page has (a not-found page). */
+		heading?: 'h1' | 'h2' | 'h3';
 	}
-	let { title, icon = 'maze', children, actions, compact = false }: Props = $props();
+	let { title, icon = 'maze', children, actions, compact = false, heading = 'h3' }: Props = $props();
 </script>
 
 <div class="empty" class:compact>
@@ -28,7 +30,7 @@
 			<circle cx="31" cy="30" r="3" fill="var(--accent)" />
 		{/if}
 	</svg>
-	<h3>{title}</h3>
+	<svelte:element this={heading} class="title">{title}</svelte:element>
 	{#if children}<div class="text">{@render children()}</div>{/if}
 	{#if actions}<div class="actions">{@render actions()}</div>{/if}
 </div>
@@ -46,7 +48,7 @@
 	}
 	.compact { padding: var(--space-6) var(--space-4); }
 	svg { margin-bottom: var(--space-2); }
-	h3 {
+	.title {
 		font-size: var(--text-lg);
 		font-weight: 700;
 	}
