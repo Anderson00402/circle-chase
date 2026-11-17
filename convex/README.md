@@ -7,6 +7,13 @@
 > size limit) and there are ratings and blocks CSVs. Every rate reports `leftOut.oldRules`. All
 > writes go through one outbox that never drops a write (`src/lib/study/outbox.svelte.ts`).
 
+> **Changed 2026-11-16, later.** Exports never stall (a page with no matching row no longer ends
+> the stream; `node scripts/export-e2e.mjs` checks every file through HTTP) and ratings and blocks
+> also come as JSON; the trials CSV carries the rules-v3 raw measures and the chase log. A refresh
+> resumes its run with its counters (`blocks.progress`, block `segments`). Clips store `layout` and
+> the dying phase. The live panel reads `summary.cueCounts`. `appVersion` comes from `/build.json`.
+> The outbox parks a write the server keeps rejecting.
+
 Everything the game measures lives here. What each measure means is defined in
 `docs/STUDY.md`; how it is computed is in `src/lib/telemetry/tracker.ts` (header comment) and
 summarised under "Interpretations" below.
@@ -28,8 +35,11 @@ routes at `http://127.0.0.1:3211`. `npm run convex` pushes this folder on save.
   and default to `human`, so bot data never mixes in unless asked for. A browser driven by
   automation (`navigator.webdriver`) or a URL with `?bot` records as `bot`.
 - **appVersion** is a build identifier: package version + git commit, `0.0.1+e8606d3`, with
-  `.dev` when served by the dev server (whose code may be ahead of that commit). Injected by
-  `vite.config.ts` (`define: __APP_BUILD__`).
+  `.dev` when served by the dev server (whose files may also hold uncommitted changes). Each page
+  reads it at load from `/build.json` (`src/routes/build.json/+server.ts`: under the dev server it
+  runs `git rev-parse` on every request, so it names the commit checked out when the page loaded,
+  not the one the server started on; a static build prerenders it). Until that answers, and
+  outside the app (tests, Node), it is the value `vite.config.ts` injected (`__APP_BUILD__`).
 - **inputType**: `keyboard`, `touch`, `mouse`, `mixed`, `none`; in a browser driven by automation
   `automated` (nothing pressed: steered by a script) or `automated-keyboard` and so on.
 - **Keys**: the browser makes a `key` for every session, block, trial and rating. Writes with a
@@ -53,13 +63,14 @@ routes at `http://127.0.0.1:3211`. `npm run convex` pushes this folder on save.
 | --- | --- | --- |
 | `participants` | browser (anonymous id in localStorage) or bot | `number` 1, 2, 3... in order of first visit (everyone); `runNumber?` 1, 2, 3... per source for run-console participants only (picks the counterbalanced case order; play pages opened without a run never get one), `nickname?`, `device`, first/last seen |
 | `sessions` | visit | `mode`, `source`, `cueOrder`, `appVersion`, `difficulty`, `sound`, `reducedMotion`, `inputType`, `viewport`, started, `endedAt` (when its last open block closed; cleared when a block starts), counters, `run?`, `sim?` |
-| `blocks` | cue played within a session | `cue`, `orderIndex`, started/ended, `trialCount`, `engagedCount`, `deaths`, `score`, `pauses?`, `pausedSeconds?` |
+| `blocks` | cue played within a session | `cue`, `orderIndex`, started/ended, `trialCount`, `engagedCount`, `deaths`, `score`, `pauses?`, `pausedSeconds?`; `segments?`: one entry per page that played it (a refresh resumes the block in a new page) with its own deaths, score and pauses; the block's totals are their sums |
 | `trials` | power-up | context + every measure of `TrialMeasures` (`src/lib/telemetry/types.ts`), including `lastChaseEnd` and `rulesVersion`; `simRun?`; `clipId?`. About 1 KB, no series |
 | `trialSeries` | trial | the 10 Hz series packed (~1 KB) + `trialId`, `sessionId`, `cue`, `source`, `mode`, `createdAt`, `simRun?`; indexes `by_trial`, `by_source_cue` [source, cue, createdAt], `by_run` [simRun, cue, createdAt] |
 | `trialDigests` | session | compact row per trial for the dashboard (`convex/lib/digest.ts`, owned by the dashboard); kept by `trials.save` and `admin.reclassify` |
-| `clips` | stored replay (engaged or caught trials) | packed scenes (`data`, 5-15 KB), `markers`, `numbers`, `cue`, `outcome`; separate so trial scans stay light |
+| `clips` | stored replay (engaged or caught trials) | packed scenes (`data`, 5-15 KB), `markers`, `numbers`, `cue`, `outcome`, `layout?` (the maze layout fingerprint); separate so trial scans stay light |
 | `ratings` | questionnaire answer | `kind: 'block'` (clarity, distraction 1-7) or `'session'` (clearest, leastClear, comment) |
 | `presence` | open game page | heartbeat every 5 s; rows older than 20 s are swept by a cron |
+| `cueCounters` | source, case and rules | running totals for `summary.cueCounts` (the live panel): trials, decisions, timely, early, overstayed, caught, lastTrialAt; kept by `trials.save`, recounted by `counters.rebuildCounters` |
 | `counters` | source (`human`, `bot`) | running totals for `live.counters`: trials, engaged, inRates, decisions, oldRules, clips, sessions, participants, lastTrialAt; kept by `participants.ensure`, `sessions.start`, `trials.save` (practice trials not counted) |
 
 ## Write side (sent through the outbox, `src/lib/study/outbox.svelte.ts`)
@@ -69,8 +80,8 @@ routes at `http://127.0.0.1:3211`. `npm run convex` pushes this folder on save.
 | `participants.ensure` | `{ pid, source, device, nickname?, console? }`; `console: true` (the run console) gives the participant a `runNumber` if it has none | `{ participantId, number, runNumber }` (`runNumber` null unless a console participant) |
 | `sessions.start` | `{ key, pid, mode, source, cueOrder, appVersion, difficulty, sound, reducedMotion, inputType, viewport }` | `{ sessionId }` |
 | `sessions.update` | `{ key, inputType?, sound?, reducedMotion?, end? }` | session id or null |
-| `blocks.start` | `{ key, sessionKey, cue, orderIndex }` | `{ blockId }` |
-| `blocks.end` | `{ key, deaths, score, pauses?, pausedSeconds? }` (last call wins); sets the session's `endedAt` when no other block of it is open | block id, or null until the block exists |
+| `blocks.start` | `{ key, sessionKey, cue, orderIndex, segment? }`; `segment` names the page playing it: a page resuming the block after a refresh adds its segment and reopens the block (earlier segments count as over) | `{ blockId }` |
+| `blocks.end` | `{ key, deaths, score, pauses?, pausedSeconds?, segment? }`: with `segment`, that page's own numbers (last call per segment wins); the block's totals are the sums over its segments whatever order they arrive in, and it ends when no segment is open. Without `segment` (the simulator) the call sets the totals. Sets the session's `endedAt` when no other block of it is open | block id, or null until the block exists |
 | `trials.save` | `{ key, sessionKey, blockKey, trialIndex, sound, reducedMotion, inputType, appVersion, difficulty, ...measures, series: bytes, clip? }`; the outcome is recomputed from the measures (`convex/lib/rules.ts`; a row that lacks a measure the rules need keeps an older `rulesVersion`); the series goes to `trialSeries`, the clip to `clips`, and the session's digest is updated | `{ trialId, clipId }` |
 | `ratings.saveBlock` | `{ key, blockKey, clarity: 1-7, distraction: 1-7, note? }` | rating id, or null until the block exists |
 | `ratings.saveSession` | `{ key, sessionKey, clearest?, leastClear?, comment? }` | rating id, or null until the session exists |
@@ -87,11 +98,16 @@ session, not from the caller.
 
 `startOutbox(client)` (root layout) starts the app's one queue; `getOutbox(client).send(fn, args,
 { id?, lane?, onDone? })` queues a write; `outboxStatus` is reactive:
-`{ state: 'saved'|'saving'|'offline'|'failing', pending, waiting, failing, failingCount, lastError, savedAt }`.
+`{ state: 'saved'|'saving'|'offline'|'failing', pending, waiting, failing, failingCount, lastError, parked, parkedErrors, savedAt }`.
 
 - Nothing is dropped: a failing write is retried with back-off (0.5 s doubling to 30 s) for as long
   as the page lives and stays in localStorage until Convex has it. After 3 errors in a row it
   counts as failing (`failingCount`, `lastError`), but it is still kept and retried.
+- A write the server keeps rejecting (8 times in a row, while not offline; a lost connection never
+  rejects a write, it only delays it) is **parked**: kept, tried again every 5 minutes, counted in
+  `failingCount` and listed in `parked` / `parkedErrors` (`{ fn, error }`), and it no longer holds
+  its lane, so the later writes of its session go on. Parked writes stay parked when another page
+  adopts them.
 - Writes of one lane (the telemetry client uses the session key) go in order; a stuck lane does
   not hold the others.
 - A write answering null (`runs.setup`, `runs.markBlock`, ratings, `blocks.end`,
@@ -108,6 +124,8 @@ session, not from the caller.
 | Query | Arguments | Returns |
 | --- | --- | --- |
 | `summary.byCue` | filter | `{ source, cues: CueSummary[], all: CueSummary, scanned, leftOut: { oldRules } }` (see below) |
+| `summary.cueCounts` | `{ source?, cue, mode? }` | `{ trials, decisions, wellTimed, tooLate, caught, tooEarly, notEnoughData, lastTrialAt }` for one case from `cueCounters` (Wilson intervals; one small document, a few ms): what the live panel shows |
+| `blocks.progress` | `{ key }` | where a block stands, for a page resuming it: `{ trials, nextIndex, decisions, deaths, score, pauses, pausedSeconds, segments }`; null if not stored |
 | `trials.list` | filter + `outcome?`, `engagedOnly?`, `paginationOpts` | Convex page of trials, newest first |
 | `trials.series` | `{ trialId }` | the series unpacked `{ t, left, dist, chasing, px, py }` or null |
 | `trials.get` | `{ id }` | trial + `series` (as above, null if missing) + `clipId`, `participant { number, nickname }`, `block { cue, orderIndex, trialCount }`; null if missing |
@@ -120,7 +138,7 @@ session, not from the caller.
 | `presence.nowPlaying` | `{}` | presence rows updated in the last 20 s (no `pid`) |
 | `runs.session` | `{ sessionKey }` | the run sheet: `participant`, `run` info, `runs[]` (one per block: `cue`, `orderIndex`, `mode`, `trials`, `counted` decisions, `wellTimed`, `caught`, `catches`, `clips`, `outcomes`, `clarity`, `distraction`); null until the session exists |
 | `runs.block` | `{ blockKey }` | one run for its summary: the same tally plus `rows[]` (each trial: `outcome`, `counted`, `total`, `turnLeft`, `eats`, `clipId`) and its rating; null until the block exists |
-| `exports.page` | filter + `kind: 'trials'\|'ratings'\|'blocks'`, `format: 'csv'\|'json'`, `paginationOpts` | `{ header, rows, isDone, continueCursor }`: CSV lines (header separate, the same on every page) or JSON objects; a page may hold fewer rows than asked |
+| `exports.page` | filter + `kind: 'trials'\|'ratings'\|'blocks'`, `format: 'csv'\|'json'`, `paginationOpts` | `{ header, rows, isDone, continueCursor }`: CSV lines (header separate, the same on every page) or JSON objects; a page may hold fewer rows than asked, even none. Ratings and blocks are read through an index on the session, the case or the source (`by_source_created`, `by_source_started`), not the whole table |
 
 ### Downloads (HTTP, streamed page by page, any size)
 
@@ -130,13 +148,19 @@ session, not from the caller.
 
 | File | One row per | Columns |
 | --- | --- | --- |
-| `trials.csv` | trial | ids, `createdAt`, who (`participantLabel`, `participantNumber`, `runNumber`, `orderNumber`, `orderRow`, `simRun`), `source`, `mode`, `cue`, `blockIndex` (run order in the session, from 0), `suggestedPosition` (position of the cue in the suggested order), `pauses`, `pausedSeconds` (of its block), settings, every measure flat (`after.*` spelled out), `outcome`, `rulesVersion`, `inRates`, `decision`, `catchLate`, `hasClip`, `practice` |
+| `trials.csv` | trial | ids, `createdAt`, who (`participantLabel`, `participantNumber`, `runNumber`, `orderNumber`, `orderRow`, `simRun`), `source`, `mode`, `cue`, `blockIndex` (run order in the session, from 0), `suggestedPosition` (position of the cue in the suggested order), `pauses`, `pausedSeconds` (of its block), settings, every measure flat (`after.*` spelled out), the rules-v3 raw measures (`chaseEndDist`, `chaseGain`, `chaseGhost`, `gaveUpEarly`, `chaseLog`), `outcome`, `rulesVersion`, `inRates`, `decision`, `catchLate`, `hasClip`, `practice`. `chaseLog` is one cell: one chase per `;`, each `ghost from at left dist gain end endDist` (seconds since the power started, power left, tiles; `-` for no distance); empty without chases, blank before rules version 3 (`chaseLogCell` / `parseChaseLogCell` in `exports.ts`). Every class can be recomputed from this file alone: `node scripts/csv-reclassify.mjs` |
 | `trials.json` | trial | full row + who + pauses + `decision` + `series` unpacked |
-| `ratings.csv` | questionnaire answer | ids, who, `kind`, `cue`, `blockIndex`, `clarity`, `distraction`, `note`, `clearest`, `leastClear`, `comment` |
-| `blocks.csv` | run of a case (block) | ids, who, `cue`, `blockIndex`, `suggestedPosition`, start/end, `trials`, `engaged`, `deaths`, `score`, `pauses`, `pausedSeconds`, its rating, `appVersion`, `inputType` |
+| `ratings.csv`, `ratings.json` | questionnaire answer | ids, who, `kind`, `cue`, `blockIndex`, `clarity`, `distraction`, `note`, `clearest`, `leastClear`, `comment` |
+| `blocks.csv`, `blocks.json` | run of a case (block) | ids, who, `cue`, `blockIndex`, `suggestedPosition`, start/end, `trials`, `engaged`, `deaths`, `score`, `pauses`, `pausedSeconds`, its rating, `appVersion`, `inputType` |
 
-A failure part way through ends the file with a line `EXPORT FAILED: ...`. Measured on 6,664
-simulated trials: `trials.csv` 2.6 s, `trials.json` (21 MB) 5 s.
+A failure part way through ends the file with a line `EXPORT FAILED: ...`. The stream reads
+pages until one has something to send, so a filter that matches few rows among many (the human
+rows among thousands of simulated ones) or none at all still finishes. Measured on 16,068 simulated
+trials, 1,044 blocks and 1,069 ratings (`node scripts/export-e2e.mjs`, which downloads every file
+for human and bot data, with and without a run filter, in tiny pages and with filters that match
+nothing, and checks the rows against the query; part of `npm run e2e`): `trials.json` 56.7 MB in
+28.5 s, `trials.csv` 6.5 MB in 10 s, blocks and ratings under 0.6 s; the human files in under
+0.1 s.
 
 `live.counters.lastMinute` updates whenever a trial arrives; pass `now` and refresh it every few
 seconds if it must also fall back to 0 while nobody plays.
@@ -156,6 +180,7 @@ seconds if it must also fall back to 0 while nobody plays.
   turnAway:  { n, q10, q25, median, q75, q90, mean, values[] },  // turnLeft of decision trials
   wasted:    { n, ..., mean, values[] },       // power left after early retreats
   nearMisses, oldRules,                        // oldRules: rulesVersion 1 rows, in no rate
+  flagged: { cutByClear },                     // decision trials whose aftermath a maze clear cut short
   clarity: { n, mean }, distraction: { n, mean },               // block ratings
   notEnoughData                                // decisions < 10
 }
@@ -180,7 +205,11 @@ says which was used.
 
 Encoded by `src/lib/telemetry/recorder.ts` (`encodeClip` / `decodeClip`): 20 Hz scenes from 8 s
 before the power ended (or its start, if later: the whole power-up under study rules) to 3 s
-after, always ending on the frame that closed the trial (the death, for a caught one); positions to 1/64 tile, times to
+after, always reaching the frame that closed the trial; a trial that ended in a death is stored
+half a second of game time later (`createWriteQueue` in `write.ts`, used by the browser and the
+simulator), so its clip runs 0.5 s into the dying phase. `layout` (also in `decodeClip(..).meta`)
+is the maze's layout fingerprint (`Maze.layout`, e.g. `w25h25-7415fef2`); clips stored before it
+have none; positions to 1/64 tile, times to
 0.01 s, delta + varint packed. `decodeClip(clipRow)` returns `{ meta, scenes: Scene[], markers }`;
 draw a scene with `renderScene(canvas, scene, { cue })`. Markers: `powerStart`, `eat` (with ghost
 and time left), `turnAway`, `powerEnd`, `death`, each with game time `t`. `numbers` has outcome,
@@ -195,8 +224,11 @@ the participant number and the row of the balanced Latin square used for the sug
 (stored in `cueOrder`). Every run of a case is a block: `orderIndex` is its position in the
 session, `mode` the rules of that run (trials and clips take their `mode` from the block, so a
 session may mix study and arcade runs), `pauses` / `pausedSeconds` how often and how long the game
-was paused. A refresh in the middle of a run closes that block (the power-up in progress is stored
-as `interrupted`) and the next play starts a new block. `practice`, `abandoned` and `study` exist
+was paused. A refresh in the middle of a run stores the power-up in progress as `interrupted` and
+**resumes the same block**: the new page opens a new segment of it, and carries on the trial index
+(no number used twice), the power-ups measured (the run length counts on) and the decision trials,
+from this browser's record (`cc.tel.block.<key>`, `src/lib/telemetry/resume.ts`) or the server's
+(`blocks.progress`), whichever is ahead. Deaths, score and pauses are summed over the segments. `practice`, `abandoned` and `study` exist
 only on rows from an earlier guided study flow and are no longer written.
 
 ## Clearing data
@@ -251,7 +283,10 @@ Places where the definitions needed a concrete reading (full list in `tracker.ts
   closed, end, distance at the end). `rescore()` recomputes `outcome`, `inRates`, `wasted` and
   `gaveUpEarly`; rows without `chaseEndDist` keep their class and their older `rulesVersion`.
 - An aftermath cut short (new power-up, level clear, player left) keeps `after.seen` < 3 and
-  `after.cut`; only `cut: 'quit'` leaves the rates.
+  `after.cut`; only `cut: 'quit'` leaves the rates. Decision trials cut by a maze clear are
+  counted in every rate result as `flagged.cutByClear`.
+- The 6 tiles of range are measured after the player's step; of equal closest points by the
+  player's own steps the first counts (both pinned in `tracker.test.ts`).
 
 ## Practical limits
 
@@ -260,7 +295,8 @@ rows takes about 4 s with or without the series in them (measured: `summary.byCu
 about 5 s for 6,664 bot trials, 80 ms for the few human ones; `.shots/data/bench.sh`). So speed
 comes from reading fewer documents: the dashboard reads `trialDigests` (one per session) instead
 of trial rows. `summary.byCue`, `exports.page` and the run sheet still read trial rows (exports
-in pages, so they work at any size). Convex warns above 4,096 document reads per function and stops at 32,000 (or 16 MiB read);
+in pages, so they work at any size); `summary.byCue` (about 5 s over all simulated data) is only
+used by the simulator page, while the live panel reads `summary.cueCounts` (a few ms). Convex warns above 4,096 document reads per function and stops at 32,000 (or 16 MiB read);
 a trial row is about 1 KB. `live.counters` reads the `counters` table and the last
 minute of trials. Clips and series are never scanned by summaries.
 
