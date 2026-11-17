@@ -13,7 +13,7 @@ import type { GameConfig } from '../game/types';
 import { createRecorder } from '../telemetry/recorder';
 import { createTracker } from '../telemetry/tracker';
 import type { TrialMeasures } from '../telemetry/types';
-import { trialWrite } from '../telemetry/write';
+import { createWriteQueue, trialWrite } from '../telemetry/write';
 import type { TrialAwareness } from './model';
 
 const STEP = 1 / 120;
@@ -73,6 +73,8 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 	const bot = createBot(game, { ...plan.bot, seed: plan.seed, skill: plan.skill });
 	const tracker = createTracker();
 	const recorder = createRecorder();
+	// Like the browser: a trial that ended in a death is stored once its clip holds the dying phase.
+	const queue = createWriteQueue();
 	const out: SimTrial[] = [];
 	// The awareness each power-up was played with, by power serial.
 	const bySerial = new Map<number, TrialAwareness>();
@@ -109,9 +111,11 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 		if (i % STEPS_PER_FRAME === 0) {
 			const scene = game.scene();
 			recorder.push(scene);
-			for (const t of tracker.onScene(scene)) store(t);
+			for (const t of tracker.onScene(scene)) queue.add(t);
+			for (const t of queue.ready(scene.frame.t)) store(t);
 		}
 	}
-	for (const t of tracker.finish()) store(t);
+	for (const t of tracker.finish()) queue.add(t);
+	for (const t of queue.drain()) store(t);
 	return { trials: out, deaths: game.deaths, score: game.peek().score, seconds: played * STEP };
 }

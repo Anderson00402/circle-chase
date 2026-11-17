@@ -1,17 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { STUDY_CONFIG } from '../game/engine/game';
 import type { Frame, Scene } from '../game/types';
-import { CLIP_BEFORE, createRecorder, decodeClip, type EncodedClip } from './recorder';
+import { CLIP_BEFORE, DYING_TAIL, createRecorder, deathAt, decodeClip, type EncodedClip } from './recorder';
+import { mazeById } from '../game/engine/mazes';
 import { createTracker } from './tracker';
 import { playScripted, type Policy } from './testing';
-import { trialWrite, wantsClip } from './write';
+import { createWriteQueue, trialWrite, wantsClip } from './write';
 import type { TrialMeasures } from './types';
 import { packSeries, unpackSeries } from '#convex/lib/series.ts';
 
-/** Plays a scripted study game, keeping every scene so decoded clips can be checked against it. */
+/**
+ * Plays a scripted study game, keeping every scene so decoded clips can be checked against it.
+ * Trials go through the writer's queue, as in the browser (a trial ended by a death waits for its
+ * dying phase).
+ */
 function record(seconds = 120, policy: Policy = { retreatAt: 0.8 }, seed = 11) {
 	const tracker = createTracker();
 	const recorder = createRecorder();
+	const queue = createWriteQueue();
 	const originals = new Map<number, { frame: Frame; dots: Uint8Array }>();
 	const clips: { trial: TrialMeasures; clip: EncodedClip }[] = [];
 	const trials: TrialMeasures[] = [];
@@ -21,7 +27,8 @@ function record(seconds = 120, policy: Policy = { retreatAt: 0.8 }, seed = 11) {
 		const k = Math.round(scene.frame.t * 1000);
 		if (!originals.has(k)) originals.set(k, { frame: scene.frame, dots: scene.dots.slice() });
 		recorder.push(scene);
-		for (const trial of tracker.onScene(scene)) {
+		for (const trial of tracker.onScene(scene)) queue.add(trial);
+		for (const trial of queue.ready(scene.frame.t)) {
 			trials.push(trial);
 			const clip = recorder.clipFor(trial, 'timer-bar');
 			if (clip) clips.push({ trial, clip });
@@ -101,7 +108,7 @@ describe('clips', () => {
 		expect(eatEvents.length).toBe(inClip.length);
 	});
 
-	it('a clip of a caught trial ends on the death: the die event and the dying phase are in it', () => {
+	it('a clip of a trial that ended in a death shows it: the die event and half a second of the dying phase', () => {
 		// A player who never backs off gets caught now and then.
 		const deaths = [1, 2, 3, 4].flatMap((seed) => record(150, 'chase', seed).clips).filter((c) => c.trial.after.died);
 		expect(deaths.length).toBeGreaterThan(2);
@@ -109,12 +116,17 @@ describe('clips', () => {
 			const { scenes, markers } = decodeClip(clip);
 			const last = scenes.at(-1)!.frame;
 			const died = trial.endedAt + trial.after.seen;
-			expect(Math.abs(last.t - died)).toBeLessThan(0.02); // within a frame (stored times are rounded)
+			expect(deathAt(trial)).toBeCloseTo(died, 2);
+			// The clip runs on half a second past the death (within a frame; stored times are rounded).
+			expect(Math.abs(last.t - (died + DYING_TAIL))).toBeLessThan(0.06);
 			expect(last.phase).toBe('dying');
-			expect(last.events.some((e) => e.type === 'die')).toBe(true);
+			const dieAt = scenes.find((s) => s.frame.events.some((e) => e.type === 'die'))!.frame;
+			// The die event is on the 20 Hz frame at or just after the death.
+			expect(Math.abs(dieAt.t - died)).toBeLessThan(0.06);
+			expect(scenes.filter((s) => s.frame.t > died + 0.01).every((s) => s.frame.phase === 'dying')).toBe(true);
 			expect(scenes.flatMap((s) => s.frame.events).filter((e) => e.type === 'die')).toHaveLength(1);
 			expect(markers.at(-1)!.kind).toBe('death');
-			expect(Math.abs(markers.at(-1)!.t - last.t)).toBeLessThan(0.02);
+			expect(Math.abs(markers.at(-1)!.t - died)).toBeLessThan(0.02);
 			// No frame is in the clip twice.
 			for (let i = 1; i < scenes.length; i++) expect(scenes[i].frame.t).toBeGreaterThan(scenes[i - 1].frame.t);
 		}
@@ -122,7 +134,8 @@ describe('clips', () => {
 
 	it('a clip always ends on the latest frame, on the 20 Hz grid or not', () => {
 		for (const { trial, clip } of clips) {
-			const closed = trial.endReason === 'expired' ? trial.endedAt + trial.after.seen : trial.endedAt;
+			const death = deathAt(trial);
+			const closed = death !== null ? death + DYING_TAIL : trial.endReason === 'expired' ? trial.endedAt + trial.after.seen : trial.endedAt;
 			expect(clip.t1).toBeGreaterThan(closed - 0.02);
 			expect(clip.t1).toBeLessThan(closed + 0.05 + 1e-6);
 		}
@@ -175,6 +188,32 @@ describe('clips', () => {
 		expect(clip!.markers.find((m) => m.kind === 'powerEnd')!.t).toBeCloseTo(trial.endedAt, 2);
 		// The same through the shared write path.
 		expect(trialWrite(trial, recorder, { key: 'k', sessionKey: 's', blockKey: 'b', trialIndex: 0, cue: 'none', sound: true, reducedMotion: false, inputType: 'none', difficulty: 'normal' }).clip).toBeTruthy();
+	});
+
+	it('every clip knows the layout of its maze', () => {
+		for (const { clip } of clips) {
+			expect(clip.layout).toBeTruthy();
+			expect(clip.layout).toBe(mazeById(clip.mazeId).layout);
+			expect(decodeClip(clip).meta.layout).toBe(clip.layout);
+		}
+	});
+
+	it('the write queue holds a trial ended by a death for its dying phase, and keeps the order', () => {
+		const q = createWriteQueue();
+		const base = trials.find((t) => !t.after.died && t.endReason === 'expired')!;
+		const died = { ...base, serial: 2, after: { ...base.after, died: true, timeToCaught: 1, seen: 1 } };
+		const next = { ...base, serial: 3 };
+		q.add(died);
+		q.add(next);
+		const d = deathAt(died)!;
+		expect(q.ready(d + 0.2)).toEqual([]);
+		expect(q.ready(d + DYING_TAIL).map((t) => t.serial)).toEqual([2, 3]);
+		// Time going back (a new game) or the end of a run lets everything go.
+		q.add(died);
+		expect(q.ready(0).map((t) => t.serial)).toEqual([2]);
+		q.add(died);
+		expect(q.drain().map((t) => t.serial)).toEqual([2]);
+		expect(q.size).toBe(0);
 	});
 
 	it('series pack round trip', () => {

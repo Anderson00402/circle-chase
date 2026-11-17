@@ -19,7 +19,7 @@ import { createRecorder } from './recorder';
 import { mergeProgress, readLocal, writeLocal } from './resume';
 import { createTracker } from './tracker';
 import type { LiveReadout, Outcome, TrialMeasures } from './types';
-import { APP_VERSION, trialWrite } from './write';
+import { APP_VERSION, createWriteQueue, trialWrite } from './write';
 import { isDecision } from '#convex/lib/rules.ts';
 
 export { APP_VERSION };
@@ -202,6 +202,8 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 	// ----- measuring -----
 	const tracker = createTracker();
 	const recorder = createRecorder();
+	// A trial that ended in a death is stored half a second later, so its clip shows the death.
+	const queue = createWriteQueue();
 	// A run resumed after a refresh carries on counting (resume.ts): this browser's record now, the
 	// server's once it answers, if no trial has closed on this page by then.
 	const seed = readLocal(blockKey);
@@ -250,7 +252,8 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		if (!opened) open();
 		game = g;
 		recorder.push(scene);
-		for (const t of tracker.onScene(scene)) store(t);
+		for (const t of tracker.onScene(scene)) queue.add(t);
+		for (const t of queue.ready(scene.frame.t)) store(t);
 		const f = scene.frame;
 		lastScore = f.score;
 		lastLevel = f.level;
@@ -268,7 +271,8 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 
 	function onStart(g: Game) {
 		if (game && game !== g) {
-			for (const t of tracker.finish()) store(t);
+			for (const t of tracker.finish()) queue.add(t);
+			for (const t of queue.drain()) store(t);
 			deathsBefore += game.deaths;
 			scoreBefore += lastScore;
 		}
@@ -311,7 +315,8 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		if (ended) return;
 		ended = true;
 		if (!opened) return;
-		for (const t of tracker.finish()) store(t);
+		for (const t of tracker.finish()) queue.add(t);
+		for (const t of queue.drain()) store(t);
 		enqueue('blockEnd', {
 			key: blockKey, deaths: deathsBefore + (game?.deaths ?? 0), score: scoreBefore + lastScore,
 			pauses, pausedSeconds: Math.round(pausedSeconds * 10) / 10, segment: instance

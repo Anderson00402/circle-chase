@@ -157,6 +157,8 @@ export const clipFields = {
 	v: num,
 	cue: v.string(),
 	mazeId: v.string(),
+	/** Fingerprint of the maze layout the clip was played on (`Maze.layout`); absent on older clips. */
+	layout: v.optional(v.string()),
 	level: num,
 	t0: num,
 	t1: num,

@@ -5,7 +5,7 @@
  */
 import { packSeries } from '#convex/lib/series.ts';
 import pkg from '../../../package.json';
-import type { Recorder } from './recorder';
+import { DYING_TAIL, deathAt, type Recorder } from './recorder';
 import type { TrialMeasures } from './types';
 
 /** Injected by vite.config.ts (`define`): package version + git commit. */
@@ -42,5 +42,42 @@ export function trialWrite(trial: TrialMeasures, recorder: Recorder, c: TrialWri
 		sound: c.sound, reducedMotion: c.reducedMotion, inputType: c.inputType,
 		appVersion: c.appVersion ?? APP_VERSION, difficulty: c.difficulty,
 		...m, series: packSeries(series), ...(clip ? { clip } : {})
+	};
+}
+
+/**
+ * Trials on their way to `trialWrite`, in order. A trial that ended in a death waits until
+ * `DYING_TAIL` seconds of game time have passed since the death, so its clip shows the dying phase;
+ * every other trial (and every trial behind a waiting one) goes as soon as it can. `drain` lets
+ * everything go now (end of the run, a new game, the page closing).
+ */
+export interface WriteQueue {
+	add(trial: TrialMeasures): void;
+	/** Trials ready at game time `t`, in the order they closed. */
+	ready(t: number): TrialMeasures[];
+	/** Everything still waiting. */
+	drain(): TrialMeasures[];
+	readonly size: number;
+}
+
+export function createWriteQueue(tail = DYING_TAIL): WriteQueue {
+	let waiting: TrialMeasures[] = [];
+	return {
+		add(trial) { waiting.push(trial); },
+		ready(t) {
+			let n = 0;
+			while (n < waiting.length) {
+				const d = deathAt(waiting[n]);
+				// Wait while within the tail after the death. Stored times are rounded, so the death may
+				// read a few milliseconds late; only a clear step back in time means a new game.
+				if (d !== null && t < d + tail - 1e-9 && t > d - 0.1) break;
+				n++;
+			}
+			const out = waiting.slice(0, n);
+			waiting = waiting.slice(n);
+			return out;
+		},
+		drain() { const out = waiting; waiting = []; return out; },
+		get size() { return waiting.length; }
 	};
 }

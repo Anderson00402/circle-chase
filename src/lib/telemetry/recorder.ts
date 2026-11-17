@@ -5,8 +5,13 @@
  * back `Scene[]` the renderer can draw with any cue, plus markers and the trial's key numbers.
  *
  * The recorder also holds the very latest frame, on the 20 Hz grid or not. `clipFor` adds it before
- * cutting, so a clip always ends on the frame that closed the trial: the frame of a death (its
- * `die` event, the `dying` phase) is in the clip of a caught trial.
+ * cutting, so a clip always reaches the frame that closed the trial. A trial that ended in a death
+ * (during the power or in its aftermath) is cut `DYING_TAIL` seconds of game time later (the writer
+ * waits for that, `createWriteQueue` in write.ts), so its clip shows the death itself: the `die`
+ * event and half a second of the `dying` phase.
+ *
+ * Each clip stores the fingerprint of its maze's layout (`Maze.layout`), so a replay can tell when
+ * the maze it would draw on is no longer the one that was played.
  *
  * Binary layout (version 1), all integers as delta encoded zigzag varints (see convex/lib/pack.ts):
  *   version, scene count, ghost count, dots length, starting dots (raw bytes),
@@ -25,6 +30,15 @@ export const CLIP_HZ = 20;
 /** Seconds before the end of the power: 8 covers every power-up of the study (4-8 s) from its first frame. */
 export const CLIP_BEFORE = 8;
 export const CLIP_AFTER = 3;
+/** Seconds of the dying phase kept after a death that ended a trial. */
+export const DYING_TAIL = 0.5;
+
+/** Game time of the death that ended a trial (during the power or in the aftermath), or null. */
+export function deathAt(t: Pick<TrialMeasures, 'endReason' | 'endedAt' | 'diedDuring' | 'after'>): number | null {
+	if (t.after.died) return t.endedAt + (t.after.timeToCaught ?? t.after.seen);
+	if (t.endReason === 'died' || t.diedDuring) return t.endedAt;
+	return null;
+}
 const VERSION = 1;
 const POS = 64; // position steps per tile
 const CS = 100; // time steps per second
@@ -55,6 +69,11 @@ export interface ClipMeta {
 	v: number;
 	cue: string;
 	mazeId: string;
+	/**
+	 * Fingerprint of the maze layout the clip was played on (`Maze.layout`, e.g. "w25h25-7415fef2").
+	 * Absent on clips stored before it was recorded.
+	 */
+	layout?: string;
 	level: number;
 	/** Game time of the first and last scene. */
 	t0: number;
@@ -79,6 +98,7 @@ interface Kept {
 	frame: Frame;
 	dots: Uint8Array;
 	mazeId: string;
+	layout?: string;
 }
 
 export interface Recorder {
@@ -129,15 +149,17 @@ export function createRecorder(opts: { keep?: number } = {}): Recorder {
 			const f = scene.frame;
 			if (buf.length && f.t < buf[buf.length - 1].frame.t - 1e-9) wipe();
 			if (f.events.length) pending.push(...f.events);
-			const k: Kept = { frame: f, dots: scene.dots.slice(), mazeId: scene.maze.id };
+			const k: Kept = { frame: f, dots: scene.dots.slice(), mazeId: scene.maze.id, ...(scene.maze.layout ? { layout: scene.maze.layout } : {}) };
 			if (f.t + 1e-9 < next) { latest = k; return; }
 			keepFrame(k);
 		},
 		clipFor(trial, cue) {
 			flush();
 			const from = Math.max(trial.startedAt, trial.endedAt - CLIP_BEFORE) - 1e-6;
-			// One clip step past the 3 s, so the frame that closed the trial is in.
-			const to = trial.endedAt + CLIP_AFTER + 1 / CLIP_HZ;
+			// One clip step past the 3 s, so the frame that closed the trial is in; past a death, its
+			// dying phase too.
+			const death = deathAt(trial);
+			const to = Math.max(trial.endedAt + CLIP_AFTER, death === null ? -Infinity : death + DYING_TAIL) + 1 / CLIP_HZ;
 			const kept = buf.filter((k) => k.frame.t >= from && k.frame.t <= to && k.frame.level === trial.level);
 			if (kept.length < 2) return null;
 			return encodeClip(kept, cue, trial);
@@ -175,7 +197,7 @@ function numbersFor(t: TrialMeasures): ClipNumbers {
 	};
 }
 
-export function encodeClip(kept: { frame: Frame; dots: Uint8Array; mazeId: string }[], cue: string, trial: TrialMeasures): EncodedClip {
+export function encodeClip(kept: { frame: Frame; dots: Uint8Array; mazeId: string; layout?: string }[], cue: string, trial: TrialMeasures): EncodedClip {
 	const n = kept.length;
 	const frames = kept.map((k) => k.frame);
 	const G = frames[0].ghosts.length;
@@ -242,7 +264,7 @@ export function encodeClip(kept: { frame: Frame; dots: Uint8Array; mazeId: strin
 	w.text(JSON.stringify({ events, popups }));
 
 	return {
-		v: VERSION, cue, mazeId: kept[0].mazeId, level: frames[0].level,
+		v: VERSION, cue, mazeId: kept[0].mazeId, ...(kept[0].layout ? { layout: kept[0].layout } : {}), level: frames[0].level,
 		t0: frames[0].t, t1: frames[n - 1].t, hz: CLIP_HZ, scenes: n,
 		markers: markersFor(trial), numbers: numbersFor(trial), data: w.finish()
 	};
