@@ -97,7 +97,7 @@
 		powerStart: 'Power on', eat: 'Ate', turnAway: 'Turned away', powerEnd: 'Power out', death: 'Caught'
 	};
 	const COLOR: Record<Marker['kind'], string> = {
-		powerStart: 'var(--accent)', eat: 'var(--scared)', turnAway: 'var(--focus)', powerEnd: 'var(--ink)', death: 'var(--bad)'
+		powerStart: 'var(--accent)', eat: 'var(--good)', turnAway: 'var(--focus)', powerEnd: 'var(--ink)', death: 'var(--bad)'
 	};
 	const GHOST_COLOR: Record<string, string> = { hunter: 'var(--hunter)', ambusher: 'var(--ambusher)', guard: 'var(--guard)', drifter: 'var(--drifter)' };
 
@@ -267,7 +267,7 @@
 	.flag-t { font: 600 11px var(--font-body); }
 	.dist { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 	.dist.chase { stroke: var(--accent); stroke-width: 3; }
-	.dist.calm { stroke: var(--scared); stroke-width: 1.75; opacity: 0.75; }
+	.dist.calm { stroke: var(--ink-faint); stroke-width: 1.75; }
 	.dist.danger { stroke: var(--bad); stroke-width: 2.25; }
 	.nodata { fill: var(--ink-faint); font: 12px var(--font-body); text-anchor: middle; }
 	.play { stroke: var(--ink); stroke-width: 2; }

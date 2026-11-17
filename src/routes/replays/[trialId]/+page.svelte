@@ -718,7 +718,7 @@
 	.legend .what { color: var(--ink-faint); }
 	.sw { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
 	.sw.chase { background: var(--accent); height: 4px; }
-	.sw.calm { background: var(--scared); opacity: 0.75; }
+	.sw.calm { background: var(--ink-faint); }
 	.sw.danger { background: var(--bad); }
 	.sw.ideal { background: var(--good); height: 8px; opacity: 0.6; }
 	.marks { display: flex; flex-wrap: wrap; gap: 6px; padding: var(--space-3) 0 0 40px; }
@@ -743,6 +743,7 @@
 	.mk.death { color: var(--bad); }
 	.mk.turnAway { color: var(--focus); }
 	.mk.powerStart { color: var(--accent); }
+	.mk.eat { color: var(--good); }
 
 	.tools { display: flex; flex-direction: column; gap: var(--space-2); }
 	.tool-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }

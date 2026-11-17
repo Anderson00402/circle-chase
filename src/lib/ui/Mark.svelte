@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * The Circle Chase mark: a countdown ring that is almost empty, a chaser slipping into the gap,
-	 * and a scared blue dot in the middle. Same drawing as src/lib/assets/favicon.svg.
+	 * and a light blue dot in the middle. Same drawing as src/lib/assets/favicon.svg.
 	 */
 	interface Props {
 		size?: number;
