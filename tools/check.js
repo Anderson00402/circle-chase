@@ -141,4 +141,51 @@ for (const key of Object.keys(Core.DIFFICULTY)) {
   console.log(`${key}: random play (your ghost steered at random) ran without errors`);
 }
 
+// Play stats, playing as the ghost: survival runs from Start until the circle eats its last dot.
+// Catching it (even winning a level) doesn't stop the clock, and no power-ups or lives are saved.
+const near = (a, b) => a != null && Math.abs(a - b) < 0.011;
+const stat = (name, ok, detail) => {
+  if (!ok) fail++;
+  console.log(`stats, ${name}: ${detail} -> ${ok ? 'OK' : 'FAIL'}`);
+};
+{
+  const g = Core.createGame('normal');
+  const s = Core.createStats(g);
+  g.time = 30;
+  ['die', 'die', 'die', 'clear', 'level', 'power', 'eat'].forEach(t => s.event(t));
+  const afterWin = s.survival();
+  g.time = 50;
+  s.event('escaped');
+  g.time = 52.2; // GOT AWAY, then GAME OVER
+  const shown = s.survival();
+  const { play, powers } = s.finish('game_over');
+  stat('ghost: survival stops when the circle escapes', near(afterWin, 30) && near(shown, 50) && near(play.survival_s, 50) &&
+    powers.length === 0 && play.life_s.length === 0 && play.ended === 'game_over' && s.finish('quit') === null,
+  `${afterWin}s after a won level, ${shown}s after the escape, saved ${play.survival_s}s, ${powers.length} power-ups`);
+}
+{
+  // Real games: the clock stops at the moment the circle eats its last dot.
+  const bad = [];
+  let games = 0;
+  for (const key of Object.keys(Core.DIFFICULTY)) {
+    let s, escapedAt = null;
+    const g = Core.createGame(key, type => { s.event(type); if (type === 'escaped') escapedAt = g.time; });
+    s = Core.createStats(g);
+    for (let i = 0; i < 120 * 900 && g.state !== 'over'; i++) {
+      if (i % 30 === 0) g.steer(Math.floor(Math.random() * 4));
+      // after a minute, leave the circle one dot so the game ends
+      if (i === 120 * 60 && g.state === 'playing') {
+        for (let j = 0; j < g.maze.dots.length && g.maze.left > 1; j++) if (g.maze.dots[j]) { g.maze.dots[j] = 0; g.maze.left--; }
+      }
+      g.update(1 / 120);
+      s.step(1 / 120);
+    }
+    games++;
+    const data = s.finish(g.state === 'over' ? 'game_over' : 'quit');
+    if (g.state === 'over' && !(escapedAt && near(data.play.survival_s, escapedAt) && g.time > escapedAt + 1)) bad.push(`${key}: saved ${data.play.survival_s} vs escape ${escapedAt}`);
+    if (g.state !== 'over' && !near(data.play.survival_s, g.time)) bad.push(`${key}: quit at ${g.time} saved ${data.play.survival_s}`);
+  }
+  stat('ghost: real games', !bad.length, `${games} games${bad.length ? '; ' + bad.join('; ') : ''}`);
+}
+
 process.exit(fail ? 1 : 0);
