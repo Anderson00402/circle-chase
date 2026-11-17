@@ -13,19 +13,23 @@ import { rowOf } from './lib/digest';
 const TABLES: TableNames[] = ['clips', 'trialSeries', 'trialDigests', 'trials', 'ratings', 'blocks', 'presence', 'sessions', 'participants', 'counters'];
 /** Clips are the heavy rows (10-15 KB); keep a batch well inside one mutation's limits. */
 const BATCH: Partial<Record<TableNames, number>> = { clips: 200, trialDigests: 20 };
-const DEFAULT_BATCH = 1000;
+const DEFAULT_BATCH = 500;
+/** Rows one call may read in all, well under Convex's 4,096 reads per function. */
+const READ_BUDGET = 2000;
 
 async function purge(ctx: MutationCtx, onlyBots: boolean) {
 	const deleted: Record<string, number> = {};
-	let more = false;
+	let more = false, budget = READ_BUDGET;
 	for (const table of TABLES) {
-		const limit = BATCH[table] ?? DEFAULT_BATCH;
+		if (budget <= 0) { more = true; break; }
+		const limit = Math.min(BATCH[table] ?? DEFAULT_BATCH, budget);
 		const q = ctx.db.query(table);
 		const rows = onlyBots
 			? await q.filter((f) => f.eq(f.field('source'), 'bot')).take(limit)
 			: await q.take(limit);
 		for (const r of rows) await ctx.db.delete(r._id);
 		deleted[table] = rows.length;
+		budget -= rows.length;
 		if (rows.length === limit) more = true;
 	}
 	return { deleted, more };
