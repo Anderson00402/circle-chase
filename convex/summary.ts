@@ -1,4 +1,7 @@
+import { v } from 'convex/values';
 import { query } from './_generated/server';
+import { mode, sourceFilter } from './validators';
+import { ENOUGH, wilson } from './lib/stats';
 import type { Doc } from './_generated/dataModel';
 import { filterArgs, scanTrials, type Filter } from './lib/filters';
 import { summarize, type CueSummary } from './lib/stats';
@@ -36,6 +39,39 @@ export const byCue = query({
 			scanned: trials.length,
 			/** Eligible trials left out of every rate because they were recorded before the current rules. */
 			leftOut: all.leftOut
+		};
+	}
+});
+
+/**
+ * What is stored for one case, for the play page's live panel: trials, decision trials, and the
+ * share caught and turned away in time (Wilson intervals). Reads the running totals in
+ * `cueCounters` (one small document per source, case and rules), never trial rows, so it stays
+ * instant however much is stored and does not rerun a scan after every new trial.
+ */
+export const cueCounts = query({
+	args: { source: v.optional(sourceFilter), cue: v.string(), mode: v.optional(mode) },
+	handler: async (ctx, { source: src = 'human', cue, mode: m }) => {
+		const sources = src === 'all' ? (['human', 'bot'] as const) : [src];
+		const rows: Doc<'cueCounters'>[] = [];
+		for (const s of sources) {
+			rows.push(...await ctx.db.query('cueCounters').withIndex('by_source_cue', (i) => {
+				const q = i.eq('source', s).eq('cue', cue);
+				return m ? q.eq('mode', m) : q;
+			}).collect());
+		}
+		const sum = (k: 'trials' | 'decisions' | 'timely' | 'early' | 'overstayed' | 'caught') => rows.reduce((n, r) => n + r[k], 0);
+		const n = sum('decisions');
+		return {
+			source: src, cue, mode: m ?? null,
+			trials: sum('trials'),
+			decisions: n,
+			wellTimed: wilson(sum('timely'), n),
+			tooLate: wilson(sum('overstayed') + sum('caught'), n),
+			caught: wilson(sum('caught'), n),
+			tooEarly: wilson(sum('early'), n),
+			notEnoughData: n < ENOUGH,
+			lastTrialAt: rows.reduce<number | null>((a, r) => (r.lastTrialAt !== null && (a === null || r.lastTrialAt > a) ? r.lastTrialAt : a), null)
 		};
 	}
 });

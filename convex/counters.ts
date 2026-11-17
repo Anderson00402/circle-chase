@@ -1,6 +1,7 @@
 /**
  * Running totals per source (human, bot) for the live header (`live.counters`), so it reads one
- * small document instead of every trial. The write mutations add to them as rows arrive
+ * small document instead of every trial, and per source, case and rules (`cueCounters`) for the
+ * play page's live panel (`summary.cueCounts`). The write mutations add to them as rows arrive
  * (`participants.ensure`, `sessions.start`, `trials.save`); `admin.reclassify` and
  * `rebuildCounters` recount them from the tables. Study warm-up (practice) trials are not counted,
  * as everywhere else.
@@ -10,7 +11,7 @@ import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import { internalMutation, mutation, type MutationCtx } from './_generated/server';
 import { RULES_VERSION, isDecision } from './lib/rules';
-import { source } from './validators';
+import { mode, source } from './validators';
 
 export const counterFields = {
 	source,
@@ -27,6 +28,46 @@ export const counterFields = {
 	participants: v.number(),
 	lastTrialAt: v.union(v.number(), v.null())
 };
+
+export const cueCounterFields = {
+	source,
+	cue: v.string(),
+	mode,
+	trials: v.number(),
+	/** Decision trials (current rules) and how they ended. */
+	decisions: v.number(),
+	timely: v.number(),
+	early: v.number(),
+	overstayed: v.number(),
+	caught: v.number(),
+	lastTrialAt: v.union(v.number(), v.null())
+};
+type CueCounts = Pick<Doc<'cueCounters'>, 'trials' | 'decisions' | 'timely' | 'early' | 'overstayed' | 'caught' | 'lastTrialAt'>;
+type CueKey = { source: 'human' | 'bot'; cue: string; mode: 'study' | 'arcade' };
+
+/** What one stored trial adds to its case's totals. */
+export function cueCounts(t: Pick<Doc<'trials'>, 'inRates' | 'outcome' | 'rulesVersion' | 'createdAt'>): CueCounts {
+	const d = isDecision(t);
+	return {
+		trials: 1, decisions: d ? 1 : 0,
+		timely: d && t.outcome === 'timely-retreat' ? 1 : 0, early: d && t.outcome === 'early-retreat' ? 1 : 0,
+		overstayed: d && t.outcome === 'overstayed' ? 1 : 0, caught: d && t.outcome === 'caught' ? 1 : 0,
+		lastTrialAt: t.createdAt
+	};
+}
+
+/** Add to the totals of one case (creates the document on first use). */
+export async function bumpCue(ctx: MutationCtx, key: CueKey, add: CueCounts) {
+	const row = await ctx.db.query('cueCounters').withIndex('by_source_cue', (i) => i.eq('source', key.source).eq('cue', key.cue).eq('mode', key.mode)).unique();
+	const next = {
+		trials: (row?.trials ?? 0) + add.trials, decisions: (row?.decisions ?? 0) + add.decisions,
+		timely: (row?.timely ?? 0) + add.timely, early: (row?.early ?? 0) + add.early,
+		overstayed: (row?.overstayed ?? 0) + add.overstayed, caught: (row?.caught ?? 0) + add.caught,
+		lastTrialAt: Math.max(row?.lastTrialAt ?? 0, add.lastTrialAt ?? 0) || null
+	};
+	if (row) await ctx.db.patch(row._id, next);
+	else await ctx.db.insert('cueCounters', { ...key, ...next });
+}
 
 type Counts = Omit<Doc<'counters'>, '_id' | '_creationTime' | 'source'>;
 const ZERO: Counts = { trials: 0, engaged: 0, inRates: 0, decisions: 0, oldRules: 0, clips: 0, sessions: 0, participants: 0, lastTrialAt: null };
@@ -69,6 +110,7 @@ export const rebuildStep = internalMutation({
 	handler: async (ctx, { stage, cursor }) => {
 		if (stage === 'reset') {
 			for (const row of await ctx.db.query('counters').collect()) await ctx.db.delete(row._id);
+			for (const row of await ctx.db.query('cueCounters').collect()) await ctx.db.delete(row._id);
 			await ctx.scheduler.runAfter(0, internal.counters.rebuildStep, { stage: 'trials', cursor: null });
 			return;
 		}
@@ -83,7 +125,18 @@ export const rebuildStep = internalMutation({
 		let page: { page: unknown[]; isDone: boolean; continueCursor: string };
 		if (stage === 'trials') {
 			const p = await ctx.db.query('trials').paginate({ numItems: PAGE, cursor });
-			for (const t of p.page) if (!t.practice) sum(t.source, trialCounts(t, !!t.clipId));
+			const perCue = new Map<string, { key: CueKey; add: CueCounts }>();
+			for (const t of p.page) {
+				if (t.practice) continue;
+				sum(t.source, trialCounts(t, !!t.clipId));
+				const id = `${t.source}|${t.cue}|${t.mode}`;
+				const c = cueCounts(t);
+				const was = perCue.get(id);
+				if (!was) perCue.set(id, { key: { source: t.source, cue: t.cue, mode: t.mode }, add: c });
+				else for (const k of ['trials', 'decisions', 'timely', 'early', 'overstayed', 'caught'] as const) was.add[k] += c[k];
+				if (was) was.add.lastTrialAt = Math.max(was.add.lastTrialAt ?? 0, c.lastTrialAt ?? 0);
+			}
+			for (const { key, add: a } of perCue.values()) await bumpCue(ctx, key, a);
 			page = p;
 		} else if (stage === 'sessions') {
 			const p = await ctx.db.query('sessions').paginate({ numItems: PAGE, cursor });

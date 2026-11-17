@@ -11,7 +11,7 @@ import { v } from 'convex/values';
 import { clipFields, device, inputType, measures, mode, packedSeries, source, trialContext, viewport } from './validators';
 import { runInfo, studyInfo } from './runs';
 import { simInfo } from './sim';
-import { counterFields } from './counters';
+import { counterFields, cueCounterFields } from './counters';
 import { trialDigestTable } from './lib/digest';
 import { replayDigestTable } from './lib/replayDigest';
 
@@ -225,5 +225,8 @@ export default defineSchema({
 		.index('by_updated', ['updatedAt']),
 
 	/** Running totals per source for the live header, kept by the write mutations (convex/counters.ts). */
-	counters: defineTable(counterFields).index('by_source', ['source'])
+	counters: defineTable(counterFields).index('by_source', ['source']),
+
+	/** Running totals per source, case and rules, for the live panel (`summary.cueCounts`); kept like `counters`. */
+	cueCounters: defineTable(cueCounterFields).index('by_source_cue', ['source', 'cue', 'mode'])
 });

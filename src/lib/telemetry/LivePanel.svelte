@@ -24,8 +24,9 @@
 	let { live, cue, cueName, participant = '' }: Props = $props();
 
 	// What is stored for this case (same source as this player), live from Convex.
-	const stored = useQuery(api.summary.byCue, () => ({ source: live.source, cue }));
-	const here = $derived(stored.data?.cues.find((c) => c.cue === cue) ?? null);
+	// Running totals for the case (one small document), not a scan of its trials.
+	const stored = useQuery(api.summary.cueCounts, () => ({ source: live.source, cue }));
+	const here = $derived(stored.data && stored.data.trials > 0 ? stored.data : null);
 
 	const state = $derived(live.readout?.state ?? 'idle');
 	const last = $derived(live.recent[0] ?? null);

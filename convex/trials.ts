@@ -6,7 +6,7 @@ import type { Doc } from './_generated/dataModel';
 import type { QueryCtx } from './_generated/server';
 import { unpackSeries } from './lib/series';
 import { clipFields, measures, outcome, packedSeries, trialContext } from './validators';
-import { bump, trialCounts } from './counters';
+import { bump, bumpCue, cueCounts, trialCounts } from './counters';
 import { rescore } from './lib/rules';
 import { syncDigest } from './lib/digest';
 import { syncReplayDigest } from './lib/replayDigest';
@@ -59,6 +59,7 @@ export const save = mutation({
 		await syncDigest(ctx, stored, series);
 		await syncReplayDigest(ctx, stored);
 		if (!b.practice) await bump(ctx, s.source, trialCounts({ ...trial, createdAt: now }, !!clip));
+		if (!b.practice) await bumpCue(ctx, { source: s.source, cue: b.cue, mode: b.mode }, cueCounts({ ...trial, createdAt: now }));
 		await ctx.db.patch(b._id, { trialCount: b.trialCount + 1, engagedCount: b.engagedCount + (trial.engaged ? 1 : 0) });
 		await ctx.db.patch(s._id, { trials: s.trials + 1, lastActiveAt: now });
 		return { trialId, clipId };

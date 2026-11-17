@@ -942,3 +942,42 @@ describe('tracker: every decision trial has a last chase that satisfies the defi
 		console.log('bot property check', { decisions, turns, overstays, gaveUpEarly: early, classes });
 	}, 120_000);
 });
+
+describe('tracker: the readings STUDY.md pins down', () => {
+	// Runs in from `start` tiles before a ghost standing at 18.7 at 4.2 tiles/s (0.07 a frame) for 43
+	// frames (3.01 tiles), from 2.5 s into a 5 s power, then runs back.
+	function approachFrom(start: number) {
+		const gx = 18.7, x0 = gx - start, t0 = 2.5, t1 = t0 + 43 / 60;
+		return scenario({ total: 5, px: line([0, x0], [t0, x0], [t1, x0 + 3.01], [t1 + 3.01 / 4.2, x0]), gx: () => gx });
+	}
+
+	it('"within 6 tiles" is the distance after the step: the step that comes within range counts', () => {
+		// 6.05 -> 5.98: the first step already counts, so the 43 steps close 3.01 tiles: a chase.
+		// (Measured before the step it would not count, and 2.94 tiles would be no chase.)
+		const t = approachFrom(6.05).trials[0];
+		expect(t.chases).toBe(1);
+		expect(t.chaseGain!).toBeCloseTo(3.01, 2);
+		expect(t.outcome).toBe('timely-retreat');
+		// 6.12 -> 6.05: that step ends outside the range and does not count; 2.94 tiles is no chase.
+		const out = approachFrom(6.12).trials[0];
+		expect(out.chases).toBe(0);
+		expect(out.outcome).toBe('not-engaged');
+	});
+
+	it('of two equally close points by the player\'s own steps, the turn-away is the first', () => {
+		// In to 1.5 tiles at 3.8 s, back half a tile, in again to the same point at 4.05 s, then still
+		// (no progress for 0.5 s ends the chase) and away. The closest point is the one at 3.8 s.
+		const px = line([0, 2], [3.8, 17.2], [3.925, 16.7], [4.05, 17.2], [4.7, 17.2], [8.5, 2]);
+		const t = scenario({ total: 5, px, gx: () => 18.7 }).trials[0];
+		expect(t.turnAt!).toBeCloseTo(3.8, 1);
+		expect(t.turnLeft!).toBeCloseTo(1.2, 1);
+		expect(t.turnDist!).toBeCloseTo(1.5, 1);
+	});
+
+	it('the closest point is by the player\'s own steps, not the smallest distance: a ghost walking in does not move it', () => {
+		// The player stops 2 tiles from the ghost at 3.5 s; the ghost then walks 1 tile toward them.
+		const t = scenario({ total: 5, px: line([0, 2], [3.5, 16], [4.2, 16], [8, 2]), gx: line([0, 18], [3.5, 18], [3.9, 17]) }).trials[0];
+		expect(t.turnAt!).toBeCloseTo(3.5, 1);
+		expect(t.turnDist!).toBeCloseTo(2, 1);
+	});
+});

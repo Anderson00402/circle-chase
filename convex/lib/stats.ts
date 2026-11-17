@@ -149,7 +149,7 @@ export interface TrialRow {
 	turnLeft: number | null;
 	wasted: number | null;
 	eats: { left: number }[];
-	after: { nearMiss: boolean; caught: boolean };
+	after: { nearMiss: boolean; caught: boolean; cut?: 'power' | 'clear' | 'quit' | null };
 }
 
 export interface RatingRow {
@@ -177,6 +177,12 @@ export interface DecisionRates {
 	 * current rules").
 	 */
 	leftOut: { oldRules: number };
+	/**
+	 * Decision trials that stay in the rates but carry a caveat the page can show. `cutByClear`:
+	 * the 3 s aftermath was cut short because the maze was cleared, so the player could not be
+	 * "caught" in it (the class stands on what was seen; docs/STUDY.md "What this measure cannot do").
+	 */
+	flagged: { cutByClear: number };
 }
 
 const RATE_KEYS = ['wellTimed', 'tooLate', 'caught', 'tooEarly'] as const;
@@ -192,7 +198,7 @@ function rateHits(outcome: string): number[] {
 }
 
 /** Headline rates for decision trials, clustered by `participantId`; Wilson if `wilsonOnly`. */
-export function decisionRates(trials: { participantId: string; outcome: string; inRates: boolean; rulesVersion?: number }[], seedKey: string, wilsonOnly = false): DecisionRates {
+export function decisionRates(trials: { participantId: string; outcome: string; inRates: boolean; rulesVersion?: number; after?: { cut?: string | null } }[], seedKey: string, wilsonOnly = false): DecisionRates {
 	const byP = new Map<string, Cluster>();
 	for (const t of trials) {
 		if (!isDecision(t)) continue;
@@ -209,7 +215,8 @@ export function decisionRates(trials: { participantId: string; outcome: string; 
 		})()
 		: clusteredRates(clusters, 4, seedKey);
 	const oldRules = trials.filter((t) => t.inRates && t.rulesVersion !== RULES_VERSION).length;
-	const out = { interval: r.method, leftOut: { oldRules } } as DecisionRates;
+	const cutByClear = trials.filter((t) => isDecision(t) && t.after?.cut === 'clear').length;
+	const out = { interval: r.method, leftOut: { oldRules }, flagged: { cutByClear } } as DecisionRates;
 	RATE_KEYS.forEach((key, j) => (out[key] = r.rates[j]));
 	return out;
 }

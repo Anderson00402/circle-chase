@@ -127,6 +127,33 @@ describe('counters', () => {
 	});
 });
 
+describe('summary.cueCounts (the live panel)', () => {
+	test('equals the full summary of the case, and a rebuild recounts it', async () => {
+		const t = convexTest(schema, modules);
+		const k1 = await setup(t, 'p1');
+		const k2 = await setup(t, 'p2');
+		const variants = [{}, { turnLeft: 3, turnDist: 4 }, { endReason: 'died' }, { lastChaseEnd: null, engaged: false }, { after: { ...measures().after, caught: true }, endDist: 2 },
+			{ lastChaseEnd: 'open', turnLeft: null, chaseEndDist: 2 }, { after: { ...measures().after, cut: 'clear', seen: 1.2 } }];
+		let i = 0;
+		for (const k of [k1, k2]) for (const v of variants) await t.mutation(api.trials.save, trialArgs(k, `t${i}`, i++, v));
+		const full = (await t.query(api.summary.byCue, { cue: 'timer-bar' })).cues[0];
+		const quick = await t.query(api.summary.cueCounts, { cue: 'timer-bar' });
+		expect(quick.trials).toBe(full.trials);
+		expect(quick.decisions).toBe(full.decisions);
+		for (const r of ['wellTimed', 'tooLate', 'caught', 'tooEarly'] as const) expect([quick[r].k, quick[r].n]).toEqual([full[r].k, full[r].n]);
+		expect(quick.notEnoughData).toBe(full.notEnoughData);
+		// The decision trials whose aftermath a maze clear cut short are flagged in the rate results.
+		expect(full.flagged.cutByClear).toBe(2);
+		// Nothing for the other source or another case.
+		expect((await t.query(api.summary.cueCounts, { cue: 'timer-bar', source: 'bot' })).trials).toBe(0);
+		expect((await t.query(api.summary.cueCounts, { cue: 'none' })).trials).toBe(0);
+		// A rebuild gives the same numbers.
+		await t.mutation(api.counters.rebuildCounters, { confirm: 'rebuild counters' });
+		await t.finishAllScheduledFunctions(() => {});
+		expect(await t.query(api.summary.cueCounts, { cue: 'timer-bar' })).toEqual(quick);
+	});
+});
+
 describe('exports.page', () => {
 	test('small pages give exactly the rows of one big page, in order', async () => {
 		const t = convexTest(schema, modules);
