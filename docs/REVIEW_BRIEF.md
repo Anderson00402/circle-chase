@@ -38,3 +38,19 @@ your checklist), `docs/STUDY.md`, and whatever else your category needs (`docs/A
    *needed for 8* or *polish*.
 4. **Other bugs** you noticed outside your category, one line each.
 5. **What you could not check.**
+
+## Second and later rounds
+
+Earlier rounds' reports are in `.logs/reviews/` (`r1-<category>.md` for round 1, and
+`round1-plan.md` for what the fix round was asked to do). You are a new reviewer: score the app
+**as it is now**, from scratch, by the rubric. Use the earlier report only as a checklist of
+things to re-test: for each of its issues say fixed, partly fixed or not fixed, with evidence.
+Do not assume a fix works because a commit message says so, and do not lower your standards
+because things improved. New problems count as much as old ones.
+
+Since round 1: the mazes, enemy colours, hero and rule tables changed (originality); several cues
+were reworked; outcome rules are at version 3 (a chase is the player's own sustained run at a
+scared ghost within reach; see `docs/STUDY.md`); under study rules scared ghosts near the player
+flee and a run ends itself after a set number of power-ups; the simulated data was re-seeded (one
+planted and one flat run of 40 simulated participants each); `npm run e2e` runs the end-to-end
+checks without deleting data.
