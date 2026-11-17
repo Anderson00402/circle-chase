@@ -33,12 +33,33 @@ OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '_site')
 # What each version is, in a sentence, for the home page. A branch that isn't listed shows its
 # latest commit message instead, and a pull request shows its title.
 NOTES = {
-    'main': 'The real game. Eat every dot; after a power dot you can catch the ghosts for a few seconds.',
+    'main': 'The basic game. Eat every dot; after a power dot you can catch the ghosts for a few seconds.',
+    'control': ('The control for the class study: the default rules, without our fixes. No power timer and no '
+                'red walls (only the ghosts flash), power lasts 6 s on level 1 but 1 s by level 9, the ghosts are '
+                'nearly as fast as you from the start, and one ghost is the same yellow as you.'),
     'Scream': ('Scared ghosts scream when you eat a power dot and keep wailing while you are close, '
                'and an evil laugh warns you the power-up is about to run out.'),
-    'fortnite': ("Made to play two sound clips that are only on the owner's computer. "
-                 'Here it uses the built-in sounds, so it plays like the main game.'),
+    'fortnite': ('Two sound clips: one gets louder as you get close to a power dot, '
+                 'and another plays when you eat one.'),
+    'play-as-ghost': ('You steer the pink ghost and the computer plays the circle. '
+                      'Catch it 3 times before it eats every dot, and run when it eats a power dot.'),
+    'two-player': ('Two players on one keyboard: WASD against the arrow keys. '
+                   'Each has their own score and lives, and most points wins.'),
+    'dash': 'Shift, X or a tap gives a short burst of speed, then it takes 3 seconds to recharge.',
+    'fog': ("The maze is dark except the light around your circle. "
+            'A power dot lights up everything for a few seconds.'),
+    'timer-ring': ('A ring around your circle drains as the power runs out, so you can watch the time '
+                   'without looking away from yourself. It flashes with the ghosts in the last 2 seconds.'),
 }
+
+# Fun modes: branches that change the game just for fun. Their tabs sit together at the right end
+# of the tab row, in this order. Every other branch is an improvement to the main game: those go
+# on the left, after the main game. Main itself stays the basic game, without any fun-mode extras.
+FUN_MODES = ['play-as-ghost', 'two-player', 'dash', 'fog', 'Scream', 'fortnite']
+
+# Control versions for the class study: the game with the default rules, to compare main against.
+# Their tabs sit right after the main game.
+CONTROL = ['control']
 
 FONTS = ('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700'
          '&family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Major+Mono+Display&display=swap')
@@ -78,6 +99,13 @@ def last_commit(ref):
     """(subject, date) of the newest commit on ref."""
     subject, date = git('log', '-1', '--format=%s%x00%cs', ref).rstrip('\n').split('\x00')
     return subject, date
+
+
+def short_rev(ref):
+    """The newest commit on ref, short. The home page adds it to each game's address, so a game
+    that changed is never served from a browser's cache (GitHub Pages lets browsers keep pages for
+    10 minutes, and a frame the page adds with script doesn't get refreshed by a normal reload)."""
+    return git('rev-parse', '--short', ref).strip()
 
 
 def short_date(iso):
@@ -191,6 +219,13 @@ HOME = '''<!doctype html>
   .tab .kind {
     font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--you);
   }
+  /* Group labels in the tab row: improvements follow the main game on the left, and the fun modes
+     sit at the right end. On a narrow screen the row scrolls, and the fun modes simply follow. */
+  .tabs .group {
+    align-self: center; padding: 0 4px 0 14px; white-space: nowrap;
+    font: 600 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim);
+  }
+  .tabs .group.fun { margin-left: auto; }
 
   /* One line about the version that is playing. */
   .about {
@@ -209,8 +244,38 @@ HOME = '''<!doctype html>
     padding: 7px 10px; border: 1px solid var(--accent); color: var(--ink); font-size: 13.5px;
   }
 
-  .stage { flex: 1; min-height: 0; position: relative; }
-  .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: var(--desk); }
+  /* The game area: the improvements as a column of tabs on the left, lined up under the Main game
+     tab, and the game's frame beside them. On a narrow screen the column becomes a row above the game. */
+  .stage {
+    flex: 1; min-height: 0; display: flex; gap: 16px; width: 100%; max-width: 1192px; margin: 0 auto;
+    padding: 0 var(--gutter-r) 0 var(--gutter-l);
+  }
+  .side { flex: none; width: 184px; padding-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .side-label {
+    margin: 0; font: 600 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-dim); white-space: nowrap;
+  }
+  .side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .side-tab {
+    display: block; padding: 9px 12px; border: 1px solid var(--rule); border-radius: 4px;
+    font: 600 13.5px/1.2 var(--font-mono); color: var(--ink-dim); text-decoration: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .side-tab:hover { color: var(--ink); background: rgba(166, 196, 255, 0.07); }
+  .side-tab[aria-current="page"] { color: var(--ink); background: var(--panel); box-shadow: inset 3px 0 0 var(--accent); }
+  .frame { flex: 1; min-width: 0; position: relative; }
+  .frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: var(--desk); }
+
+  @media (max-width: 900px) {
+    .stage { flex-direction: column; gap: 4px; }
+    .side {
+      width: auto; padding-top: 8px; flex-direction: row; align-items: center; gap: 10px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .side::-webkit-scrollbar { display: none; }
+    .side ul { flex-direction: row; }
+    .side-tab { padding: 6px 10px; }
+  }
 
   @media (max-width: 560px) {
     .brand { font-size: 20px; }
@@ -240,9 +305,9 @@ HOME = '''<!doctype html>
 </header>
 <div class="notice" id="notice" role="status" hidden></div>
 <div class="about" id="about" aria-live="polite"></div>
-<div class="stage" id="stage">
+<div class="stage">__SIDE__<div class="frame" id="stage">
   <noscript><p style="padding:16px"><a href="v/main/">Play the main game</a> &middot; <a href="versions/">every version</a></p></noscript>
-</div>
+</div></div>
 <script type="application/json" id="versions-data">__DATA__</script>
 <script>
 (() => {
@@ -252,10 +317,12 @@ HOME = '''<!doctype html>
   const stage = document.getElementById('stage');
   const about = document.getElementById('about');
   const notice = document.getElementById('notice');
-  const tabs = [...document.querySelectorAll('#tabs a')];
+  const tabs = [...document.querySelectorAll('#tabs a, #side a')];
   let current = null;
 
   const urlFor = v => (v === main ? location.pathname : location.pathname + '?v=' + encodeURIComponent(v.key));
+  // Each game's address carries its latest commit, so a changed game always loads fresh.
+  const gameUrl = v => v.path + (v.rev ? '?b=' + encodeURIComponent(v.rev) : '');
 
   function show(v, focus) {
     current = v;
@@ -273,7 +340,7 @@ HOME = '''<!doctype html>
     const meta = document.createElement('span');
     meta.className = 'meta';
     const own = document.createElement('a');
-    own.href = v.path;
+    own.href = gameUrl(v);
     own.target = '_blank';
     own.rel = 'noopener';
     own.textContent = 'Open on its own page \\u2197';
@@ -287,7 +354,7 @@ HOME = '''<!doctype html>
     frame.allow = 'autoplay; fullscreen';
     if (v.sandbox) frame.setAttribute('sandbox', 'allow-scripts allow-pointer-lock');
     frame.addEventListener('load', () => { if (focus) frame.focus(); }, { once: true });
-    frame.src = v.path;
+    frame.src = gameUrl(v);
     stage.querySelectorAll('iframe').forEach(f => f.remove());
     stage.append(frame);
   }
@@ -327,16 +394,43 @@ HOME = '''<!doctype html>
 '''
 
 
+def groups(versions):
+    """(main, control, improvements, fun modes, pull requests): control and fun modes in their lists'
+    order, the rest as they came."""
+    is_fun = lambda v: v['kind'] == 'branch' and v['name'] in FUN_MODES
+    is_control = lambda v: v['kind'] == 'branch' and v['name'] in CONTROL
+    main = [v for v in versions if v['kind'] == 'main']
+    control = sorted(filter(is_control, versions), key=lambda v: CONTROL.index(v['name']))
+    improvements = [v for v in versions if v['kind'] == 'branch' and not is_fun(v) and not is_control(v)]
+    fun = sorted(filter(is_fun, versions), key=lambda v: FUN_MODES.index(v['name']))
+    pulls = [v for v in versions if v['kind'] == 'pr']
+    return main, control, improvements, fun, pulls
+
+
 def write_home(versions):
-    tabs = ''.join(
-        f'<li><a class="tab" href="{html.escape(v["href"])}" data-key="{html.escape(v["key"])}">'
-        + (f'<span class="kind">{html.escape(v["kind_label"])}</span>' if v['kind_label'] else '')
-        + f'{html.escape(v["tab"])}</a></li>'
-        for v in versions)
-    data = [{k: v[k] for k in ('key', 'name', 'kind', 'path', 'note', 'updated', 'sandbox')} for v in versions]
+    def tab(v):
+        return (f'<li><a class="tab" href="{html.escape(v["href"])}" data-key="{html.escape(v["key"])}">'
+                + (f'<span class="kind">{html.escape(v["kind_label"])}</span>' if v['kind_label'] else '')
+                + f'{html.escape(v["tab"])}</a></li>')
+
+    main, control, improvements, fun, pulls = groups(versions)
+    versions = main + control + improvements + pulls + fun
+    tabs = ''.join(map(tab, main + control + pulls))
+    if fun:
+        tabs += '<li class="group fun" aria-hidden="true">Fun modes</li>' + ''.join(map(tab, fun))
+    # Improvements: a column of tabs on the left of the game (left out when there are none).
+    side = ''
+    if improvements:
+        side = ('<nav class="side" id="side" aria-labelledby="side-label">'
+                '<p class="side-label" id="side-label">Improvements</p><ul>'
+                + ''.join(f'<li><a class="side-tab" href="{html.escape(v["href"])}" data-key="{html.escape(v["key"])}">'
+                          f'{html.escape(v["tab"])}</a></li>' for v in improvements)
+                + '</ul></nav>')
+    data =[{k: v[k] for k in ('key', 'name', 'kind', 'path', 'note', 'updated', 'sandbox', 'rev')} for v in versions]
     page = (HOME.replace('__FONTS__', html.escape(FONTS))
                 .replace('__README__', html.escape(f'https://github.com/{REPO}#make-your-own-version'))
                 .replace('__TABS__', tabs)
+                .replace('__SIDE__', side)
                 .replace('__DATA__', script_json(data)))
     with open(os.path.join(OUT, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(page)
@@ -360,7 +454,8 @@ def items(rows, empty):
 
 
 def write_versions_page(versions):
-    by_kind = {k: [v for v in versions if v['kind'] == k] for k in ('main', 'branch', 'pr')}
+    main, control, improvements, fun, pulls = groups(versions)
+    control_list = f'<h2>Control</h2>\n{items(control, "")}\n' if control else ''
     readme = html.escape(f'https://github.com/{REPO}#make-your-own-version')
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -382,14 +477,16 @@ def write_versions_page(versions):
 </style></head>
 <body><main>
 <h1>Circle Chase versions</h1>
-<p>Every version of the game you can play. Main is the real game; the others are ideas being tried out.
-You can also switch between them on the <a href="../">home page</a>.</p>
+<p>Every version of the game you can play. Main is the basic game. The control plays by the default
+rules, to compare main against. Improvements try to make it better; fun modes change it just for fun. You can also switch between them on the <a href="../">home page</a>.</p>
 <h2>Main</h2>
-{items(by_kind['main'], '')}
-<h2>Versions</h2>
-{items(by_kind['branch'], 'No other versions right now.')}
+{items(main, '')}
+{control_list}<h2>Improvements</h2>
+{items(improvements, 'No improvements being tried right now.')}
+<h2>Fun modes</h2>
+{items(fun, 'No fun modes right now.')}
 <h2>Pull requests</h2>
-{items(by_kind['pr'], 'No open pull requests right now.')}
+{items(pulls, 'No open pull requests right now.')}
 <p style="margin-top:28px">Want to make your own? <a href="{readme}">Here is how</a>.</p>
 </main></body></html>
 '''
@@ -398,11 +495,11 @@ You can also switch between them on the <a href="../">home page</a>.</p>
         f.write(page)
 
 
-def version(key, kind, name, tab, path, note, date, kind_label='', sandbox=False):
+def version(key, kind, name, tab, path, note, date, kind_label='', sandbox=False, rev=''):
     return {
         'key': key, 'kind': kind, 'name': name, 'tab': tab, 'kind_label': kind_label,
         'path': path, 'href': '?v=' + key if kind != 'main' else './',
-        'note': note, 'updated': short_date(date) if date else '', 'sandbox': sandbox,
+        'note': note, 'updated': short_date(date) if date else '', 'sandbox': sandbox, 'rev': rev,
     }
 
 
@@ -415,7 +512,8 @@ def main():
     export(ref, os.path.join(OUT, 'v', 'main'))
     if not add_badge(os.path.join(OUT, 'v', 'main'), 'main', 'Main game'):
         raise SystemExit('main has no index.html')
-    versions = [version('main', 'main', 'Main game', 'Main game', 'v/main/', NOTES['main'], last_commit(ref)[1])]
+    versions = [version('main', 'main', 'Main game', 'Main game', 'v/main/', NOTES['main'], last_commit(ref)[1],
+                        rev=short_rev(ref))]
 
     taken = {'main'}
     for b in sorted(git('for-each-ref', '--format=%(refname:strip=3)', 'refs/remotes/origin/').split(), key=str.lower):
@@ -426,7 +524,7 @@ def main():
         export(ref, dest)
         if add_badge(dest, s, f'Version: {b}'):
             subject, date = last_commit(ref)
-            versions.append(version(s, 'branch', b, b, f'v/{s}/', NOTES.get(b, subject), date))
+            versions.append(version(s, 'branch', b, b, f'v/{s}/', NOTES.get(b, subject), date, rev=short_rev(ref)))
 
     for pr in sorted(open_pulls(), key=lambda p: p['number']):
         n, ref = pr['number'], f'refs/remotes/pr/{pr["number"]}'
@@ -437,7 +535,7 @@ def main():
         if add_badge(dest, f'pr-{n}', f'Pull request #{n} (not merged)'):
             note = f'{pr["title"]} — by {pr["user"]["login"]}, not reviewed or merged yet.'
             versions.append(version(f'pr-{n}', 'pr', f'Pull request #{n}', f'#{n}', f'pr/{n}/', note,
-                                    last_commit(ref)[1], kind_label='PR', sandbox=True))
+                                    last_commit(ref)[1], kind_label='PR', sandbox=True, rev=short_rev(ref)))
 
     write_home(versions)
     write_versions_page(versions)

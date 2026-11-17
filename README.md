@@ -27,6 +27,10 @@ Your version then shows up as a tab on the [home page](https://anderson00402.git
 
 **https://anderson00402.github.io/circle-chase/** opens the main game with a tab above it for every version branch and every open pull request; click a tab to play that version right there. The address changes to `?v=<name>`, so you can send someone a link to one version. Pull requests run sandboxed there, because nobody has reviewed their code yet, so their best scores aren't saved.
 
+The versions come in two groups. Down the left side of the game are **improvements**: ideas that make the basic game better. In the tab row on the right are **fun modes**, which change the game just for fun (playing as a ghost, two players, dash, fog, Scream, fortnite). The main game stays the basic version, without any fun-mode extras. A branch counts as an improvement unless its name is in `FUN_MODES` in `tools/build_site.py` on `main`; when you send a pull request, say which kind your idea is.
+
+The **control** tab, next to the main game, is for the class study: the same game with the default rules instead of our fixes (no power timer, no red walls, power that runs out sooner on later levels, ghosts nearly as fast as you from the start, and one ghost the same yellow as you). Comparing its play stats with main's shows whether the fixes help. It is listed in `CONTROL` in `tools/build_site.py`.
+
 Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a label in the corner, and [/versions/](https://anderson00402.github.io/circle-chase/versions/) lists them all. To give a branch a one-line description on the home page, add it to `NOTES` in `tools/build_site.py` on `main`; otherwise the home page shows the branch's latest commit message.
 
 ## Where things are in index.html
@@ -36,7 +40,20 @@ Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a la
 - `drawGhost`, and the player section of `draw()`: how the ghosts and the circle look and move.
 - `sfx`: all the sounds, made in code.
 - Colors are CSS variables at the top of the file, such as `--maze-wall`, `--you` and the ghost colors.
+- `createStats` and `STATS_URL`: the play stats below.
+
+## Play stats
+
+For the class study, every game played on the website is saved to a free [Supabase](https://supabase.com) database (Postgres). Nothing personal is saved, and the title screen says that play times are recorded. Each game saves:
+
+- **which version** was played (`main`, a branch name, `pr-<number>`, or `localhost`);
+- **survival**: seconds from Start to the last death, and how long each life lasted. Pauses never count, because the game clock stops while paused. The **Time** box above the board shows it as you play, and the game-over card gives it to a tenth of a second;
+- for **every power dot**: whether the player chased the scared ghosts, **how much power was left when they stopped chasing** (the number on the timer bar), and **how long from then until they ate the next power dot**.
+
+*Stopped chasing* is worked out from the moves. A step toward the nearest scared ghost that doesn't lead toward any dot only makes sense if you're after the ghost; two of those without turning away start a chase, and the chase lasts while the circle keeps closing in. The last step of the chase (or the last ghost eaten) is the stop. Following a lane of dots that happens to lead to a ghost doesn't count, since eating dots looks the same.
+
+Set-up: make a Supabase project, paste `tools/stats.sql` into its SQL Editor and run it, then put the project's URL and publishable key into `STATS_URL` and `STATS_KEY` in `index.html`. `tools/stats-queries.sql` has ready-made questions, such as survival per version and when players stop chasing. Nothing is sent while `STATS_URL` is empty, from a file opened on your computer, or from automated test browsers.
 
 ## Checks
 
-If you have [Node](https://nodejs.org) installed, run `node tools/check.js` before sending a maze change. It checks that every dot can be reached, every lane is one tile wide and there are no dead ends, then plays random games on each difficulty to catch errors.
+If you have [Node](https://nodejs.org) installed, run `node tools/check.js` before sending a maze change. It checks that every dot can be reached, every lane is one tile wide and there are no dead ends, plays random games on each difficulty to catch errors, and checks the play stats on posed scenes.
