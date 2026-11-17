@@ -48,7 +48,7 @@
 		if (rho === null) return '';
 		const strength = rho <= -0.8 ? 'closely' : rho <= -0.5 ? 'roughly' : rho < 0 ? 'only weakly' : 'not';
 		const r = (x: number | null) => (x === null ? '–' : x.toFixed(2));
-		return `Planted run: the measured well-timed rate follows the planted awareness ${strength} (rank correlation ${rho.toFixed(2)}; -1 would be a perfect recovery). Too late ${r(d.rhos.tooLate)}, too early ${r(d.rhos.tooEarly)} (+1 would be perfect for these). ${clearPairs.k} of ${clearPairs.of} ranked pairs differ clearly after adjusting for the number of comparisons (paired within players).`;
+		return `Planted run: the measured turned-away-in-time rate follows the planted awareness ${strength} (rank correlation ${rho.toFixed(2)}; -1 would be a perfect recovery). Too late ${r(d.rhos.tooLate)}, too early ${r(d.rhos.tooEarly)} (+1 would be perfect for these). ${clearPairs.k} of ${clearPairs.of} ranked pairs differ clearly after adjusting for the number of comparisons (paired within players).`;
 	});
 
 	const rows = $derived<ForestRow[]>((d?.cues ?? []).map((c) => ({
@@ -115,7 +115,7 @@
 							xFormat={(v) => v.toFixed(1)}
 							yFormat={(v) => `${v.toFixed(0)}%`}
 							height={300}
-							caption="Planted noise against measured well-timed rate per condition"
+							caption="Planted noise against measured turned-away-in-time rate per condition"
 						/>
 						<p class="foot">Recovery works if points fall from left to right.</p>
 					</div>

@@ -21,7 +21,7 @@ export function notCountedReason(t: ReasonInput, current: number = RULES_VERSION
 		case 'died': return 'Died while the power was on, so it never ran out';
 		case 'cleared': return 'The level was cleared while the power was on';
 		case 'refreshed': return 'Another power dot was eaten while the power was on';
-		case 'quit': return 'The run ended while the power was on';
+		case 'quit': return 'The page was refreshed (or left) while the power was on';
 	}
 	if (t.after?.cut === 'quit') return 'The run ended less than 3 s after the power ran out';
 	if (t.after?.cut === 'power') return 'A new power-up started less than 3 s after this one ended';

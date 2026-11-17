@@ -12,7 +12,10 @@
 		lastAt: number | null;
 		now: number;
 		source: 'human' | 'bot';
-		/** Simulated view: the run shown is finished, so no simulated player can be playing in it. */
+		/**
+		 * Simulated view: the run shown is finished, so a simulated player playing now (a scripted
+		 * check, a new run) is not in it. They are still listed, with that said.
+		 */
 		finished?: boolean;
 		/** The database connection is lost: say so instead of "nobody is playing". */
 		offline?: boolean;
@@ -24,7 +27,7 @@
 	 * last ran (a cached result does not age), so the page applies it again with its own clock.
 	 */
 	const STALE = 25_000;
-	const rows = $derived(finished ? [] : (playing.data ?? []).filter((r) => r.source === source && now - r.updatedAt < STALE));
+	const rows = $derived((playing.data ?? []).filter((r) => r.source === source && now - r.updatedAt < STALE));
 	const fresh = $derived(lastAt !== null && now - lastAt < 60_000);
 </script>
 
@@ -41,6 +44,7 @@
 				</span>
 			{/each}
 			{#if rows.length > 4}<span class="p">and {rows.length - 4} more</span>{/if}
+			{#if finished}<span class="note">(not part of the finished run shown here)</span>{/if}
 		</span>
 	{:else}
 		<span class="who">{source === 'bot' ? 'No simulated players running right now.' : 'Nobody is playing right now. The page updates by itself when someone does.'}</span>
@@ -64,6 +68,9 @@
 	}
 	.p {
 		color: var(--ink);
+	}
+	.note {
+		color: var(--ink-faint);
 	}
 	.last {
 		margin-left: auto;

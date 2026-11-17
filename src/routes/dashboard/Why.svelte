@@ -306,7 +306,7 @@
 		title="How power-ups end"
 		sub={includeExcluded
 			? 'Every power-up, including those outside the rates (grey): catches, other, not engaged, interrupted.'
-			: 'Counted power-ups (decisions), left to right from turning away too early to being caught. Green is the well-timed rate, amber and red together the too-late rate, violet the too-early rate.'}
+			: 'Counted power-ups (decisions), left to right from turning away too early to being caught. Green is the turned-away-in-time rate, amber and red together the too-late rate, violet the too-early rate.'}
 	>
 		{#snippet actions()}
 			<label class="check"><input type="checkbox" bind:checked={includeExcluded} /> Show power-ups outside the rates</label>
@@ -368,7 +368,7 @@
 					<StripPlot
 						rows={pointRows}
 						domain={turnDomain}
-						window={{ from: 2, to: 0.2, label: 'well timed: 2 to 0.2 s left' }}
+						window={{ from: 2, to: 0.2, label: 'in time: 2 to 0.2 s left' }}
 						zero={{ label: 'power ends' }}
 						xLabel="Seconds of power left when the player turned away (negative: after the end)"
 						ends={['quit early', 'too late']}

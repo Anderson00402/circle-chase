@@ -28,7 +28,7 @@ export const DEFS = {
 	gaveUpEarly:
 		`Gave up very early: not chasing in the last ${WARN} s, but the last chase ended with a turn-away, with more than ${WARN} s left, from a ghost the player could still have reached, and nothing was chased after it. It counts as turned away too early (left out, a cue that scares players off early would lose its worst power-ups from the rates) and is shown apart as a part of too early.`,
 	catches:
-		`Caught the ghost: the last chase ended by eating the ghost in the last ${WARN} s. Eating a ghost shows the player was chasing, not whether they knew the time left (a lucky late catch looks the same), so catches are in no rate. Shown as a share of eligible power-ups (the power ran out by itself, the player stayed for the ${WARN} s after, and they were chasing in the last ${WARN} s or gave a ghost up very early); a late catch is one with 1.5 s or less left.`,
+		`Ate the ghost: the last chase ended by eating the ghost in the last ${WARN} s. Eating a ghost shows the player was chasing, not whether they knew the time left (a lucky late catch looks the same), so catches are in no rate. Shown as a share of eligible power-ups (the power ran out by itself, the player stayed for the ${WARN} s after, and they were chasing in the last ${WARN} s or gave a ghost up very early); a late catch is one with 1.5 s or less left.`,
 	interval:
 		'95% interval, clustered by participant: we resample people (not single power-ups) 2,000 times, because one person\'s power-ups are alike. Conditions with fewer than 3 people use a 95% Wilson interval instead. Wide bars mean little data. Two separate intervals are not how differences are judged here: see "clear" below.',
 	clear:
@@ -47,7 +47,7 @@ export const DEFS = {
 		'For each person who played both levels (early and late blocks, short and long power-ups): their rate at the second level minus at the first, averaged over those people, with a 95% interval over people. The first row pools every condition; the rows below are per condition, adjusted together with Holm\'s method. Where fewer than 5 people played both levels, people at one level are compared with people at the other instead (Welch\'s t-test on one rate per person), which is weaker: the people differ as well as the level. That is always so for block position per condition (a person plays each condition in one run, and the counterbalanced order decides whether it falls early or late), and usually for sound and input, which stay the same for a person.',
 	notEnough: 'Conditions with fewer than 10 counted power-ups, or with counted power-ups from fewer than 5 people, are shown faint and hollow and are never ranked.',
 	turnAway:
-		`${DEFINITIONS.turnAway} Shown for counted power-ups. ${MIN_LEFT} to ${LINE} s is the well-timed window; about 1 s is ideal. Read it beside the rates: it does not depend on where the ${LINE} s line is.`,
+		`${DEFINITIONS.turnAway} Shown for counted power-ups. ${MIN_LEFT} to ${LINE} s is the in-time window; about 1 s is ideal. Read it beside the rates: it does not depend on where the ${LINE} s line is.`,
 	wasted: `Seconds of power left unused after an early retreat (turned away with more than ${LINE} s left from a ghost still reachable).`,
 	line:
 		`Where "turned away too early" starts. The rules put it at ${LINE} s left, where every cue switches to its final warning, so "in time" reads "left during the final warning". Right at that line the classes are harsher on players who anticipate than on those who react, so the page can count too early from ${TIMELY_CHECK} s instead, as a check. Every class, rate and comparison is then worked out again from the stored measures with the moved line, using the same rules; stored outcomes never change. A result that holds under both lines does not hang on where the line sits.`,
@@ -58,7 +58,7 @@ export const DEFS = {
 	approach:
 		'For counted power-ups whose power lasted at least 4 s, so every point rests on the same power-ups: the median path distance in tiles to the nearest scared ghost (after the end: to the ghosts that were scared when it ran out), against time left. Sampled 10 times a second.',
 	stillChasing:
-		'Share of counted power-ups (power of at least 4 s) in which the player was still in a chase at that moment (from its first step to its turn-away), with a 95% Wilson band. A good signal makes the curve drop inside the well-timed window, before the power ends.',
+		'Share of counted power-ups (power of at least 4 s) in which the player was still in a chase at that moment (from its first step to its turn-away), with a 95% Wilson band. A good signal makes the curve drop inside the in-time window, before the power ends.',
 	neverTurned:
 		'Counted power-ups where the last chase was still running when the power ended and the player never turned away (stayed too long or caught). They have no turn-away time, so they get their own column.',
 	learning:
@@ -74,7 +74,7 @@ export const DEFS = {
 } as const;
 
 export const OUTCOME_ORDER_NOTE =
-	`Each power-up that counts is judged by how its last chase ended. Caught comes first (caught within ${WARN} s and within ${CAUGHT_DIST} tiles of a ghost that just turned dangerous when the power ended). Then: ate the ghost in the last ${WARN} s (caught the ghost, no decision), still chasing at the end with the ghost within ${OVERSTAY_DIST} tiles (stayed too long), turned ${MIN_LEFT} to ${LINE} s before the end from a ghost in reach (in time), turned earlier from a ghost in reach, including giving it up before the last ${WARN} s (too early). Other, not engaged and interrupted cover the rest.`;
+	`Each power-up that counts is judged by how its last chase ended. Caught comes first (caught within ${WARN} s and within ${CAUGHT_DIST} tiles of a ghost that just turned dangerous when the power ended). Then: ate the ghost in the last ${WARN} s (ate the ghost, no decision), still chasing at the end with the ghost within ${OVERSTAY_DIST} tiles (stayed too long), turned ${MIN_LEFT} to ${LINE} s before the end from a ghost in reach (in time), turned earlier from a ghost in reach, including giving it up before the last ${WARN} s (too early). Other, not engaged and interrupted cover the rest.`;
 
 export const DESIGN = [
 	'Within-subject: each participant plays one run of each condition, in a counterbalanced order (balanced Latin square), so practice does not favour any condition. Conditions are compared inside each person.',

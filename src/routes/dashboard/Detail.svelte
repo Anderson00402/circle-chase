@@ -8,7 +8,7 @@
 	import { api } from '#convex/_generated/api.js';
 	import { spread } from '#convex/lib/stats.ts';
 	import { Badge, Button, CueChip, EmptyState, Select, Stat } from '#lib/ui/index.ts';
-	import { outcomeLabel } from '#lib/outcomes.ts';
+	import { OUTCOME_INFO, outcomeLabel } from '#lib/outcomes.ts';
 	import LineChart, { type LineSeries } from '#lib/charts/LineChart.svelte';
 	import StackedBars from '#lib/charts/StackedBars.svelte';
 	import StripPlot, { type StripPoint } from '#lib/charts/StripPlot.svelte';
@@ -124,7 +124,7 @@
 			{#if s.gaveUpEarly}
 				<Stat label="Gave up very early" value={pct(s.gaveUpEarly.k / Math.max(1, s.gaveUpEarly.n))} sub="{s.gaveUpEarly.k} of {s.gaveUpEarly.n} counted; part of too early" info={DEFS.gaveUpEarly} />
 			{/if}
-			<Stat label="Caught the ghost" value={pct(s.catches.share)} sub="{plural(s.catches.n, 'catch', 'catches')} of {s.inRates} eligible, {s.catches.late} late; in no rate" info={DEFS.catches} />
+			<Stat label={OUTCOME_INFO.catch.label} value={pct(s.catches.share)} sub="{plural(s.catches.n, 'catch', 'catches')} of {s.inRates} eligible, {s.catches.late} late; in no rate" info={DEFS.catches} />
 			<Stat label="Turn-away, median" value={s.turnAway.median === null ? null : s.turnAway.median.toFixed(2)} unit="s left"
 				sub={s.turnAway.n ? `middle half ${s.turnAway.q25?.toFixed(1)} to ${s.turnAway.q75?.toFixed(1)} s, n ${s.turnAway.n}` : 'no turn-aways'} info={DEFS.turnAway} />
 			<Stat label="Wasted power, mean" value={s.wasted.mean === null ? null : s.wasted.mean.toFixed(1)} unit="s"
@@ -159,7 +159,7 @@
 					<StripPlot
 						rows={strip}
 						domain={stripDomain}
-						window={{ from: 2, to: 0.2, label: 'well timed' }}
+						window={{ from: 2, to: 0.2, label: 'in time' }}
 						zero={{ label: 'power ends' }}
 						xLabel="Seconds left when the player turned away"
 						format={(v) => (Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1))}
@@ -185,7 +185,7 @@
 						xTicks={[4, 3, 2, 1, 0, -1, -2, -3]}
 						xTitle={(v) => (v > 0 ? `${v} s left` : v === 0 ? 'Power ends' : `${-v} s after`)}
 						yFormat={(v) => `${v.toFixed(0)}%`}
-						window={{ from: 2, to: 0.2, label: 'well timed' }}
+						window={{ from: 2, to: 0.2, label: 'in time' }}
 						markers={[{ at: 0, label: 'end' }]}
 						minN={3}
 						height={230}

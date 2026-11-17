@@ -177,7 +177,7 @@ try {
 		await snap('run5-ended-by-length');
 		const b5 = await http.query(api.runs.block, { blockKey: run5Key });
 		check(b5?.trials === 8, `run 5 ended by itself after 8 power-ups (${b5?.trials} stored)`);
-		check(b5?.rows.at(-1)?.reason !== 'The run ended while the power was on', 'the last power-up was measured to its end');
+		check(b5?.rows.at(-1)?.reason !== 'The page was refreshed (or left) while the power was on', 'the last power-up was measured to its end');
 		await page.keyboard.press('Escape');
 		await page.waitForURL(APP + '/');
 		await page.getByRole('radio', { name: '16', exact: true }).check({ force: true });

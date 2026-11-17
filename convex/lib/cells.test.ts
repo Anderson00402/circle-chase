@@ -178,3 +178,18 @@ describe('headline cost on a synthetic load', () => {
 		expect(ms).toBeLessThan(scale ? 300 : 2000);
 	});
 });
+
+describe('gave up very early', () => {
+	it('a trial that gave up early and was then caught counts once, as caught, not in the gave-up share', () => {
+		const r = rng(3);
+		const base = trial(r, 'timer-bar', 0, 1000, 0.5);
+		const row = (id: string, outcome: string, gaveUpEarly: boolean): CellRow => ({ ...base, id, outcome, inRates: true, rulesVersion: 3, gaveUpEarly, turnLeft: 3.2 });
+		const rows = [row('a', 'early-retreat', true), row('b', 'caught', true), row('c', 'early-retreat', false), row('d', 'timely-retreat', false)];
+		const a = cellsOfRows(rows, 'study').groups[0].cues['timer-bar'];
+		// Four decisions: b is caught (too late), and only a is "gave up very early".
+		expect(a.d[0]).toBe(4);
+		expect(a.d[2]).toBe(1);
+		expect(a.gu).toBe(1);
+		expect(a.guf).toBe(4);
+	});
+});

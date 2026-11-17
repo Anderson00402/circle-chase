@@ -85,14 +85,23 @@
 			tone={ranked === 0 ? 'warn' : 'ink'}
 		/>
 	</div>
-	{#if notCounted.length}
+	{#if notCounted.length || main.totals.cutByClear}
 		<div class="uncounted">
-			<p>
-				<b>Not counted:</b> {notCounted.join('; ')}.
-				{#if main.totals.oldRules}
-					Power-ups recorded before the current rules lack a measure the rules need, so they stay out of every rate.
-				{/if}
-			</p>
+			{#if notCounted.length}
+				<p>
+					<b>Not counted:</b> {notCounted.join('; ')}.
+					{#if main.totals.oldRules}
+						Power-ups recorded before the current rules lack a measure the rules need, so they stay out of every rate.
+					{/if}
+				</p>
+			{/if}
+			{#if main.totals.cutByClear}
+				<p>
+					<b>Counted, with a shorter aftermath:</b> {plural(main.totals.cutByClear, 'counted power-up')}
+					({pct(main.totals.cutByClear / Math.max(1, main.totals.decisions))}) had the 3 s after the end cut short because the
+					maze was cleared. They stay in the rates; a catch in those seconds could not happen.
+				</p>
+			{/if}
 			{@render uncounted?.()}
 		</div>
 	{/if}

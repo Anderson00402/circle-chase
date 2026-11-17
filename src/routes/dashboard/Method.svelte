@@ -3,6 +3,7 @@
 	import { Panel } from '#lib/ui/index.ts';
 	import { OUTCOMES } from '#lib/charts/encoding.ts';
 	import RoleMark from '#lib/charts/RoleMark.svelte';
+	import { OUTCOME_INFO } from '#lib/outcomes.ts';
 	import { DEFS, DESIGN, OUTCOME_ORDER_NOTE } from './defs';
 
 	const terms: [string, string][] = [
@@ -11,11 +12,11 @@
 		['Scared ghosts flee (study rules)', DEFS.fleeing],
 		['Engaged', DEFS.engaged],
 		['Counted', DEFS.counted],
-		['Turned away in time (well-timed rate)', DEFS.wellTimed],
+		[OUTCOME_INFO['timely-retreat'].label, DEFS.wellTimed],
 		['Too late', DEFS.tooLate],
-		['Caught', DEFS.caught],
+		[OUTCOME_INFO.caught.label, DEFS.caught],
 		['Too early', DEFS.tooEarly],
-		['Caught the ghost', DEFS.catches],
+		[OUTCOME_INFO.catch.label, DEFS.catches],
 		['95% interval', DEFS.interval],
 		['Clear difference', DEFS.clear],
 		['Top group and leaders', DEFS.groups],

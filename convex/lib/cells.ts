@@ -150,9 +150,11 @@ export interface CueAgg {
 	/** Catches among eligible trials, and the late ones. */
 	cat: number;
 	lcat: number;
-	/** Decision trials that gave up very early, and decision trials carrying that flag. */
+	/** Decision trials that gave up very early and are too early (not caught), and decision trials carrying that flag. */
 	gu: number;
 	guf: number;
+	/** Decision trials whose 3 s aftermath was cut short by a maze clear (kept in the rates; absent on older totals). */
+	cc?: number;
 	/** Turn-away time of every decision trial that turned (2 decimals). */
 	turn: number[];
 	/** Wasted power of every early retreat (rules' line). */
@@ -230,9 +232,12 @@ export function addRow(a: CueAgg, r: CellRow) {
 		o[1] === 'early-retreat' ? 1 : 0
 	];
 	addTo(a.d, d);
+	if (r.cut === 'clear') a.cc = (a.cc ?? 0) + 1;
 	if (r.gaveUpEarly !== undefined) {
 		a.guf++;
-		if (r.gaveUpEarly) a.gu++;
+		// "Gave up very early" is a part of too early. A trial that gave up early and was then caught
+		// is classed "caught" (caught has priority, docs/STUDY.md), so it counts there only, once.
+		if (r.gaveUpEarly && r.outcome === 'early-retreat') a.gu++;
 	}
 	if (r.turnLeft !== null) a.turn.push(Math.round(r.turnLeft * 100) / 100);
 	addCounts(a.bt, String(Math.min(r.trialIndex + 1, MAX_TRIAL_BUCKET)), d);
@@ -251,6 +256,7 @@ export function mergeAgg(a: CueAgg, b: CueAgg, core = false): CueAgg {
 	addTo(a.d, b.d);
 	for (const k in b.nc) addMap(a.nc, k, b.nc[k]);
 	a.cat += b.cat; a.lcat += b.lcat; a.gu += b.gu; a.guf += b.guf;
+	if (b.cc) a.cc = (a.cc ?? 0) + b.cc;
 	for (const x of b.turn) a.turn.push(x);
 	for (const x of b.waste) a.waste.push(x);
 	if (core) return a;
@@ -684,6 +690,8 @@ export function mainOf(parts: Part[], li: number) {
 			decisions: allAgg.d[0],
 			oldRules: allAgg.old,
 			notCounted: allAgg.nc,
+			/** Counted power-ups whose aftermath a maze clear cut short (they stay in the rates). */
+			cutByClear: allAgg.cc ?? 0,
 			participants: [...people.values()].filter((bc) => [...bc.values()].some((a) => a.t > 0)).length,
 			sessions: new Set(parts.filter((p) => Object.values(p.cues).some((a) => a.t > 0)).map((p) => p.sid)).size,
 			firstAt,

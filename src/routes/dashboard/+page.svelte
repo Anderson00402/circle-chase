@@ -10,7 +10,7 @@
 	import { tick, untrack } from 'svelte';
 	import { useQuery } from 'convex-svelte';
 	import { page } from '$app/state';
-	import { afterNavigate, beforeNavigate, replaceState } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { api } from '#convex/_generated/api.js';
 	import type { Id } from '#convex/_generated/dataModel.js';
 	import { Badge, Button, EmptyState, InfoTip, Page, PageHeader, Panel, Segmented, Select, slow } from '#lib/ui/index.ts';
@@ -50,7 +50,18 @@
 	})();
 	const q = restored ?? page.url.searchParams;
 	const pick = <T extends string>(v: string | null, ok: readonly T[], d: T): T => (ok.includes(v as T) ? (v as T) : d);
-	let source = $state<SourceSel>(pick(q.get('data'), ['human', 'bot'], 'human'));
+	/**
+	 * Human or simulated data. The page writes `?data=bot`; links people type or share may say
+	 * `?source=bot`, `?view=simulated`, `?sim`, `?bot`, or only name a simulator run (`?run=...`).
+	 */
+	const sourceOf = (u: Pick<URLSearchParams, 'get' | 'has'>): SourceSel => {
+		const said = (u.get('data') ?? u.get('source') ?? u.get('view') ?? '').trim().toLowerCase();
+		if (['bot', 'bots', 'sim', 'sims', 'simulated', 'simulation', 'simulator'].includes(said)) return 'bot';
+		if (['human', 'humans', 'people', 'real', 'participants'].includes(said)) return 'human';
+		if (u.has('sim') || u.has('bot') || u.has('simulated') || (u.get('run') ?? '') !== '') return 'bot';
+		return 'human';
+	};
+	let source = $state<SourceSel>(sourceOf(q));
 	let run = $state<string>(q.get('run') ?? '');
 	let mode = $state<ModeSel>(pick(q.get('mode'), ['study', 'arcade', 'both'], 'both'));
 	let participant = $state<string>(q.get('p') ?? 'all');
@@ -111,6 +122,8 @@
 		const u = new URL(page.url.href);
 		const set = (k: string, v: string, d: string) => (v === d ? u.searchParams.delete(k) : u.searchParams.set(k, v));
 		set('data', source, 'human');
+		// Spellings of the source other than `data` (read once at load) give way to the one the page writes.
+		for (const k of ['source', 'view', 'sim', 'bot', 'simulated']) u.searchParams.delete(k);
 		set('run', activeRun, '');
 		set('mode', mode, 'both');
 		set('p', participant, 'all');
@@ -119,7 +132,7 @@
 		set('line', String(line), String(LINE_DEFAULT));
 		if (selected) u.searchParams.set('cue', selected);
 		else u.searchParams.delete('cue');
-		if (u.search !== untrack(() => page.url.search)) replaceState(u, {});
+		if (u.search !== untrack(() => page.url.search)) goto(u, { state: {}, shallow: true, replace: true });
 		try {
 			localStorage.setItem(FILTERS_KEY, u.search);
 		} catch {

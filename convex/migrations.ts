@@ -7,6 +7,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, internalQuery, mutation } from './_generated/server';
+import { rebuildSessionCells } from './lib/digest';
 
 /** Trials per step: each moves about 1 KB of series and rewrites a ~2 KB row. */
 const BATCH = 200;
@@ -94,5 +95,34 @@ export const numberRunParticipants = mutation({
 			}
 		}
 		return given;
+	}
+});
+
+/**
+ * Work out every session's dashboard totals (`trialCells`) again from its digest rows, after the
+ * arithmetic in convex/lib/cells.ts changed (2026-11-16: "gave up very early" counts only trials
+ * classed too early, and decisions cut by a maze clear are counted). Reads digests, rewrites only
+ * the small totals documents; trial rows and digests are not touched. Safe to run again.
+ *   npx convex run migrations:rebuildCells '{"confirm": "rebuild cells"}'
+ */
+export const rebuildCells = mutation({
+	args: { confirm: v.literal('rebuild cells') },
+	handler: async (ctx) => {
+		await ctx.scheduler.runAfter(0, internal.migrations.rebuildCellsStep, { cursor: null, sessions: 0, rows: 0 });
+		return { started: true };
+	}
+});
+
+export const rebuildCellsStep = internalMutation({
+	args: { cursor: v.union(v.string(), v.null()), sessions: v.number(), rows: v.number() },
+	handler: async (ctx, a) => {
+		const page = await ctx.db.query('sessions').paginate({ numItems: 10, cursor: a.cursor });
+		let { sessions, rows } = a;
+		for (const s of page.page) {
+			const n = await rebuildSessionCells(ctx, s._id);
+			if (n) { sessions++; rows += n; }
+		}
+		if (!page.isDone) await ctx.scheduler.runAfter(0, internal.migrations.rebuildCellsStep, { cursor: page.continueCursor, sessions, rows });
+		else console.log(`rebuildCells: ${sessions} sessions, ${rows} digest rows`);
 	}
 });
