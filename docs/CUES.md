@@ -20,7 +20,7 @@ To add one: write `src/lib/game/cues/<id>.ts` exporting a `Cue`, then list it in
    nothing else. Keep `baseFlash: false` (only `classic-blink` sets it); never re-create the white
    ghost blink. `k.baseFlash()` is there to borrow its *rhythm* (the last 2 s, five beats ending
    with the power), not its look.
-3. **The base game never hints.** Scared wisps look the same from the first moment to the last,
+3. **The base game never hints.** Scared ghosts look the same from the first moment to the last,
    and the power-up sound bed never changes. Your cue is the only thing that changes with time
    left. Do not rely on anything else to carry the message.
 4. **Reduced motion.** When `k.reduceMotion` is true, keep the information but drop motion that
@@ -40,13 +40,13 @@ The renderer draws one frame in this order:
 | 2 | dots, power dots | `dots(k, drawDefault)` replaces them; call `drawDefault()` to keep the normal ones |
 | 3 | bonus item | |
 | 4 | | `under(k)`: above maze and dots, below the characters |
-| 5 | each visible wisp (and each tunnel copy) | `ghost(k, g, index, cx, cy, drawDefault)` replaces or decorates |
+| 5 | each visible ghost (and each tunnel copy) | `ghost(k, g, index, cx, cy, drawDefault)` replaces or decorates |
 | 6 | the hero | `player(k, cx, cy, drawDefault)` replaces or decorates |
 | 7 | | `over(k)`: above everything on the board |
-| 8 | power-up ripple, eat bursts, score popups, banners | |
+| 8 | score popups, banners | |
 
 `ghost` and `player` are called once per visible copy, so a character crossing a tunnel is
-called twice with two `cx` values. Wisps that are not drawn (after a death, at a maze clear) do not
+called twice with two `cx` values. Ghosts that are not drawn (after a death, at a maze clear) do not
 get a `ghost` call.
 
 `sound(prev, frame, sfx)` runs once per live frame while the game plays (not during replays),
@@ -62,9 +62,9 @@ after the stock sounds.
 | `k.T` | Tile size in CSS pixels (8 in a thumbnail, 20-34 in play). Size everything from it. |
 | `k.dpr` | Device pixel ratio. `shadowBlur` ignores the transform: `ctx.shadowBlur = k.T * 0.5 * k.dpr`. |
 | `k.scene`, `k.frame`, `k.maze` | The scene being drawn. `k.frame.phase` is `'ready'`, `'playing'`, `'dying'`, `'clear'` or `'over'`. |
-| `k.now` | Game time in seconds. Stops while paused and in the short freeze after eating a wisp. |
+| `k.now` | Game time in seconds. Stops while paused and in the short freeze after eating a ghost. |
 | `k.reduceMotion` | The player asked for less motion. |
-| `k.colors` | The palette: maze theme (`bg wall wallGlow dot power`), `player`, `scared` (light accent of the drained scared look), `scaredFill` (the pale, colourless body of a scared wisp), `scaredInk` (its dark face, stripes and outline), `ghost[id]`, `ink`, `inkDim`, `accent`, `door`, `flash`, `flashInk`. |
+| `k.colors` | The palette, the original game's: board `bg` `#000000`, `wall` and `wallGlow` `#1c6cfc`, `dot` `#b9cdf6`, `power` `#ffffff` (the same on every maze); `player` `#ffd84a`; `scared` and `scaredInk` `#8fd3ff` (the dashed outline and eyes of a scared ghost), `scaredFill` `rgba(143, 211, 255, 0.12)` (its faint body); `ghost[id]` hunter `#ff6f91`, ambusher `#ff8a3d`, guard `#3fe0b0`, drifter `#b9a2ff`; `ink` `#eef3ff`, `inkDim`, `accent` `#ff8a4c`, `line` `#dbe7ff` (the pale drafting line), `door` (the same pale line), `flash` and `flashInk` `#ffffff` (the white blink's outline and eyes). |
 | `k.fonts` | `{ display, body, mono }` font stacks from the app's design tokens. |
 
 ### Power
@@ -79,7 +79,7 @@ after the stock sounds.
 | `k.power.sinceEnd`, `.endReason` | Same for any end (`'expired' 'died' 'cleared' 'refreshed'`). |
 | `k.power.startedAt`, `.endedAt` | Game times. |
 | `k.power.serial` | 1, 2, 3... per power-up: seed for `hash`. |
-| `k.power.chain` | Wisps eaten in this power-up. |
+| `k.power.chain` | Ghosts eaten in this power-up. |
 | `k.baseFlash()` | True during each of the five blinks in the last 2 s (0.2 s on, 0.25 s off, the first at 2 s left, the last ending with the power). With reduced motion, steadily true for the last 2 s. |
 
 ### Positions and geometry (CSS pixels)
@@ -88,13 +88,13 @@ after the stock sounds.
 const [x, y] = k.px(g.x, g.y);                 // centre of a tile position
 k.eachWrap(f.player.x, (cx) => draw(cx));      // once per visible copy (twice in a tunnel)
 const [px, py] = k.playerPos();                 // the hero's centre
-const [gx, gy] = k.ghostPos(g);                 // a wisp's centre (with its pen bob)
+const [gx, gy] = k.ghostPos(g);                 // a ghost's centre (with its pen bob)
 const look = k.ghostLook(g);                    // 'normal' | 'scared' | 'scared-flash' | 'eyes'
 
 k.geo.board                                     // { x, y, w, h, cx, cy } of the whole board
 k.geo.pen                                       // box of the pen floor (an hourglass fits here)
 k.geo.door                                      // box of the pen door
-k.geo.home                                      // [x, y] where eaten wisps return
+k.geo.home                                      // [x, y] where eaten ghosts return
 k.geo.dots                                      // [{ i, x, y, cx, cy, kind }] every tile that starts with a pickup
 k.scene.dots[d.i]                               // 0 eaten, 1 dot, 2 power dot, right now
 
@@ -108,13 +108,13 @@ ctx.stroke(P.path);                             // the whole loop
 ### Walls and layers
 
 All layers are full-board pictures in device pixels, cached per maze, size and colour. Draw them
-with `k.drawLayer`, never with a bare `drawImage` (the board may be offset by a screen shake).
+with `k.drawLayer`, never with a bare `drawImage` (it places the layer in device pixels for you).
 
 ```ts
 k.drawLayer(k.wallLayer(k.colors.scared));                    // the walls redrawn in another colour
 k.drawLayer(k.wallLayer('#ff9a3c', '#ff6a00', { outer: true }), 0.8);  // only the outer border line, 80%
 k.masked(k.wallMask(), (c) => { c.fillStyle = tint; c.fillRect(...box); });  // paint, keep only what is on walls
-k.masked(k.wallMask(k.T * 0.4), draw);                        // inset deeper into the walls (the inner panels)
+k.masked(k.wallMask(k.T * 0.4), draw);                        // inset deeper into the walls
 k.clip(k.geo.perimeter.path, () => { ... });                  // save, clip, draw, restore
 const art = k.layer('dial', (c) => drawDial(c));              // your own static picture, built once
 k.drawLayer(art, 0.5, 'lighter');                             // alpha and composite mode
@@ -128,13 +128,14 @@ k.drawGhost(g, i, 'scared', cx, cy);                          // any look
 k.drawGhost(g, i, 'scared', cx, cy, { scale: 1.2, color: '#222', ink: '#fff', eyes: 'closed', alpha: 0.8 });
 k.drawGhost(g, i, 'normal', cx, cy, { lookAt: k.playerPos() });  // eyes on the player
 k.ghostPath(g, i, cx, cy, { look: k.ghostLook(g) });          // traces the body as the current path
-k.clip(() => k.ghostPath(g, i, cx, cy, { look }), () => fillFromBottom(level));  // fill a wisp's body
-k.drawPlayer(cx, cy);                                         // the hero
-k.drawPlayer(cx, cy, 1.3, { color: '#fff6c0', open: 0, mood: 'happy', alpha: 0.9 });
+k.clip(() => k.ghostPath(g, i, cx, cy, { look }), () => fillFromBottom(level));  // fill a ghost's body (every look shares one body)
+k.drawPlayer(cx, cy);                                         // the hero (with its gulp)
+k.drawPlayer(cx, cy, 1.3, { color: '#fff6c0', alpha: 0.9 });
 ```
 
-Eye styles: `'normal'` (own eyes and lids), `'pale'`, `'dark'`, `'closed'`, `'none'`.
-Moods: `'normal'`, `'happy'`, `'dizzy'`.
+Eye styles: `'normal'` (the look's own eyes: dark with a glint when awake, in the ink when scared),
+`'pale'` (light, no glint), `'dark'` (dark with a glint), `'closed'`, `'none'`. The hero is a plain
+circle with no face: `open`, `mood` and `plain` are accepted but change nothing.
 
 ### Drawing helpers
 
