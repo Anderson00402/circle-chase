@@ -170,7 +170,9 @@ describe('headline cost on a synthetic load', () => {
 		expect(m.totals.trials).toBe(52000);
 		// Each session's document stays a few kilobytes, whatever the number of trials elsewhere.
 		expect(bytes / sessions.length).toBeLessThan(12_000);
-		// The arithmetic itself (bootstrap and every Holm family included) leaves room in a 300 ms budget.
-		expect(ms).toBeLessThan(300);
+		// The arithmetic itself (bootstrap and every Holm family included) fits a 300 ms budget when timed
+		// alone (`SCALE=1 npx vitest run convex/lib/cells.test.ts`); next to other test files the CPU is
+		// shared, so the everyday bound is only a guard against something growing out of hand.
+		expect(ms).toBeLessThan(process.env.SCALE ? 300 : 2000);
 	});
 });

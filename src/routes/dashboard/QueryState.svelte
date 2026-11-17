@@ -27,7 +27,7 @@
 		if (!error) return '';
 		const lines = (error.message ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !/^\[Request ID|^at |Called by client/.test(l));
 		const line = (lines.find((l) => /Error:/.test(l)) ?? lines[0] ?? '').replace(/^.*?(Uncaught )?(Server )?Error:\s*/, '');
-		return line.slice(0, 180);
+		return line.slice(0, 180).replace(/[.\s]+$/, '');
 	});
 	const timedOut = $derived(/timed out|time limit|maximum duration/i.test(reason));
 </script>

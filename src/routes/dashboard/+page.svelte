@@ -91,16 +91,21 @@
 	const activeRun = $derived(simulated ? (run && !missingRun ? run : defaultRun) : '');
 	const runInfo = $derived(runs.find((r) => r.run === activeRun) ?? null);
 
+	/** A participant from an old link who is not in this view (or not an id at all): show everyone, and say so. */
+	const missingParticipant = $derived(participant !== 'all' && facets.data !== undefined && !facets.data.participants.some((p) => p.id === participant));
 	const filter = $derived<DashFilter>({
 		source,
 		...(activeRun ? { run: activeRun } : {}),
 		...(mode !== 'both' ? { mode } : {}),
-		...(participant !== 'all' ? { participantId: participant as Id<'participants'> } : {}),
+		...(participant !== 'all' && !missingParticipant ? { participantId: participant as Id<'participants'> } : {}),
 		...(from !== undefined ? { from } : {}),
 		...(altLine ? { line: altLine } : {})
 	});
-	/** Simulated view waits for the run list, so it never shows every run pooled for a moment. */
-	const ready = $derived(!simulated || facets.data !== undefined);
+	/**
+	 * Wait for the run and participant lists when the view depends on them, so it never shows every
+	 * run pooled for a moment, or asks for a participant who is not there.
+	 */
+	const ready = $derived((!simulated && participant === 'all') || facets.data !== undefined);
 
 	$effect(() => {
 		const u = new URL(page.url.href);
@@ -224,6 +229,10 @@
 		line = LINE_DEFAULT;
 	}
 
+	/** What the downloads hold, in plain words (columns: convex/README.md "trials.csv"). */
+	const DOWNLOAD_NOTE =
+		'The data in this view (same source, run, rules, participant and period). Power-ups CSV: one row per power-up with every measure. "decision" marks the counted power-ups behind every rate; "outcome" is the stored class, always with "too early" from 2 s, even while the page shows the 2.5 s check; "gaveUpEarly" marks a too-early turn-away that gave a reachable ghost up before the last 3 s (shown on the page as "gave up very early", a part of too early); "turnLeft" and "turnDist" give the time to spare (time left minus distance / 1.5 tiles a second under study rules). JSON: the same with nested fields. Answers CSV: the questionnaire. Runs CSV: one row per run.';
+
 	// Heavy lower sections subscribe only once they come near the screen.
 	let showSessions = $state(false);
 </script>
@@ -238,7 +247,7 @@
 	>
 		{#snippet actions()}
 			<div class="downloads wide-only" role="group" aria-label="Download the data in this view">
-				<span class="dl-label">Download</span>
+				<span class="dl-label">Download <InfoTip term="What the files hold" align="end">{DOWNLOAD_NOTE}</InfoTip></span>
 				<Button size="sm" variant="quiet" href={exportHref('trials.csv')}>Power-ups CSV</Button>
 				<Button size="sm" variant="quiet" href={exportHref('trials.json')}>JSON</Button>
 				<Button size="sm" variant="quiet" href={exportHref('ratings.csv')}>Answers CSV</Button>
@@ -345,6 +354,13 @@
 		</div>
 	{/if}
 
+	{#if missingParticipant}
+		<p class="missing-p" role="note">
+			The link asked for a participant who is not in this view (another data source, or removed). Showing everyone instead.
+			<button type="button" onclick={() => (participant = 'all')}>Clear</button>
+		</p>
+	{/if}
+
 	{#if altLine}
 		<div class="line-banner" role="note">
 			<p>
@@ -449,7 +465,7 @@
 		<Method />
 	</div>
 	<div class="downloads narrow-only" role="group" aria-label="Download the data in this view">
-		<span class="dl-label">Download</span>
+		<span class="dl-label">Download <InfoTip term="What the files hold" align="start">{DOWNLOAD_NOTE}</InfoTip></span>
 		<Button size="sm" variant="quiet" href={exportHref('trials.csv')}>Power-ups CSV</Button>
 		<Button size="sm" variant="quiet" href={exportHref('trials.json')}>JSON</Button>
 		<Button size="sm" variant="quiet" href={exportHref('ratings.csv')}>Answers CSV</Button>
@@ -579,6 +595,19 @@
 		color: var(--focus);
 		font: inherit;
 		font-size: var(--text-sm);
+		cursor: pointer;
+	}
+	.missing-p {
+		margin-bottom: var(--space-4);
+		color: var(--ink-dim);
+		font-size: var(--text-sm);
+	}
+	.missing-p button {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--focus);
+		font: inherit;
 		cursor: pointer;
 	}
 	.take-slot {
