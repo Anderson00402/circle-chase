@@ -8,9 +8,12 @@ import { CALM, expiredNow, HOT, justExpired, powered, WARN } from './shared-scre
  * places around it. The dial is the message: it empties like the other clock cues, a dark gap
  * opening at 12 o'clock and growing clockwise, so the lit part left is the time left (half the
  * ring dark is half the time gone, whatever the power length). The spark about to go dims through
- * its share of time and then peels away. Nothing else changes until the last 2 s: then the sparks
- * left turn red and the hero deflates back to its normal size, reaching it as the power ends with
- * a small puff of smoke. No blinking, so reduced motion only drops the peel drift, twinkle and smoke.
+ * its share of time and then peels away. Nothing else changes until the last 2 s: then the
+ * warning takes over the whole hero, large and where the eye already is: the whole dial track
+ * turns red (the part still lit stays bright, so the dial keeps telling the time), the warm halo
+ * behind the hero turns into a red one and a red rim closes round the hero, and the hero deflates
+ * back to its normal size, reaching it as the power ends with a small puff of smoke. All steady:
+ * no blinking, so reduced motion only drops the peel drift, twinkle and smoke.
  *
  * Only the drawing changes: the hero's hit box is the same as always.
  */
@@ -70,7 +73,7 @@ export const deflatingPlayer: Cue = {
 	name: 'Deflating player',
 	tagline: 'A ring of sparks around you goes out like a clock; you shrink back in the last 2 seconds.',
 	description:
-		'A power dot makes you swell a little and glow, with a ring of ten sparks around you. The sparks go out one after another clockwise from 12 o\'clock, like a clock running down, so half a dark ring means half the time is gone. In the last 2 seconds the sparks left turn red and you shrink back to normal size; when the power ends you let out a small puff.',
+		'A power dot makes you swell a little and glow, with a ring of ten sparks around you. The sparks go out one after another clockwise from 12 o\'clock, like a clock running down, so half a dark ring means half the time is gone. In the last 2 seconds the whole ring and your glow turn red, with a red rim around you, and you shrink back to normal size; when the power ends you let out a small puff.',
 	channel: 'player',
 	baseFlash: false,
 
@@ -78,19 +81,36 @@ export const deflatingPlayer: Cue = {
 		const { T, power } = k;
 		if (powered(k)) {
 			const g = swell(k), warn = power.left <= WARN;
+			// The final warning switches on over a tenth of a second (no one-frame pop) and deepens a
+			// little towards the end.
+			const alarm = k.smoothstep(WARN, WARN - 0.1, power.left), deep = k.clamp(1 - power.left / WARN);
 			const inflate = k.reduceMotion ? 1 : k.ease.outBack(k.clamp(power.elapsed / INFLATE));
 			const scale = 1 + SWELL * g * inflate;
-			// Warm halo behind the hero, steady until it deflates.
-			k.glow(cx, cy, T * 1.3, GLOW, 0.4 * g * k.clamp(inflate));
-			k.drawPlayer(cx, cy, scale, { color: k.mix(k.colors.player, GLOW, 0.45 * g) });
+			// Halo behind the hero: warm and steady, red in the last 2 s.
+			k.glow(cx, cy, T * 1.3, GLOW, 0.4 * g * k.clamp(inflate) * (1 - alarm));
+			if (alarm > 0) k.glow(cx, cy, T * (1.55 + 0.25 * deep), HOT, (0.8 + 0.2 * deep) * alarm);
+			k.drawPlayer(cx, cy, scale, { color: k.mix(k.colors.player, GLOW, 0.45 * g * (1 - alarm)) });
+			// A red rim round the hero, just outside its body, over a dark keyline.
+			if (alarm > 0) {
+				const rr = T * 0.5 * scale + Math.max(1.5, T * 0.09);
+				k.ring(cx, cy, rr, Math.max(3, T * 0.17), k.colors.bg, { alpha: 0.5 * alarm });
+				k.ring(cx, cy, rr, Math.max(1.6, T * 0.1), HOT, { alpha: alarm });
+			}
 
 			// The dial: the lit arc runs from the hand clockwise round to 12 o'clock, like a clock
-			// face whose gap opens at 12 and grows clockwise.
+			// face whose gap opens at 12 and grows clockwise. In the last 2 s the whole track turns
+			// red; the lit part stays brighter and thicker, so the time left still reads.
 			const used = 1 - power.frac, hand = used * Math.PI * 2, gone = used * N, R0 = T * 0.84;
 			const color = warn ? HOT : CALM;
-			k.ring(cx, cy, R0, Math.max(2.5, T * 0.18), k.colors.bg, { alpha: 0.55 }); // dark track, so it reads on any wall
-			k.ring(cx, cy, R0, Math.max(0.8, T * 0.05), k.rgba(CALM, 0.3));
-			k.ring(cx, cy, R0, Math.max(1.6, T * 0.09), color, { from: hand, to: Math.PI * 2, alpha: 0.9 });
+			k.ring(cx, cy, R0, Math.max(2.5, T * (0.18 + 0.08 * alarm)), k.colors.bg, { alpha: 0.55 + 0.2 * alarm }); // dark track, so it reads on any wall
+			k.ring(cx, cy, R0, Math.max(0.8, T * (0.05 + 0.06 * alarm)), alarm > 0 ? k.mix(k.rgba(CALM, 0.3), k.rgba(HOT, 0.42), alarm) : k.rgba(CALM, 0.3));
+			if (alarm > 0) {
+				k.ctx.save();
+				k.ctx.shadowColor = HOT;
+				k.ctx.shadowBlur = T * 0.4 * alarm * k.dpr;
+				k.ring(cx, cy, R0, Math.max(2.4, T * 0.16), k.mix(HOT, '#ffffff', 0.55), { from: hand, to: Math.PI * 2, alpha: 1 });
+				k.ctx.restore();
+			} else k.ring(cx, cy, R0, Math.max(1.6, T * 0.09), color, { from: hand, to: Math.PI * 2, alpha: 0.9 });
 			for (let i = 0; i < N; i++) {
 				if (i + 1 <= gone) continue;
 				const x = cx + Math.cos(angleOf(i)) * R0, y = cy + Math.sin(angleOf(i)) * R0;
