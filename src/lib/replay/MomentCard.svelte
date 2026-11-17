@@ -12,7 +12,7 @@
 	import { sceneAt } from './interp';
 	import { keyTime, type Moment } from './list';
 	import { OUTCOME_TONE, ago, outcomeLabel } from './story';
-	import { turnWords } from '../outcomes';
+	import { secs, turnWords } from '../outcomes';
 	import { clipFitsMaze } from './layout';
 	import ZoomView from './ZoomView.svelte';
 	import { focusWindow } from './focus';
@@ -83,7 +83,7 @@
 		<dl>
 			<div><dt>{ateLast ? 'Ate the ghost' : 'Turned away'}</dt><dd class="num">{turn}</dd></div>
 			<div><dt>At the end</dt><dd class="num">{m.endDist === null ? '-' : m.endDist.toFixed(1) + ' tiles'}</dd></div>
-			{#if death}<div class="wide"><dt>{death}</dt><dd class="num bad">{m.diedDuring || m.endReason === 'died' ? 'while the power was on' : m.timeToCaught !== null ? `${m.timeToCaught.toFixed(1)} s after the end` : 'after the end'}</dd></div>{/if}
+			{#if death}<div class="wide"><dt>{death}</dt><dd class="num bad">{m.diedDuring || m.endReason === 'died' ? 'while the power was on' : m.timeToCaught !== null ? `${secs(m.timeToCaught)} after the end` : 'after the end'}</dd></div>{/if}
 		</dl>
 		<p class="meta"><span class="num">{m.label ?? 'Unknown participant'}</span> &middot; run {m.blockIndex + 1}, power-up {m.trialIndex + 1} &middot; {ago(m.createdAt, now)}</p>
 	</div>
