@@ -1,16 +1,20 @@
-import type { Cue, CueContext, GeoBox } from '../types';
-import { beatPeakCrossed, finalBeat, hotness, penBlock } from './shared-maze';
+import { WALL, type Cue, type CueContext, type GeoBox } from '../types';
+import { beatPeakCrossed, finalBeat, hotness } from './shared-maze';
 
 /**
- * 7 · Pen hourglass. The whole pen block (its floor and the wall round it) becomes a wide
- * hourglass full of bright sand. The sand's top level drops at an even pace, so how full the top
- * bulb is shows the power left; it runs out exactly when the power does.
+ * 7 · Pen hourglass. The pen becomes an hourglass lying on its side, full of bright sand. Sand
+ * runs from the left bulb through the neck into the right one at an even pace, so how full the
+ * left bulb is shows the power left; it runs out exactly when the power does.
  *
- * Built to be seen from across the board: it fills the full width of the pen block, the bulbs are
- * mostly straight sided (so the level and the amount of sand agree), the glass is dark inside so
- * the gold sand stands out on every maze theme, and waiting wisps sit in the lower bulb, so the
- * top bulb you read stays clear. In the last 2 s the frame turns white hot and the pen throbs; the
- * last grain drops at the end and the glass flashes.
+ * Where it sits is worked out from each maze's pen (`glassBox`): waiting wisps sit on the pen row
+ * farthest from the door, so the glass takes the other pen rows and the wall row with the door,
+ * and never the row where wisps wait. Lying down, its bulbs run along the pen block's width
+ * (pens are wide and flat), and it reaches one tile further into the wall on each side where that
+ * wall is solid, so the level travels three to four tiles per bulb and moves visibly even at small
+ * sizes. The bulbs are mostly straight sided (so the level and the amount of sand agree), the
+ * glass is dark inside so the gold sand stands out on every maze theme, and the neck sits under
+ * the door. In the last 2 s the frame turns white hot and the glass throbs; the last grain drops
+ * at the end and the glass flashes.
  */
 
 const SAND = '#ffc93c';
@@ -33,6 +37,56 @@ interface Glass {
 }
 
 const glassCache = new Map<string, Glass>();
+const boxCache = new Map<string, GeoBox>();
+
+/**
+ * Where the glass lies on the board (CSS pixels), from the maze's pen: the pen rows except the one
+ * where wisps wait (the row farthest from the door), plus the wall row holding the door; the full
+ * width of the pen block, and one more tile on each side where those columns are solid wall.
+ */
+export function glassBox(k: CueContext): GeoBox {
+	const { T, maze: m } = k, { pen, door } = k.geo;
+	const key = `${m.id}:${m.layout ?? ''}:${T}`;
+	const hit = boxCache.get(key);
+	if (hit) return hit;
+	const doorAbove = door.cy < pen.cy;
+	// Tile rows of the glass: door row and every pen row but the waiting one.
+	const pr0 = Math.round(pen.y / T), pr1 = Math.round((pen.y + pen.h) / T) - 1;
+	const r0 = doorAbove ? pr0 - 1 : pr0 + 1, r1 = doorAbove ? pr1 - 1 : pr1 + 1;
+	// Tile columns: the pen block, widened by one where the whole column is wall (not the border).
+	let c0 = Math.round(pen.x / T) - 1, c1 = Math.round((pen.x + pen.w) / T);
+	const solid = (c: number) => {
+		if (c <= 0 || c >= m.W - 1) return false;
+		for (let r = r0; r <= r1; r++) if (m.tiles[r * m.W + c] !== WALL) return false;
+		return true;
+	};
+	if (solid(c0 - 1) && solid(c1 + 1)) { c0--; c1++; }
+	// A small gap on the waiting side, so bobbing wisps do not sit over the sand.
+	const gap = T * 0.12;
+	const x = c0 * T, w = (c1 - c0 + 1) * T;
+	const y = r0 * T + (doorAbove ? 0 : gap), h = (r1 - r0 + 1) * T - gap;
+	const box = { x, y, w, h, cx: x + w / 2, cy: y + h / 2 };
+	if (boxCache.size > 24) boxCache.clear();
+	boxCache.set(key, box);
+	return box;
+}
+
+/**
+ * The glass is drawn upright in its own frame and turned a quarter to lie on its side, the top
+ * bulb on the left: this is the upright box (same centre, width and height swapped).
+ */
+function uprightBox(k: CueContext): GeoBox {
+	const g = glassBox(k);
+	return { x: g.cx - g.h / 2, y: g.cy - g.w / 2, w: g.h, h: g.w, cx: g.cx, cy: g.cy };
+}
+
+/** Turn the context so the upright glass lies on its side, top bulb to the left. */
+function lieDown(k: CueContext) {
+	const g = glassBox(k);
+	k.ctx.translate(g.cx, g.cy);
+	k.ctx.rotate(-Math.PI / 2);
+	k.ctx.translate(-g.cx, -g.cy);
+}
 
 /**
  * The glass, from one profile: half-width by distance from the neck. Mostly straight sided with a
@@ -40,7 +94,7 @@ const glassCache = new Map<string, Glass>();
  * half its sand, and because the sides are straight the level drops almost evenly too.
  */
 function glass(k: CueContext): Glass {
-	const T = k.T, box = penBlock(k);
+	const T = k.T, box = uprightBox(k);
 	const key = `${k.maze.id}:${box.x},${box.y},${box.w},${box.h}:${T}`;
 	const hit = glassCache.get(key);
 	if (hit) return hit;
@@ -53,22 +107,36 @@ function glass(k: CueContext): Glass {
 		if (d > H - rr) { const v = d - (H - rr); return HW - rr + Math.sqrt(Math.max(0, rr * rr - v * v)); }
 		return HW;
 	};
-	const N = 40, ds: number[] = [], area: number[] = [0];
+	const N = 40, ds: number[] = [];
 	for (let i = 0; i <= N; i++) ds.push((i / N) * H);
-	for (let i = 1; i <= N; i++) area.push(area[i - 1] + (hw(ds[i - 1]) + hw(ds[i])) * (ds[i] - ds[i - 1]));
+	// Sand is placed by the area you can actually see: the bulb's width less the glass outline,
+	// and less the dark notch the pen door is drawn in (it crosses the bulb near the neck).
+	// So the share of gold you see is the share of time left, not just the share of glass.
+	const lw = Math.max(1.2, T * 0.09);
+	const n = notchBox(k), g0 = glassBox(k);
+	// The notch in the upright frame: across the bulb (u) and as a depth from the neck (d).
+	const nu0 = -(n.y + n.h - g0.cy), nu1 = -(n.y - g0.cy), nd0 = g0.cx - (n.x + n.w), nd1 = g0.cx - n.x;
+	const seen = (d: number) => {
+		const half = Math.max(0, hw(d) - lw / 2);
+		let w = 2 * half;
+		if (n.w > 0 && d >= nd0 && d <= nd1) w -= Math.max(0, Math.min(half, nu1) - Math.max(-half, nu0));
+		return Math.max(0, w);
+	};
+	const M = 200, as: number[] = [0];
+	for (let i = 1; i <= M; i++) as.push(as[i - 1] + ((seen(((i - 1) / M) * H) + seen((i / M) * H)) / 2) * (H / M));
 	// The sand never quite reaches the top of the glass.
 	const fullD = H - T * 0.14;
 	const areaAt = (d: number) => {
-		const i = Math.min(N - 1, Math.floor((d / H) * N)), u = (d - ds[i]) / (ds[i + 1] - ds[i]);
-		return area[i] + (area[i + 1] - area[i]) * u;
+		const i = Math.min(M - 1, Math.floor((d / H) * M)), u = (d - (i / M) * H) / (H / M);
+		return as[i] + (as[i + 1] - as[i]) * u;
 	};
 	const full = areaAt(fullD);
 	const depthFor = (amount: number) => {
 		const want = Math.max(0, Math.min(1, amount)) * full;
 		let i = 0;
-		while (i < N - 1 && area[i + 1] < want) i++;
-		const span = area[i + 1] - area[i] || 1;
-		return Math.min(fullD, ds[i] + (ds[i + 1] - ds[i]) * ((want - area[i]) / span));
+		while (i < M - 1 && as[i + 1] < want) i++;
+		const span = as[i + 1] - as[i] || 1;
+		return Math.min(fullD, (i / M) * H + (H / M) * ((want - as[i]) / span));
 	};
 	const bulb = (dir: 1 | -1) => {
 		const p = new Path2D();
@@ -83,10 +151,27 @@ function glass(k: CueContext): Glass {
 	return g;
 }
 
-/** The hourglass with the top bulb holding `frac` (1 full, 0 empty). */
-function drawGlass(k: CueContext, frac: number, hot: number, beat: number, done: boolean) {
-	const { ctx, T } = k;
+/**
+ * The hourglass with the left bulb holding `frac` (1 full, 0 empty). `squash` scales it along its
+ * length (the quick flip at the start). Drawn upright, then laid on its side.
+ */
+function drawGlass(k: CueContext, frac: number, hot: number, beat: number, done: boolean, squash = 1) {
+	const { ctx } = k;
+	ctx.save();
+	lieDown(k);
 	const g = glass(k), b = g.box;
+	if (squash !== 1) {
+		ctx.translate(b.cx, b.cy);
+		ctx.scale(1, squash);
+		ctx.translate(-b.cx, -b.cy);
+	}
+	drawUpright(k, g, frac, hot, beat, done);
+	ctx.restore();
+}
+
+function drawUpright(k: CueContext, g: Glass, frac: number, hot: number, beat: number, done: boolean) {
+	const { ctx, T } = k;
+	const b = g.box;
 	const frame = k.mix(GLASS, HOT, hot);
 
 	// Dark backing over the pen block, so the sand stands out whatever the maze colour.
@@ -94,8 +179,8 @@ function drawGlass(k: CueContext, frac: number, hot: number, beat: number, done:
 	ctx.beginPath();
 	ctx.roundRect(b.x + T * 0.08, b.y + T * 0.08, b.w - T * 0.16, b.h - T * 0.16, T * 0.35);
 	ctx.fill();
-	// The whole pen glows on the final beats.
-	if (beat > 0) k.glow(b.cx, b.cy, b.w * 0.8, HOT_GLOW, 0.7 * beat);
+	// The whole glass glows on the final beats.
+	if (beat > 0) k.glow(b.cx, b.cy, Math.max(b.w, b.h) * 0.6, HOT_GLOW, 0.7 * beat);
 
 	// Glass interior, faintly lit.
 	ctx.fillStyle = k.rgba(frame, 0.07 + 0.08 * beat);
@@ -187,20 +272,30 @@ function drawGlass(k: CueContext, frac: number, hot: number, beat: number, done:
 	ctx.fill();
 }
 
+/** The dark notch the pen door is drawn in, on the board (CSS pixels); empty without a door. */
+function notchBox(k: CueContext): GeoBox {
+	const { T } = k, d = k.geo.door;
+	if (!(d.w > 0 && d.h > 0)) return { x: 0, y: 0, w: 0, h: 0, cx: 0, cy: 0 };
+	const pad = T * 0.12, gap = T * 0.32;
+	const b = d.w >= d.h
+		? { x: d.x - pad, y: d.cy - gap, w: d.w + 2 * pad, h: 2 * gap }
+		: { x: d.cx - gap, y: d.y - pad, w: 2 * gap, h: d.h + 2 * pad };
+	return { ...b, cx: b.x + b.w / 2, cy: b.y + b.h / 2 };
+}
+
 /**
  * The pen door, drawn back over the glass so the player can still see where wisps come out: a
- * dark notch cut through the cap and the door's own glowing bar in it.
+ * dark notch cut through the glass's edge and the door's own glowing bar in it.
  */
 function drawDoor(k: CueContext, alpha = 1) {
 	const { ctx, T } = k, d = k.geo.door;
 	if (!(d.w > 0 && d.h > 0)) return;
-	const across = d.w >= d.h, h = Math.max(1.5, T * 0.14), pad = T * 0.12, gap = T * 0.32;
+	const across = d.w >= d.h, h = Math.max(1.5, T * 0.14), n = notchBox(k);
 	ctx.save();
 	ctx.globalAlpha *= alpha;
 	ctx.fillStyle = k.colors.bg;
 	ctx.beginPath();
-	if (across) ctx.roundRect(d.x - pad, d.cy - gap, d.w + 2 * pad, 2 * gap, gap * 0.5);
-	else ctx.roundRect(d.cx - gap, d.y - pad, 2 * gap, d.h + 2 * pad, gap * 0.5);
+	ctx.roundRect(n.x, n.y, n.w, n.h, T * 0.16);
 	ctx.fill();
 	ctx.fillStyle = k.colors.door;
 	ctx.shadowColor = k.colors.door;
@@ -216,15 +311,15 @@ function drawEnd(k: CueContext) {
 	const { T } = k;
 	const t = k.power.sinceExpired, D = 0.6;
 	if (!(t < D)) return;
-	const u = t / D, b = penBlock(k);
+	const u = t / D, b = glassBox(k), r = Math.max(b.w, b.h) / 2;
 	k.ctx.globalAlpha = 1 - k.ease.inQuad(u);
 	drawGlass(k, 0, 1, 0, true);
 	k.ctx.globalAlpha = 1;
 	drawDoor(k, 1 - k.ease.inQuad(u));
 	// The glass flashes once as the last grain lands.
-	k.glow(b.cx, b.cy, b.w * (0.6 + 0.4 * u), '#ffffff', 0.8 * (1 - u));
+	k.glow(b.cx, b.cy, r * (1.2 + 0.8 * u), '#ffffff', 0.8 * (1 - u));
 	if (!k.reduceMotion) {
-		k.ring(b.cx, b.cy, b.w * (0.3 + 0.55 * k.ease.outCubic(u)), Math.max(1.2, T * 0.2 * (1 - u)), '#ffffff', { alpha: 1 - u });
+		k.ring(b.cx, b.cy, r * (0.6 + 1.1 * k.ease.outCubic(u)), Math.max(1.2, T * 0.2 * (1 - u)), '#ffffff', { alpha: 1 - u });
 	}
 }
 
@@ -233,27 +328,23 @@ export const penHourglass: Cue = {
 	role: 'idea',
 	code: '7',
 	name: 'Pen hourglass',
-	tagline: 'The pen in the middle becomes an hourglass that runs out with the power.',
+	tagline: 'An hourglass in the pen runs out with the power.',
 	description:
-		'When you take a power dot the pen in the middle turns into an hourglass full of gold sand, and the top runs down at an even pace. In the last 2 seconds the glass glows white hot and the whole pen throbs; the last grain drops as the power ends and the glass flashes. The pen door stays visible on top.',
+		'When you take a power dot an hourglass lying on its side appears in the pen, its left bulb full of gold sand, and the sand runs into the right bulb at an even pace. It sits on the door side of the pen, away from where ghosts wait. In the last 2 seconds the glass glows white hot and throbs; the last grain drops as the power ends and the glass flashes. The pen door stays visible on top.',
 	channel: 'maze',
 	baseFlash: false,
 
 	under(k) {
-		const { ctx, power } = k;
+		const { power } = k;
 		if (power.active && k.frame.phase === 'playing') {
-			// A quick flip when the power starts (a squash, so it stays inside the pen block).
+			// A quick flip when the power starts (a squash along its length, so it stays in place).
 			const e = power.elapsed, FLIP = 0.35;
-			const flipping = !k.reduceMotion && e < FLIP;
-			ctx.save();
-			if (flipping) {
-				const b = penBlock(k), s = Math.cos(Math.PI * (1 - k.ease.outCubic(e / FLIP)));
-				ctx.translate(b.cx, b.cy);
-				ctx.scale(1, Math.abs(s) < 0.04 ? 0.04 * Math.sign(s || 1) : s);
-				ctx.translate(-b.cx, -b.cy);
+			let squash = 1;
+			if (!k.reduceMotion && e < FLIP) {
+				const s = Math.cos(Math.PI * (1 - k.ease.outCubic(e / FLIP)));
+				squash = Math.abs(s) < 0.04 ? 0.04 * Math.sign(s || 1) : s;
 			}
-			drawGlass(k, power.frac, hotness(k), finalBeat(k), false);
-			ctx.restore();
+			drawGlass(k, power.frac, hotness(k), finalBeat(k), false, squash);
 			drawDoor(k);
 			return;
 		}
