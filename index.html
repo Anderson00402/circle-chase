@@ -75,6 +75,7 @@ body {
 .card p { margin: 0 0 14px; color: var(--ink-dim); }
 .card .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .card .hint { margin: 12px 0 0; font-size: 13px; }
+.card .note { margin: 8px 0 0; font-size: 12px; text-wrap: balance; }
 
 .btn {
   font-family: var(--font-mono); font-weight: 600; font-size: 14px; letter-spacing: 0.03em;
@@ -109,6 +110,7 @@ body {
                 <button class="btn" id="ov-secondary" type="button" hidden>New game</button>
               </div>
               <p class="hint" id="ov-hint">Arrow keys or WASD to move. P to pause.</p>
+              <p class="note" id="ov-note" hidden>Anonymous play times are saved for a class study.</p>
             </div>
           </div>
         </div>
@@ -515,7 +517,127 @@ const Core = (() => {
     return Object.assign(g, { update, steer, pos, mode, targetOf, ghostPace });
   }
 
-  return { createGame, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED };
+  // ---- play stats ----
+  // Numbers for the class study, read from a game while it runs. Times are game seconds, and a paused
+  // game does not update, so pauses never count.
+  // Chasing, judged each time the circle moves onto a new tile during a power-up: a step that gets
+  // closer to the nearest scared ghost but not to any dot only makes sense if you are after the ghost.
+  // CHASE_PROOF of those, without a step away from the ghosts in between, start a chase; it lasts while
+  // the circle keeps closing in. The last step of a chase, or the last ghost eaten, is when the player
+  // stopped chasing. (Steps toward a ghost along a lane of dots prove nothing: eating dots looks the same.)
+  const CHASE_PROOF = 2; // 1 counted a plain dot-eater's random turns as chases far too often
+  const round2 = n => (n == null ? null : Math.round(n * 100) / 100);
+
+  // Steps from every floor tile to the nearest of the given tiles, along the player's lanes (-1 = none).
+  function distFrom(m, sources) {
+    const dist = new Int16Array(m.W * m.H).fill(-1), queue = [];
+    for (const i of sources) if (m.tiles[i] === PATH && dist[i] < 0) { dist[i] = 0; queue.push(i); }
+    for (let q = 0; q < queue.length; q++) {
+      const i = queue[q], x = i % m.W, y = (i - x) / m.W;
+      for (const d of DIRS) {
+        const ny = y + d.y;
+        if (ny < 0 || ny >= m.H) continue;
+        const j = ny * m.W + (x + d.x + m.W) % m.W;
+        if (m.tiles[j] !== PATH || dist[j] >= 0) continue;
+        dist[j] = dist[i] + 1;
+        queue.push(j);
+      }
+    }
+    return dist;
+  }
+
+  // Feed it every game event and call step() after every update; finish() returns the rows to save.
+  function createStats(g) {
+    const lives = [], ups = [];
+    let inPlay = 0, lifeStart = 0, lastDeath = 0, open = null, done = false;
+    let tile = -1, ateDot = false, proof = 0, chase = false;
+
+    const tileOf = a => {
+      const [x, y] = g.pos(a), W = g.maze.W;
+      return Math.round(y) * W + ((Math.round(x) % W) + W) % W;
+    };
+
+    function chasing() {
+      open.chased = true;
+      open.stoppedAt = g.time;
+      open.stopped_left_s = g.fright;
+    }
+
+    function close(ended) {
+      if (open) open.ended = ended;
+      open = null;
+    }
+
+    function event(type) {
+      if (done) return;
+      if (type === 'power') {
+        // The timer from the last stop runs until this power dot.
+        const last = ups[ups.length - 1];
+        close('new_power');
+        if (last && last.stoppedAt != null) last.to_next_power_s = g.time - last.stoppedAt;
+        open = {
+          n: ups.length + 1, level: g.level, length_s: g.frightTotal, started_s: g.time, chased: false, ghosts_eaten: 0,
+          stopped_left_s: null, to_next_power_s: null, ended: null, stoppedAt: null,
+        };
+        ups.push(open);
+        tile = tileOf(g.player);
+        ateDot = false;
+        proof = 0;
+        chase = false;
+      } else if (type === 'dot') ateDot = true;
+      else if (type === 'eat' && open) {
+        open.ghosts_eaten++;
+        chasing();
+      } else if (type === 'die') {
+        lives.push(inPlay - lifeStart);
+        lifeStart = inPlay;
+        lastDeath = g.time;
+        close('died');
+      } else if (type === 'clear') close('cleared');
+    }
+
+    function step(dt) {
+      if (done) return;
+      if (g.state === 'playing') inPlay += dt;
+      if (!open || g.state !== 'playing') return;
+      if (g.fright <= 0) return close('ran_out');
+      const scared = g.enemies.filter(e => e.scared && e.state === 'active');
+      if (!scared.length) return close('no_ghosts_left');
+      const here = tileOf(g.player);
+      if (here === tile) return;
+      const from = tile, m = g.maze, ghosts = distFrom(m, scared.map(tileOf)), ate = ateDot;
+      tile = here;
+      ateDot = false;
+      if (!(ghosts[here] >= 0 && ghosts[here] < ghosts[from])) { proof = 0; chase = false; return; }
+      const dotTiles = [];
+      for (let i = 0; i < m.dots.length; i++) if (m.dots[i]) dotTiles.push(i);
+      const dots = distFrom(m, dotTiles);
+      const forDots = ate || (dots[here] >= 0 && dots[here] < dots[from]);
+      if (!forDots && ++proof >= CHASE_PROOF) chase = true;
+      if (chase) chasing();
+    }
+
+    // ended: 'game_over', or 'quit' when the game is left or restarted first. Null if it never started.
+    function finish(ended) {
+      if (done || g.time <= 0) return null;
+      done = true;
+      close('quit');
+      return {
+        play: {
+          difficulty: g.diffKey, ended, survival_s: round2(ended === 'game_over' ? lastDeath : g.time),
+          life_s: lives.map(round2), score: g.score, level: g.level,
+        },
+        powers: ups.map(({ stoppedAt, ...u }) => ({
+          ...u, length_s: round2(u.length_s), started_s: round2(u.started_s),
+          stopped_left_s: round2(u.stopped_left_s), to_next_power_s: round2(u.to_next_power_s),
+        })),
+      };
+    }
+
+    return { event, step, finish };
+  }
+
+  return { createGame, createStats, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED, CHASE_PROOF };
 })();
 </script>
 
@@ -545,7 +667,7 @@ const Core = (() => {
   const savedScores = store.get('circle-chase:scores', {});
   for (const k of Object.keys(scores)) if (Array.isArray(savedScores[k])) scores[k] = savedScores[k].slice(0, 5);
 
-  let game, running = false, paused = false, overlayMode = 'title';
+  let game, stats, running = false, paused = false, overlayMode = 'title';
   let T = 0, dpr = 1, layers = {}, lastHud = '', readyLabel = 'READY';
   // Eating animation: dots being swallowed, and when the last one went down (game time).
   let bites = [], lastBite = -1, biteBig = false;
@@ -601,8 +723,59 @@ const Core = (() => {
     };
   })();
 
+  // ---------- play stats ----------
+  // Every game is saved for the class study (tools/stats.sql sets up the database): which version,
+  // how long the player survived, and when in each power-up they stopped chasing the ghosts. Nothing
+  // personal is sent. Only the website and localhost send, and nothing is sent while STATS_URL is empty.
+  const STATS_URL = ''; // https://<project>.supabase.co
+  const STATS_KEY = ''; // the project's publishable key: it can only add games, so it is safe in a public page
+  const VERSION = (() => {
+    const host = location.hostname, at = location.pathname.match(/\/(v|pr)\/([^/]+)\//);
+    if (host.endsWith('github.io')) return at ? (at[1] === 'pr' ? 'pr-' : '') + decodeURIComponent(at[2]) : 'main';
+    if (host === 'localhost' || host === '127.0.0.1') return 'localhost';
+    return null;
+  })();
+  // Test browsers (navigator.webdriver) never send, so automated runs stay out of the results.
+  const statsOn = Boolean(STATS_URL && STATS_KEY && VERSION && !navigator.webdriver);
+
+  // Every finished game waits in an outbox (this browser's storage) until the database has answered, and
+  // each page load sends whatever is still there. A closing page often can't get its request out, and the
+  // player may be offline; each game has its own id, so the database keeps one copy however often it arrives.
+  const OUTBOX = 'circle-chase:unsent';
+  const outbox = () => { const v = store.get(OUTBOX, []); return Array.isArray(v) ? v.filter(d => d && d.play && d.play.id) : []; };
+
+  function uuid() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 15) | 64;
+    b[8] = (b[8] & 63) | 128;
+    const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
+
+  function sendStats(data, leaving) {
+    const headers = { 'Content-Type': 'application/json', apikey: STATS_KEY };
+    if (STATS_KEY.startsWith('eyJ')) headers.Authorization = 'Bearer ' + STATS_KEY; // older keys are tokens and go here too
+    // keepalive lets the request outlive the page; only used then, since some browsers refuse it.
+    fetch(STATS_URL + '/rest/v1/rpc/record_play', { method: 'POST', headers, body: JSON.stringify(data), keepalive: leaving })
+      .then(res => {
+        // Saved, or refused for good (4xx): either way it leaves the outbox. A server error is tried again later.
+        if (res.status < 500) store.set(OUTBOX, outbox().filter(d => d.play.id !== data.play.id));
+      })
+      .catch(() => { /* offline or blocked: it stays in the outbox */ });
+  }
+
+  function saveStats(ended, leaving = false) {
+    const data = stats && stats.finish(ended);
+    if (!data || !statsOn) return;
+    Object.assign(data.play, { id: uuid(), version: VERSION });
+    store.set(OUTBOX, [...outbox(), data].slice(-20));
+    sendStats(data, leaving);
+  }
+
   // ---------- game flow ----------
   function onEvent(type, arg) {
+    stats.event(type);
     switch (type) {
       case 'dot': sfx.dot(); bite(arg, false); break;
       case 'power': sfx.power(); bite(arg, true); break;
@@ -616,7 +789,9 @@ const Core = (() => {
   }
 
   function newGame() {
+    saveStats('quit'); // a game restarted from the pause menu
     game = Core.createGame(settings.difficulty, onEvent);
+    stats = Core.createStats(game);
     readyLabel = 'READY';
     bites = [];
     lastBite = -1;
@@ -648,6 +823,7 @@ const Core = (() => {
 
   function gameOver() {
     running = false;
+    saveStats('game_over');
     const g = game;
     let rank = -1;
     if (g.score > 0) {
@@ -680,6 +856,7 @@ const Core = (() => {
     $('ov-primary').textContent = copy[2];
     $('ov-secondary').hidden = mode !== 'paused';
     $('ov-hint').textContent = touch ? 'Swipe on the board to move.' : 'Arrow keys or WASD to move. P to pause.';
+    $('ov-note').hidden = mode !== 'title' || !statsOn;
     $('overlay').hidden = false;
     if (!touch) $('ov-primary').focus({ preventScroll: true });
   }
@@ -1169,6 +1346,7 @@ const Core = (() => {
     $('ov-secondary').addEventListener('click', () => { newGame(); begin(); });
 
     document.addEventListener('visibilitychange', () => { if (document.hidden && running && !paused) setPaused(true); });
+    addEventListener('pagehide', () => saveStats('quit', true)); // closing the tab or switching versions
     addEventListener('blur', () => { if (running && !paused) setPaused(true); });
     addEventListener('resize', fit);
     if (window.ResizeObserver) new ResizeObserver(fit).observe($('sheet-wrap'));
@@ -1181,7 +1359,7 @@ const Core = (() => {
     last = now;
     if (running && !paused) {
       acc += dt;
-      while (acc >= STEP) { game.update(STEP); acc -= STEP; }
+      while (acc >= STEP) { game.update(STEP); stats.step(STEP); acc -= STEP; }
     } else acc = 0;
     draw();
     updateHud();
@@ -1193,6 +1371,7 @@ const Core = (() => {
     bindInput();
     newGame();
     showOverlay('title');
+    if (statsOn) for (const data of outbox()) sendStats(data, false); // games an earlier page left behind
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { layers = {}; });
     requestAnimationFrame(frame);
   }
