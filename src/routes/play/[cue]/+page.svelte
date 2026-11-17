@@ -55,8 +55,26 @@
 		if (route !== lastRoute) {
 			lastRoute = route;
 			if (!done) newRun();
+			else {
+				// A summary keeps the view it was last shown in (after a replay round trip or a refresh);
+				// the first time, it keeps the view the run ended in.
+				const kept = keptView(done);
+				if (kept !== null) participantView = kept;
+				else keepView(done, participantView);
+			}
 		}
 	});
+	/** The view (participant or researcher) of each run's summary, for this tab. */
+	const VIEW_KEY = (key: string) => `cc.run.view.${key}`;
+	function keptView(key: string): boolean | null {
+		try {
+			const v = sessionStorage.getItem(VIEW_KEY(key));
+			return v === 'researcher' ? false : v === 'participant' ? true : null;
+		} catch { return null; }
+	}
+	function keepView(key: string, hidden: boolean) {
+		try { sessionStorage.setItem(VIEW_KEY(key), hidden ? 'participant' : 'researcher'); } catch { /* storage blocked: the view lasts as long as the page */ }
+	}
 	function newRun() {
 		// After a refresh, carry on in the run that was being played in this tab.
 		const a = firstRun ? activeRun() : null;
@@ -74,7 +92,10 @@
 		target = run.settings.runLength;
 	}
 
-	function toggleView() { participantView = !participantView; }
+	function toggleView() {
+		participantView = !participantView;
+		if (done) keepView(done, participantView);
+	}
 
 	function started() {
 		if (!cue) return;
@@ -218,7 +239,7 @@
 						<span class="finishing" role="status">Measuring the last power-up...{finishLeft !== null ? ` ${finishLeft} s` : ''}</span>
 						<button class="tool" onclick={endRun} title="End now: the power-up in progress is not counted (E)">End now <Kbd>E</Kbd></button>
 					{:else}
-						<button class="tool end" onclick={endRun} disabled={ending} title="End run: a power-up in progress is measured to its end first (E)">{ending ? 'Saving...' : 'End run'} <Kbd>E</Kbd></button>
+						<button class="tool end" onclick={endRun} disabled={ending} title="End run: a power-up in progress is measured to its end first (E)">{ending ? 'Ending...' : 'End run'} <Kbd>E</Kbd></button>
 					{/if}
 				{/if}
 			</div>

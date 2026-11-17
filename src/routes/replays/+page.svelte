@@ -7,17 +7,35 @@
 	 */
 	import { useQuery } from 'convex-svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { tick } from 'svelte';
 	import { api } from '#convex/_generated/api.js';
 	import { Badge, Button, EmptyState, CONSOLE_HREF, LoadState, Page, PageHeader, Segmented, Select, cueListings } from '#lib/ui/index.ts';
 	import MomentCard from '#lib/replay/MomentCard.svelte';
-	import { SORTS, queryArgs, readState, toSearch, type ListState, type Source } from '#lib/replay/list.ts';
+	import { SORTS, dashboardHref, dashboardScope, queryArgs, readState, toSearch, type ListState, type Source } from '#lib/replay/list.ts';
 	import { OUTCOME_LABEL, OUTCOME_ORDER } from '#lib/replay/story.ts';
 	import { slow } from '#lib/ui/connection.svelte.ts';
 
 	const PAGE = 24;
 	const ls = $derived(readState(page.url.searchParams));
-	let shown = $state(PAGE);
+	/**
+	 * How far "Show more" went and where the page was scrolled, per list (its query), for this tab:
+	 * coming back from a replay finds the same cards at the same place. Back from the player carries
+	 * `#at=<trial>&pos=<n>`: enough cards are shown to reach it, and it is scrolled into view.
+	 */
+	const VIEW_KEY = (q: string) => `cc.replays.view:${q}`;
+	function readView(q: string): { shown: number; y: number } | null {
+		try { const v = JSON.parse(sessionStorage.getItem(VIEW_KEY(q)) ?? 'null'); return v && typeof v.shown === 'number' ? v : null; }
+		catch { return null; }
+	}
+	const startHash = new URLSearchParams(typeof location === 'undefined' ? '' : location.hash.slice(1));
+	const backAt = startHash.get('at');
+	const backPos = Number(startHash.get('pos') ?? -1);
+	const firstView = readView(toSearch(readState(page.url.searchParams)));
+	let shown = $state(Math.min(500, Math.max(firstView?.shown ?? PAGE, backPos >= 0 ? Math.ceil((backPos + 1) / PAGE) * PAGE : PAGE)));
+	beforeNavigate(() => {
+		try { sessionStorage.setItem(VIEW_KEY(toSearch(ls)), JSON.stringify({ shown, y: Math.round(window.scrollY) })); } catch { /* storage blocked */ }
+	});
 	const q = useQuery(api.replays.list, () => ({ ...queryArgs(ls), limit: shown }), { keepPreviousData: true });
 	const list = $derived(q.data?.rows ?? []);
 	const total = $derived(q.data?.total ?? 0);
@@ -50,7 +68,25 @@
 		{ value: 'bot', label: 'Simulated' },
 		{ value: 'all', label: 'All' }
 	];
-	const filtered = $derived(!!(ls.cue || ls.outcome || ls.participant));
+	const filtered = $derived(!!(ls.cue || ls.outcome || ls.participant || ls.run || ls.mode || ls.period));
+	/** The filters the dashboard set that this page has no control for, in words. */
+	const scope = $derived(dashboardScope(ls));
+
+	// Once the cards are in, go back to where the list was left: the card just watched, else the scroll position.
+	let restored = false;
+	$effect(() => {
+		if (restored || !q.data) return;
+		const rows = list;
+		if (backAt && !rows.some((m) => m.trialId === backAt) && q.data.total > rows.length && shown < 500) return; // still loading more
+		restored = true;
+		tick().then(() => {
+			const card = backAt ? document.querySelector(`[data-trial="${CSS.escape(backAt)}"]`) : null;
+			if (card) {
+				card.scrollIntoView({ block: 'center' });
+				(card.querySelector('a') as HTMLElement | null)?.focus({ preventScroll: true });
+			} else if (firstView && firstView.y > 0) window.scrollTo(0, firstView.y);
+		});
+	});
 	const search = $derived(toSearch(ls));
 
 	// Re-render "x min ago" now and then.
@@ -95,6 +131,13 @@
 				{/if}
 			{/each}
 		</div>
+		{#if scope.length || ls.dash}
+			<p class="scope">
+				<span>{scope.length ? `Only ${scope.join(', ')}` : 'Opened from the dashboard'}{ls.dash ? ', as on the dashboard.' : '.'}</span>
+				{#if ls.dash}<a href={dashboardHref(ls)}>Back to the dashboard</a>{/if}
+				{#if scope.length}<button type="button" class="linkish" onclick={() => set({ run: '', mode: '', period: '', dash: '' })}>Show every run and period</button>{/if}
+			</p>
+		{/if}
 		{#if ls.source !== 'human'}
 			<p class="simnote">
 				<Badge tone="sim">Simulated</Badge>
@@ -106,7 +149,7 @@
 
 	{#if !q.data}
 		<LoadState {wait} error={q.error} what="the replays" icon="replay" />
-	{:else if !outcomeCounts.all && !ls.cue && !ls.participant}
+	{:else if !outcomeCounts.all && !filtered}
 		{#if ls.source === 'human' && q.data?.has.bot}
 			<EmptyState title="No human replays yet" icon="replay">
 				Nobody has played a recorded moment yet. Simulated players have, and their moments show how
@@ -129,7 +172,7 @@
 		<EmptyState title="No moments match these filters" icon="replay" compact>
 			Try another condition or outcome.
 			{#snippet actions()}
-				<Button onclick={() => set({ cue: '', outcome: '', participant: '' })}>Clear filters</Button>
+				<Button onclick={() => set({ cue: '', outcome: '', participant: '', run: '', mode: '', period: '', dash: '' })}>Clear filters</Button>
 			{/snippet}
 		</EmptyState>
 	{:else}
@@ -139,7 +182,7 @@
 		</p>
 		<ul class="grid">
 			{#each list as m (m.trialId)}
-				<li><MomentCard {m} {now} href="/replays/{m.trialId}{search}" /></li>
+				<li data-trial={m.trialId}><MomentCard {m} {now} href="/replays/{m.trialId}{search}" /></li>
 			{/each}
 		</ul>
 		{#if total > list.length}
@@ -187,6 +230,8 @@
 	.chip.overstayed[aria-pressed='true'], .chip.early-retreat[aria-pressed='true'] { border-color: var(--warn); background: var(--warn-soft); }
 	.chip.timely-retreat[aria-pressed='true'] { border-color: var(--good); background: var(--good-soft); }
 	.n { color: var(--ink-faint); font-weight: 400; }
+	.scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-sm); color: var(--ink-dim); }
+	.linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
 	.simnote { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--text-sm); color: var(--ink-dim); }
 	.status { color: var(--ink-dim); font-size: var(--text-sm); margin: 0 0 var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); align-items: center; }
 	.live { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-faint); }

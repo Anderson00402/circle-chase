@@ -11,6 +11,7 @@
 	 */
 	import type { Marker } from '#lib/telemetry/recorder.ts';
 	import { ghostName, signed } from './story';
+	import { OUTCOME_INFO } from '../outcomes';
 
 	interface Props {
 		/** Axis range in game time. */
@@ -186,7 +187,7 @@
 			<rect x={ideal.x} y={TOP} width={ideal.w} height={CHART_H} class="band ideal-soft" />
 			{#if expired}<rect x={after.x} y={TOP} width={after.w} height={CHART_H} class="band after" />{/if}
 			{#if warn.w > 70}<text x={warn.x + 4} y={TOP + 12} class="band-label warn-l">Last 3 s</text>{/if}
-			{#if ideal.w > 60}<text x={ideal.x + 4} y={TOP + 26} class="band-label ideal-l">Ideal turn-away</text>{/if}
+			{#if ideal.w > 45}<text x={ideal.x + 4} y={TOP + 26} class="band-label ideal-l">{ideal.w > 120 ? OUTCOME_INFO['timely-retreat'].label : OUTCOME_INFO['timely-retreat'].short}</text>{/if}
 			{#if expired && after.w > 90}<text x={after.x + 4} y={TOP + 12} class="band-label after-l">Ghosts dangerous</text>{/if}
 
 			<!-- distance scale -->

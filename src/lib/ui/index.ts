@@ -21,5 +21,5 @@ export { default as Tabs } from './Tabs.svelte';
 export { cueListings, whereLabel, ROLE_LABEL, type CueListing } from './cues.ts';
 export { NAV, DEV_NAV, CONSOLE_HREF, isCurrent } from './nav.ts';
 export { default as ConnectionDot } from './ConnectionDot.svelte';
-export { connection, slow, CONN_LABEL } from './connection.svelte.ts';
+export { connection, slow, errorReason, CONN_LABEL } from './connection.svelte.ts';
 export { default as LoadState } from './LoadState.svelte';

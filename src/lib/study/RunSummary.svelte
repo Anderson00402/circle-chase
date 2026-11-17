@@ -85,6 +85,22 @@
 	/** "1 of 3 · 33%": every share with its denominator. */
 	const share = (k: number, n: number) => (n ? `of ${n} · ${Math.round((k / n) * 100)}%` : 'of 0');
 	const notCounted = $derived(d ? d.rows.filter((r) => !r.counted) : []);
+	/**
+	 * The reasons rows do not count, each once with how many it covers (numbered footnotes), so a run
+	 * of eats does not repeat the same sentence under every row and push "Next case" off the screen.
+	 */
+	const reasons = $derived.by(() => {
+		const list: { text: string; n: number }[] = [];
+		for (const r of d?.rows ?? []) {
+			if (!r.reason) continue;
+			const hit = list.find((x) => x.text === r.reason);
+			if (hit) hit.n++;
+			else list.push({ text: r.reason, n: 1 });
+		}
+		return list;
+	});
+	const reasonNo = (reason: string | null | undefined) => (reason ? reasons.findIndex((x) => x.text === reason) + 1 : 0);
+	const lower = (x: string) => x.charAt(0).toLowerCase() + x.slice(1);
 </script>
 
 <div class="summary">
@@ -130,7 +146,7 @@
 									<td class="n num">{secs(t.total)}</td>
 									<td class="what-cell">
 										<span class="dot" style:background={outcomeColor(t.outcome)}></span>{outcomeLabel(t.outcome)}
-										{#if t.reason}<small class="why">Not counted: {t.reason.charAt(0).toLowerCase() + t.reason.slice(1)}</small>{/if}
+										{#if t.reason}<small class="why" title="Not counted: {lower(t.reason)}">not counted <sup class="fn">{reasonNo(t.reason)}</sup></small>{/if}
 									</td>
 									<td class="n num">{turnWords(t.outcome, t.turnLeft, t.lastChaseEnd) ?? '-'}</td>
 									<td class="n num eats">{t.eats}</td>
@@ -142,7 +158,14 @@
 				</div>
 				<p class="note"><a href={`/replays?${new URLSearchParams({ ...(d.source !== 'human' ? { source: d.source } : {}), p: d.participantId })}`}>All replays of {who || 'this participant'}</a></p>
 				{#if notCounted.length}
-					<p class="note">{notCounted.length} of {d.rows.length} power-up{d.rows.length === 1 ? '' : 's'} {notCounted.length === 1 ? 'does' : 'do'} not count toward the rates{d.oldRules ? `, ${d.oldRules} of them because they were recorded under older rules` : ''}; the reason is under each one.</p>
+					<div class="note">
+						<p>{notCounted.length} of {d.rows.length} power-up{d.rows.length === 1 ? '' : 's'} {notCounted.length === 1 ? 'does' : 'do'} not count toward the rates{d.oldRules ? `, ${d.oldRules} of them because they were recorded under older rules` : ''}:</p>
+						<ol class="reasons">
+							{#each reasons as r, i (r.text)}
+								<li><sup class="fn">{i + 1}</sup> {r.text} <span class="num dim">({r.n})</span></li>
+							{/each}
+						</ol>
+					</div>
 				{/if}
 			{:else if res.isLoading || (!d && recent.length)}
 				<p class="empty">{waiting.offline ? "Can't reach the database. What was measured is kept on this machine and sent when it is back." : waiting.late ? 'Still waiting for the server: it is connected but slow to answer. This fills in by itself.' : 'Waiting for the server...'}</p>
@@ -211,7 +234,9 @@
 	thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink-dim); font-size: var(--text-xs); font-weight: 600; }
 	.n { text-align: right; }
 	.what-cell { white-space: normal; min-width: 180px; }
-	.why { display: block; color: var(--ink-faint); font-size: var(--text-xs); margin: 2px 0 0 14px; }
+	.why { margin-left: 6px; color: var(--ink-faint); font-size: var(--text-xs); white-space: nowrap; }
+	.fn { font-size: 0.75em; font-weight: 700; color: var(--ink-dim); }
+	.reasons { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-xs); }
 	tr.dim td { color: var(--ink-dim); }
 	.dim { color: var(--ink-faint); }
 	.small { font-size: var(--text-xs); }

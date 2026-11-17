@@ -4,7 +4,7 @@
  */
 import { OUTCOME_INFO, OUTCOME_LABEL, OUTCOME_ORDER, outcomeLabel, type AnyOutcome, type OutcomeTone } from '../outcomes';
 import type { Outcome } from '../telemetry/types';
-import { RULES_VERSION } from '#convex/lib/rules.ts';
+import { CAUGHT_DIST, OVERSTAY_DIST, RULES_VERSION } from '#convex/lib/rules.ts';
 
 export { OUTCOME_LABEL, OUTCOME_ORDER, outcomeLabel };
 type Any = AnyOutcome;
@@ -34,6 +34,23 @@ export function leftWords(left: number, digits = 1): string {
 	return left > 0 ? `${f(left)} s left` : `${f(-left)} s after the end`;
 }
 
+/**
+ * A distance in tiles for people: "4.1 tiles". Near a rule's line (the 5 tiles that decide caught
+ * and stayed too long) it shows two decimals, so "5.05" never reads "5.0" next to "more than 5".
+ * A missing value is "-", never "-tiles".
+ */
+export function tilesNum(d: number | null | undefined): string {
+	if (d === null || d === undefined || !Number.isFinite(d)) return '-';
+	// Within this of the line, one decimal could round across it (4.96 and 5.05 both read "5.0").
+	const nearLine = Math.abs(d - CAUGHT_DIST) <= 0.065 || Math.abs(d - OVERSTAY_DIST) <= 0.065;
+	return nearLine && Math.abs(d - Math.round(d)) > 0.004 ? d.toFixed(2) : s1(d);
+}
+export const tilesText = (d: number | null | undefined): string => (d === null || d === undefined || !Number.isFinite(d) ? '-' : `${tilesNum(d)} tiles`);
+
+/** The two distances at the end differ enough to be told apart (as printed). */
+export const distancesDiffer = (a: number | null | undefined, b: number | null | undefined) =>
+	a != null && b != null && tilesNum(a) !== tilesNum(b);
+
 /** Signed seconds left for compact readouts: "1.42", "-0.30". */
 export const signed = (left: number, digits = 2) => (left < 0 ? '−' : '') + Math.abs(left).toFixed(digits);
 
@@ -51,6 +68,8 @@ export interface StoryTrial {
 	lastChaseEnd?: string | null;
 	/** Distance to the last chase's ghost when the power ran out (rules version 3). */
 	chaseEndDist?: number | null;
+	/** The last chase's ghost (rules version 3); preferred over the clip's guess for naming it. */
+	chaseGhost?: string | null;
 	eats: { t: number; left: number; ghost: string }[];
 	allEatenLeft: number | null;
 	wasted: number | null;
@@ -76,12 +95,24 @@ function said(t: StoryTrial, opts: { turnGhost?: string | null; endGhost?: strin
 	const killer = ghostName(a.killer);
 	const lastEat = t.eats.length ? t.eats[t.eats.length - 1] : null;
 	const the = (name: string | null | undefined) => (name ? `the ${name}` : 'a ghost');
-	const turnG = the(ghostName(opts.turnGhost) ?? killer);
-	const endG = the(ghostName(opts.endGhost) ?? ghostName(opts.turnGhost) ?? killer);
-	const tiles = (d: number | null | undefined) => (d === null || d === undefined ? '' : `, ${s1(d)} tiles away`);
+	// The ghost of the last chase is stored with the trial; the clip's guess is the fallback for older rows.
+	const chased = ghostName(t.chaseGhost);
+	const turnG = the(chased ?? ghostName(opts.turnGhost) ?? killer);
+	const endG = the(chased ?? ghostName(opts.endGhost) ?? ghostName(opts.turnGhost) ?? killer);
+	const tiles = (d: number | null | undefined) => (d === null || d === undefined ? '' : `, ${tilesText(d)} away`);
+	/**
+	 * The distance to the chased ghost at the end, and the nearest dangerous ghost when that is a
+	 * different number: the readouts and Key numbers show the nearest one, so the sentence names both.
+	 */
+	const chaseAtEnd = (d: number | null | undefined) => {
+		const own = d ?? null;
+		if (own === null) return t.endDist !== null ? `, with the nearest ghost ${tilesText(t.endDist)} away` : '';
+		return tiles(own) + (distancesDiffer(own, t.endDist) ? `, and the nearest ghost was ${tilesText(t.endDist)} away` : '');
+	};
 	// When the death came: the time to the catch, else the end of what was seen (the death closes the trial).
 	const deathAt = a.timeToCaught ?? (a.died && a.seen !== undefined ? a.seen : null);
-	const after = deathAt !== null ? `${s1(deathAt)} s after the power ended` : 'after the power ended';
+	// The same frame as the end reads "as the power ran out", never "0.0 s after".
+	const after = deathAt === null ? 'after the power ended' : deathAt < 0.005 ? 'as the power ran out' : `${s1(deathAt)} s after the power ended`;
 	const by = killer ? ` by the ${killer}` : '';
 	const to = killer ? ` to the ${killer}` : '';
 	const ateLast = t.lastChaseEnd === 'eat' || t.outcome === 'catch';
@@ -90,7 +121,7 @@ function said(t: StoryTrial, opts: { turnGhost?: string | null; endGhost?: strin
 	// A death after the end in a trial not classed caught: say it, with the word "died".
 	const died = !a.died ? ''
 		: a.caught
-			? `; then died${to} ${after}, but was more than 5 tiles from a dangerous ghost when the power ran out, so it does not count as caught`
+			? `; then died${to} ${after}, but was ${t.endDist !== null ? `${tilesText(t.endDist)} from the nearest dangerous ghost when the power ran out (more than ${CAUGHT_DIST})` : `more than ${CAUGHT_DIST} tiles from a dangerous ghost when the power ran out`}, so it does not count as caught`
 			: killer ? `; then died to the ${killer} ${after}, a ghost that had not been scared` : `; then died ${after} to a ghost that had not been scared`;
 
 	switch (t.outcome) {
@@ -105,14 +136,15 @@ function said(t: StoryTrial, opts: { turnGhost?: string | null; endGhost?: strin
 			return `${w}, so there is no ending to judge.`;
 		}
 		case 'caught': {
-			const near = `was ${t.endDist !== null ? `${s1(t.endDist)} tiles` : 'close'} from a ghost that had just turned dangerous when the power ran out, and was caught${by} ${after}`;
+			const near = `was ${t.endDist !== null ? tilesText(t.endDist) : 'close'} from a ghost that had just turned dangerous when the power ran out, and was caught${by} ${after}`;
 			if (ateLast) return `${ate} and chased nothing after it, but ${near}.`;
 			if (t.lastChaseEnd === null || (t.lastChaseEnd === undefined && t.turnLeft === null)) return `Was not chasing near the end, but ${near}.`;
 			if (t.turnLeft !== null && t.turnLeft < 0) {
-				const later = a.timeToCaught !== null ? ` ${s1(Math.max(0, a.timeToCaught + t.turnLeft))} s later` : '';
+				const gap = a.timeToCaught !== null ? Math.max(0, a.timeToCaught + t.turnLeft) : null;
+				const later = gap === null ? '' : gap < 0.005 ? ' right then' : ` ${s1(gap)} s later`;
 				return `Kept chasing ${turnG} until ${s1(-t.turnLeft)} s after the power ended${tiles(t.turnDist)}, and was caught${by}${later}.`;
 			}
-			if (t.turnLeft === null || t.turnLeft < 0.2) return `Was still closing in on ${turnG} when the power ran out${tiles(t.endDist)}, and was caught${by} ${after}.`;
+			if (t.turnLeft === null || t.turnLeft < 0.2) return `Was still closing in on ${turnG} when the power ran out${chaseAtEnd(t.chaseEndDist)}, and was caught${by} ${after}.`;
 			return `Turned away from ${turnG} with ${s1(t.turnLeft)} s left, but ${near}.`;
 		}
 		case 'catch':
@@ -121,10 +153,10 @@ function said(t: StoryTrial, opts: { turnGhost?: string | null; endGhost?: strin
 			return `${ate} and chased nothing after it${tail}. A catch shows no decision about the end, so it is in no rate.`;
 		}
 		case 'overstayed': {
-			const near = a.nearMiss && a.minDangerDist !== null ? ` with a near miss (${s1(a.minDangerDist)} tiles)` : '';
-			const react = t.reaction === null ? '' : t.reaction < 0.05 ? ', moved away right as it ran out' : `, moved away ${s1(t.reaction)} s after it ran out`;
+			const near = a.nearMiss && a.minDangerDist !== null ? ` with a near miss (${tilesText(a.minDangerDist)})` : '';
+			const react = t.reaction === null ? '' : t.reaction < 0.05 ? '; moved away right as it ran out' : `; moved away ${s1(t.reaction)} s after it ran out`;
 			const when = t.turnLeft === null ? '' : t.turnLeft < 0 ? ` (turned ${s1(-t.turnLeft)} s after the end)` : t.turnLeft > 0.005 ? ` (turned with only ${s1(t.turnLeft)} s left)` : '';
-			return `Stayed too long: was still chasing ${endG} when the power ran out${tiles(t.chaseEndDist ?? t.endDist)}${when}${react}${a.died ? died : `, and got away${near}`}.`;
+			return `Stayed too long: was still chasing ${endG} when the power ran out${when}${chaseAtEnd(t.chaseEndDist)}${react}${a.died ? died : `, and got away${near}`}.`;
 		}
 		case 'timely-retreat':
 			return `Turned away from ${turnG} in time, with ${s1(t.turnLeft ?? 0)} s left${tiles(t.turnDist)}${a.died ? died : ', and was clear when the ghosts turned dangerous'}.`;
@@ -140,8 +172,13 @@ function said(t: StoryTrial, opts: { turnGhost?: string | null; endGhost?: strin
 		}
 		case 'other': {
 			const still = t.lastChaseEnd === 'open' || (t.turnLeft !== null && t.turnLeft < 0.2);
+			// "Too far to be a danger" only when no dangerous ghost was within reach at the end.
+			const danger = t.endDist !== null && t.endDist <= CAUGHT_DIST;
+			const off = t.chaseEndDist != null ? `${tilesText(t.chaseEndDist)} off` : `more than ${OVERSTAY_DIST} tiles off`;
 			const what = still
-				? `Was still chasing ${endG} when the power ran out, but it was ${t.chaseEndDist != null ? `${s1(t.chaseEndDist)} tiles` : 'more than 5 tiles'} off, too far to be a danger`
+				? danger
+					? `Was still chasing ${endG} when the power ran out, but it was ${off}, too far to count as staying too long (the nearest ghost was ${tilesText(t.endDist)} away)`
+					: `Was still chasing ${endG} when the power ran out, but it was ${off}, too far to be a danger`
 				: `Turned away from ${turnG} with ${s1(t.turnLeft ?? 0)} s left, when it could no longer be reached before the power ran out`;
 			return `${what}, so it shows no decision${died}.`;
 		}

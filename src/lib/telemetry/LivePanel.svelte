@@ -37,9 +37,7 @@
 <aside class="panel" aria-label="Live measurement">
 	<header>
 		<h2>Live measurement</h2>
-		<span class="status" class:off={!live.online} title={live.online ? 'Each trial is saved as soon as it ends' : 'Offline: trials are kept and sent when the connection is back'}>
-			<span class="led" aria-hidden="true"></span>{live.online ? 'Saving' : 'Offline'}{live.pending > 0 ? ` · ${live.pending} waiting` : ''}
-		</span>
+		<!-- No save word here: the top bar's indicator is the one place that says whether writes are saved. -->
 	</header>
 
 	<section class="now" class:busy={state !== 'idle'} aria-live="off">
@@ -118,9 +116,6 @@
 	h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim, #9aa8cc); font-weight: 600; }
 	dl { margin: 0; display: flex; flex-direction: column; gap: 3px; }
 	dd { margin: 0; }
-	.status { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; color: var(--good, #6fdc8c); }
-	.led { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-	.status.off { color: var(--bad, #ff6b6b); }
 	/* The border does not change between the power and its aftermath: that change would mark the end. */
 	.now { padding: 10px; border: 1px solid var(--rule, #2a3a66); border-radius: var(--radius-sm, 6px); }
 	.now.busy { border-color: var(--rule-strong, #3a4870); }

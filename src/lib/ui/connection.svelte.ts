@@ -84,3 +84,11 @@ export function slow(loading: () => boolean, ms = GRACE * 1000): { readonly curr
 		get current() { return loading() && (late || state.status === 'offline'); }
 	};
 }
+
+/** A failed query's reason in the server's own words, without the request id and stack Convex wraps around it. */
+export function errorReason(error: Error | null | undefined): string {
+	if (!error) return '';
+	const m = (error.message ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !/^\[Request ID|^at |Called by client/.test(l));
+	const line = (m.find((l) => /Error:/.test(l)) ?? m[0] ?? '').replace(/^.*?(Uncaught )?Error:\s*/, '');
+	return line.slice(0, 160).replace(/\.+$/, '');
+}

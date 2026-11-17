@@ -24,9 +24,32 @@ const listArgs = {
 	outcome: v.optional(v.string()),
 	/** A participant id (`participants` document id); '' or absent for everyone. A plain number is read as a run-console number. */
 	participant: v.optional(v.string()),
+	/**
+	 * One simulator run (`sessions.sim.run`), or `other` for simulated play outside any run, as the
+	 * dashboard shows it: a replay opened there walks the same set.
+	 */
+	run: v.optional(v.string()),
+	/** Only moments recorded at or after this time (ms), as the dashboard's period. */
+	from: v.optional(v.number()),
 	sort: sortArg
 };
-type ListArgs = { source?: 'human' | 'bot' | 'all'; mode?: 'study' | 'arcade'; cue?: string; outcome?: string; participant?: string; sort?: Sort };
+type ListArgs = { source?: 'human' | 'bot' | 'all'; mode?: 'study' | 'arcade'; cue?: string; outcome?: string; participant?: string; run?: string; from?: number; sort?: Sort };
+
+/** The `run` value for simulated play outside any simulator run (the dashboard's `OTHER_RUN`). */
+const OTHER_RUN = 'other';
+
+/**
+ * Keep the digests of one simulator run. The run is read from the per-session totals (one small
+ * document per session, indexed by run), so this costs one indexed read whatever the run's size.
+ */
+async function ofRun(ctx: QueryCtx, ds: Digest[], run: string | undefined): Promise<Digest[]> {
+	if (!run) return ds;
+	const cells = run === OTHER_RUN
+		? (await ctx.db.query('trialCells').withIndex('by_run', (i) => i.eq('simRun', undefined)).collect()).filter((c) => c.source === 'bot')
+		: await ctx.db.query('trialCells').withIndex('by_run', (i) => i.eq('simRun', run)).collect();
+	const sessions = new Set(cells.map((c) => c.sessionId));
+	return ds.filter((d) => sessions.has(d.sessionId));
+}
 
 type Digest = Doc<'replayDigests'>;
 
@@ -93,11 +116,11 @@ async function ofOne(ctx: QueryCtx, a: Pick<ListArgs, 'source' | 'participant'>)
 }
 
 /** Every listed moment of these digests matching the rules and condition, as light rows. */
-function moments(ds: Digest[], a: Pick<ListArgs, 'cue' | 'mode'>): MomentRow[] {
+function moments(ds: Digest[], a: Pick<ListArgs, 'cue' | 'mode' | 'from'>): MomentRow[] {
 	const rows: MomentRow[] = [];
 	for (const d of ds) {
 		for (const r of d.rows) {
-			if ((a.cue && r.cue !== a.cue) || (a.mode && r.mode !== a.mode)) continue;
+			if ((a.cue && r.cue !== a.cue) || (a.mode && r.mode !== a.mode) || (a.from !== undefined && r.createdAt < a.from)) continue;
 			rows.push(toRow(r, d));
 		}
 	}
@@ -136,7 +159,7 @@ export const list = query({
 	args: { ...listArgs, limit: v.optional(v.number()) },
 	handler: async (ctx, a) => {
 		// One read of the source: the participant menu lists everyone in it, not only the one picked.
-		const everyone = await bySource(ctx, a.source);
+		const everyone = await ofRun(ctx, await bySource(ctx, a.source), a.run);
 		const rows = moments(ofParticipant(everyone, a.participant), a);
 		const outcomes: Record<string, number> = {};
 		for (const r of rows) outcomes[r.outcome] = (outcomes[r.outcome] ?? 0) + 1;
@@ -165,7 +188,7 @@ export const list = query({
 export const neighbours = query({
 	args: { trialId: v.id('trials'), ...listArgs },
 	handler: async (ctx, a) => {
-		const rows = moments(await ofOne(ctx, a), a);
+		const rows = moments(await ofRun(ctx, await ofOne(ctx, a), a.run), a);
 		const list = sortMoments(a.outcome ? rows.filter((r) => r.outcome === a.outcome) : rows, a.sort);
 		const i = list.findIndex((r) => r.trialId === a.trialId);
 		return {

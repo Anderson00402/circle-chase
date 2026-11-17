@@ -14,13 +14,13 @@
 	 */
 	import { useQuery } from 'convex-svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { api } from '#convex/_generated/api.js';
 	import type { Id } from '#convex/_generated/dataModel.js';
 	import type { GhostId } from '#lib/game/types.ts';
 	import { cueById } from '#lib/game/cues/index.ts';
 	import { decodeClip, type EncodedClip, type Marker } from '#lib/telemetry/recorder.ts';
-	import { Badge, Button, CueChip, EmptyState, InfoTip, Kbd, LoadState, Page, Segmented, Select, cueListings, slow } from '#lib/ui/index.ts';
+	import { Badge, Button, CueChip, EmptyState, InfoTip, Kbd, LoadState, Page, Segmented, Select, cueListings, errorReason, slow } from '#lib/ui/index.ts';
 	import { WRONG_MAZE_NOTE, clipFitsMaze } from '#lib/replay/layout.ts';
 	import { DEFINITIONS } from '#lib/definitions.ts';
 	import { notCountedReason } from '#convex/lib/reasons.ts';
@@ -29,9 +29,9 @@
 	import Timeline from '#lib/replay/Timeline.svelte';
 	import { indexAt, sceneAt, stepTime } from '#lib/replay/interp.ts';
 	import { targetCache } from '#lib/replay/target.ts';
-	import { queryArgs, readState, replayHref, toSearch } from '#lib/replay/list.ts';
-	import { OUTCOME_MEANING, OUTCOME_TONE, describe, endTimeOf, ghostName, leftWords, outcomeLabel, signed, ago } from '#lib/replay/story.ts';
-	import { deathLabel, modeLabel } from '#lib/outcomes.ts';
+	import { dashboardHref, dashboardList, queryArgs, readState, replayHref, toSearch } from '#lib/replay/list.ts';
+	import { OUTCOME_MEANING, OUTCOME_TONE, describe, distancesDiffer, endTimeOf, ghostName, leftWords, outcomeLabel, signed, tilesNum, tilesText, ago } from '#lib/replay/story.ts';
+	import { OUTCOME_INFO, deathLabel, modeLabel } from '#lib/outcomes.ts';
 	import { summaryHref } from '#lib/study/run.svelte.ts';
 	import { RULES_VERSION, isDecision, isLateCatch } from '#convex/lib/rules.ts';
 
@@ -225,6 +225,12 @@
 		: trial && expired && trial.endDist !== null && Math.abs(time - endT) < 0.06 ? trial.endDist
 		: seriesAt?.dist ?? (target.dist ?? null)
 	);
+	/** Which ghost the distance readout is measured to, said next to it. */
+	const distWhat = $derived(
+		trial && atMarker?.kind === 'turnAway' && trial.turnDist !== null ? 'to the chased ghost'
+		: time > endT + 0.005 && expired ? 'to the nearest dangerous ghost'
+		: 'to the nearest ghost'
+	);
 	/** Power left as shown: at a marker, the marker's own stored number. */
 	const leftShown = $derived(atMarker?.left ?? left);
 	const deathT = $derived(markers.find((m) => m.kind === 'death')?.t ?? null);
@@ -266,7 +272,26 @@
 	const runKey = $derived(page.url.searchParams.get('run'));
 	const runQ = useQuery(api.runs.block, () => (runKey ? { blockKey: runKey } : 'skip'), { keepPreviousData: true });
 	const listState = $derived(readState(page.url.searchParams, trial?.source ?? 'human'));
-	const nbQ = useQuery(api.replays.neighbours, () => (runKey || !trial ? 'skip' : { trialId: id as Id<'trials'>, ...queryArgs(listState) }), { keepPreviousData: true });
+	// Opened from the dashboard (any of its replay links): walk the dashboard's view (data, simulator
+	// run, rules, participant, period) and offer the way back to it. The address says so, so a
+	// refresh or a shared link keeps it.
+	afterNavigate(({ from }) => {
+		if (from?.route.id !== '/dashboard' || runKey || page.url.search) return;
+		const q = toSearch(dashboardList(from.url.search));
+		if (q) goto(page.url.pathname + q + location.hash, { replace: true, reset: false }).catch(() => {});
+	});
+	/** Off for a moment to ask again after a failure (Retry next to Previous / Next). */
+	let nbOff = $state(false);
+	const nbQ = useQuery(api.replays.neighbours, () => (runKey || !trial || nbOff ? 'skip' : { trialId: id as Id<'trials'>, ...queryArgs(listState) }), { keepPreviousData: true });
+	function retryNav() {
+		nbOff = true;
+		setTimeout(() => (nbOff = false), 60);
+	}
+	/** Why Previous / Next cannot be used, said next to them. */
+	const navError = $derived.by(() => {
+		if (runKey) return runQ.error ? `Could not load this run's list: ${errorReason(runQ.error) || 'the request failed'}.` : '';
+		return nbQ.error ? `Could not load Previous / Next: ${errorReason(nbQ.error) || 'the request failed'}.` : '';
+	});
 	const nav = $derived.by(() => {
 		if (runKey) {
 			const rows = runQ.data?.rows ?? [];
@@ -277,9 +302,11 @@
 		}
 		const q = toSearch(listState);
 		const n = nbQ.data;
+		// Back to the list at this card: the list shows enough cards to reach it and scrolls to it.
+		const at = new URLSearchParams({ at: id, ...(n && n.pos >= 0 ? { pos: String(n.pos) } : {}) });
 		return {
 			prev: n?.prev ? `/replays/${n.prev}${q}` : null, next: n?.next ? `/replays/${n.next}${q}` : null,
-			pos: n?.pos ?? -1, count: n?.count ?? 0, list: `/replays${q}`, run: false
+			pos: n?.pos ?? -1, count: n?.count ?? 0, list: `/replays${q}#${at}`, run: false
 		};
 	});
 
@@ -360,7 +387,7 @@
 		if (wrongMaze) return `${WRONG_MAZE_NOTE} Its numbers and distance chart are here.`;
 		if (trial.outcome === 'interrupted') {
 			const why: Record<string, string> = {
-				died: 'The player was caught while the power was still on',
+				died: 'Died while the power was still on',
 				cleared: 'The maze was cleared before the power ran out',
 				refreshed: 'A second power dot restarted the power',
 				quit: 'The run ended (or the page was left) while the power was on'
@@ -386,7 +413,7 @@
 			<span><i class="sw chase"></i>Closing in</span>
 			<span><i class="sw calm"></i>Not chasing</span>
 			<span><i class="sw danger"></i>Ghosts dangerous</span>
-			<span><i class="sw ideal"></i>Ideal turn-away (2 to 0.2 s left)</span>
+			<span><i class="sw ideal"></i>{OUTCOME_INFO['timely-retreat'].label} (2 to 0.2 s left)</span>
 		</div>
 		<div class="marks" role="group" aria-label="Jump to a moment">
 			{#each markers as m (m.kind + m.t)}
@@ -405,6 +432,10 @@
 				{#if nav.list}<a href={nav.list}>&larr; Back to run summary</a>{:else}<span>&larr; Back to run summary</span>{/if}
 				<span aria-hidden="true">&middot;</span>
 				<a href="/replays">All replays</a>
+			{:else if listState.dash}
+				<a href={dashboardHref(listState)}>&larr; Back to the dashboard</a>
+				<span aria-hidden="true">&middot;</span>
+				<a href={nav.list}>This list in Replays</a>
 			{:else}
 				<a href={nav.list}>&larr; All replays</a>
 				<span aria-hidden="true">&middot;</span>
@@ -423,7 +454,10 @@
 				{#if switching}<span class="switching" role="status">Loading the next replay&hellip;</span>{/if}
 			</div>
 			<div class="prevnext">
-				{#if nav.pos >= 0}<span class="pos num">{nav.pos + 1} of {nav.count}{nav.run ? ' in this run' : ''}</span>{/if}
+				{#if navError}
+					<span class="nav-error" role="alert">{navError}</span>
+					<Button size="sm" variant="quiet" onclick={retryNav}>Try again</Button>
+				{:else if nav.pos >= 0}<span class="pos num">{nav.pos + 1} of {nav.count}{nav.run ? ' in this run' : listState.dash ? ' in the dashboard view' : ''}</span>{/if}
 				{#if nav.prev}<Button size="sm" href={nav.prev}>&larr; Previous</Button>{:else}<Button size="sm" disabled>&larr; Previous</Button>{/if}
 				{#if nav.next}<Button size="sm" href={nav.next}>Next &rarr;</Button>{:else}<Button size="sm" disabled>Next &rarr;</Button>{/if}
 			</div>
@@ -482,7 +516,8 @@
 					</div>
 					<div class="ro">
 						<span class="lab">Distance <InfoTip term="Distance">{DEFINITIONS.distance}{atMarker?.kind === 'turnAway' ? ' At the turn-away marker: to the chased ghost.' : ''}</InfoTip></span>
-						<span class="val num">{distNow != null ? distNow.toFixed(1) : '-'}<small> tiles</small></span>
+						<span class="val num">{tilesNum(distNow)}{#if distNow != null}<small> tiles</small>{/if}</span>
+						<span class="sub">{distWhat}</span>
 					</div>
 					<div class="ro">
 						<span class="lab">Chasing <InfoTip term="Chasing">{DEFINITIONS.chasing}</InfoTip></span>
@@ -552,15 +587,18 @@
 					<dl>
 						<div><dt>Power length</dt><dd class="num">{fmt(trial.total)} s</dd></div>
 						<div><dt>{trial.outcome === 'catch' || trial.lastChaseEnd === 'eat' ? 'Ate the ghost' : 'Turned away'} <InfoTip term="Turn-away time">{DEFINITIONS.turnAway}</InfoTip></dt><dd class="num">{trial.turnLeft === null ? 'never' : signed(trial.turnLeft) + ' s'}</dd></div>
-						{#if trial.lastChaseEnd !== 'eat' && trial.outcome !== 'catch'}<div><dt>Distance at the turn</dt><dd class="num">{fmt(trial.turnDist) ?? '-'} {trial.turnDist !== null ? 'tiles' : ''}</dd></div>{/if}
-						<div><dt>Distance at the end</dt><dd class="num">{fmt(trial.endDist) ?? '-'} {trial.endDist !== null ? 'tiles' : ''}</dd></div>
+						{#if trial.lastChaseEnd !== 'eat' && trial.outcome !== 'catch'}<div><dt>Chased ghost at the turn</dt><dd class="num">{tilesText(trial.turnDist)}</dd></div>{/if}
+						<div><dt>Nearest ghost at the end <InfoTip term="Nearest ghost at the end">{DEFINITIONS.endDist}</InfoTip></dt><dd class="num">{tilesText(trial.endDist)}</dd></div>
+						{#if distancesDiffer(trial.chaseEndDist, trial.endDist)}
+							<div><dt>Chased ghost at the end{trial.chaseGhost ? ` (${ghostName(trial.chaseGhost)})` : ''}</dt><dd class="num">{tilesText(trial.chaseEndDist)}</dd></div>
+						{/if}
 							{#if trial.endReason === 'died'}
 								<div><dt>{deathWord}</dt><dd class="num bad">while the power was on</dd></div>
 							{:else}
-								<div><dt>{deathWord} after the end</dt><dd class="num" class:bad={trial.after.died}>{trial.after.died ? `${fmt(trial.after.timeToCaught ?? trial.after.seen, 2)} s after` : 'no'}</dd></div>
+								<div><dt>{deathWord} after the end</dt><dd class="num" class:bad={trial.after.died}>{trial.after.died ? ((trial.after.timeToCaught ?? trial.after.seen) < 0.005 ? 'as the power ran out' : `${fmt(trial.after.timeToCaught ?? trial.after.seen, 2)} s after`) : 'no'}</dd></div>
 							{/if}
 						<div><dt>Ghosts eaten</dt><dd class="num">{trial.eats.length}{isLateCatch(trial) ? ' (late catch)' : ''}</dd></div>
-						<div><dt>Closest danger after</dt><dd class="num">{fmt(trial.after.minDangerDist) ?? '-'} {trial.after.minDangerDist !== null ? 'tiles' : ''}{trial.after.nearMiss ? ' (near miss)' : ''}</dd></div>
+						<div><dt>Closest danger after</dt><dd class="num">{tilesText(trial.after.minDangerDist)}{trial.after.nearMiss ? ' (near miss)' : ''}</dd></div>
 						<div><dt>Reaction <InfoTip term="Reaction">{DEFINITIONS.reaction}</InfoTip></dt><dd class="num">{trial.reaction !== null ? fmt(trial.reaction, 2) + ' s' : '-'}</dd></div>
 						{#if trial.wasted !== null}<div><dt>Power left unused</dt><dd class="num">{fmt(trial.wasted)} s</dd></div>{/if}
 							<div class="wide"><dt>Counts in the rates <InfoTip term="Counts in the rates">{DEFINITIONS.counted}</InfoTip></dt><dd>{isDecision(trial) ? 'yes' : `no: ${(notCounted ?? 'not a decision').charAt(0).toLowerCase()}${(notCounted ?? 'not a decision').slice(1)}`}</dd></div>
@@ -628,6 +666,7 @@
 	.with { color: var(--ink-faint); font-family: var(--font-body); font-size: var(--text-md); font-weight: 400; }
 	.prevnext { display: flex; align-items: center; gap: var(--space-2); }
 	.pos { color: var(--ink-faint); font-size: var(--text-sm); margin-right: var(--space-1); }
+	.nav-error { color: var(--warn); font-size: var(--text-sm); max-width: 42ch; }
 	.loading { color: var(--ink-dim); padding: var(--space-6) 0; }
 	.switching { color: var(--ink-dim); font-size: var(--text-sm); }
 	.player.switching { opacity: 0.6; transition: opacity var(--dur) var(--ease); }
@@ -684,6 +723,7 @@
 	.lab { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
 	.val { font-size: var(--text-xl); font-weight: 600; color: var(--ink); white-space: nowrap; }
 	.ro:last-child .val { white-space: normal; }
+	.sub { font-size: var(--text-xs); color: var(--ink-faint); }
 	.val small { font-size: var(--text-sm); color: var(--ink-dim); font-weight: 400; }
 	.ro.big .val { font-size: var(--text-2xl); color: var(--accent); }
 	.ro.big .val.after { color: var(--bad); }

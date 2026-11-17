@@ -7,6 +7,7 @@
 	 * Otherwise a plain "Loading ..." line. Pair with `slow()` from connection.svelte.ts.
 	 */
 	import EmptyState from './EmptyState.svelte';
+	import { errorReason } from './connection.svelte.ts';
 
 	interface Props {
 		/** From `slow(() => q.isLoading)`. */
@@ -21,12 +22,7 @@
 	let { wait, error = null, what, icon = 'maze', compact = true }: Props = $props();
 
 	/** The server's own words, without the request id and stack Convex wraps around them. */
-	const reason = $derived.by(() => {
-		if (!error) return '';
-		const m = (error.message ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !/^\[Request ID|^at |Called by client/.test(l));
-		const line = (m.find((l) => /Error:/.test(l)) ?? m[0] ?? '').replace(/^.*?(Uncaught )?Error:\s*/, '');
-		return line.slice(0, 160);
-	});
+	const reason = $derived(errorReason(error));
 </script>
 
 {#if error}
