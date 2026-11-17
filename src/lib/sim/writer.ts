@@ -9,7 +9,7 @@
  */
 import type { ConvexClient } from 'convex/browser';
 import { api } from '#convex/_generated/api.js';
-import { APP_VERSION } from '../telemetry/write';
+import { loadAppVersion } from '../telemetry/write';
 import type { Preset } from './model';
 import { planSession, playSession, simPid, type SimBlock } from './session';
 
@@ -130,7 +130,7 @@ async function participant(
 	const plan = planSession({ preset: o.preset, allCues: o.allCues, cues: o.cues, participantNumber: number, blockSeconds: o.blockSeconds, blockPowerUps: o.blockPowerUps, ...plan0 });
 	const sessionKey = plan.key;
 	await send(client, api.sessions.start, {
-		key: sessionKey, pid, mode: 'study', source: 'bot', cueOrder: plan.cueOrder, appVersion: APP_VERSION,
+		key: sessionKey, pid, mode: 'study', source: 'bot', cueOrder: plan.cueOrder, appVersion: await loadAppVersion(),
 		difficulty: 'normal', sound: true, reducedMotion: false, inputType: 'none', viewport: SIM_VIEWPORT, sim: plan.sim
 	});
 

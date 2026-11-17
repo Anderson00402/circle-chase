@@ -19,7 +19,7 @@ import { createRecorder } from './recorder';
 import { mergeProgress, readLocal, writeLocal } from './resume';
 import { createTracker } from './tracker';
 import type { LiveReadout, Outcome, TrialMeasures } from './types';
-import { APP_VERSION, createWriteQueue, trialWrite } from './write';
+import { APP_VERSION, appVersion, createWriteQueue, loadAppVersion, trialWrite } from './write';
 import { isDecision } from '#convex/lib/rules.ts';
 
 export { APP_VERSION };
@@ -165,6 +165,8 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 	const sessionKey = ctx.session?.key ?? freePlaySession(ctx.mode, false).key;
 	const blockKey = ctx.blockKey ?? uid();
 	const instance = uid();
+	// The commit actually served (the dev server may be running code newer than it started with).
+	loadAppVersion();
 	const sound = ctx.sound ?? (() => true);
 
 	const live: TelemetryLive = $state({
@@ -193,7 +195,7 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		opened = true;
 		const blockIndex = ctx.blockIndex ?? (ctx.session ? 0 : freePlaySession(ctx.mode, true).blockIndex);
 		enqueue('sessionStart', {
-			key: sessionKey, pid, mode: ctx.mode, source, cueOrder: ctx.session?.cueOrder ?? [], appVersion: APP_VERSION,
+			key: sessionKey, pid, mode: ctx.mode, source, cueOrder: ctx.session?.cueOrder ?? [], appVersion: appVersion(),
 			difficulty: ctx.difficulty ?? 'normal', sound: sound(), reducedMotion: reducedMotion(), inputType: inputLabel(inputSeen), viewport: viewport()
 		});
 		enqueue('blockStart', { key: blockKey, sessionKey, cue: ctx.cue, orderIndex: blockIndex, mode: ctx.mode, segment: instance, ...(ctx.practice ? { practice: true } : {}) });

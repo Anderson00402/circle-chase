@@ -12,6 +12,10 @@
  *   harmless.
  * - **Order where it matters.** Writes with the same `lane` (a session key) go in order: a trial is
  *   never sent before its session and block. A lane whose head keeps failing waits; other lanes go on.
+ * - **One bad write does not hold the rest.** A write the server keeps rejecting (not a lost
+ *   connection: that only delays) is *parked* after `PARK_AFTER` rejections: it stays stored, is
+ *   tried again every `PARKED_RETRY_MS`, counts as failing with its error (`parked`, `parkedErrors`),
+ *   and no longer holds its lane, so the later writes of its session go on.
  * - **Rows that are not there yet.** The run notes (`setup`, `markBlock`) and ratings answer null
  *   while the session or block they belong to has not arrived (it may still be in another tab's
  *   queue); they are tried again every few seconds and do not count as failing.
@@ -49,6 +53,8 @@ interface Job {
 	tries: number;
 	/** Times the row it refers to was not there yet (cleared once it goes through). */
 	waits?: number;
+	/** Rejected by the server `PARK_AFTER` times: retried slowly, no longer holds its lane. */
+	parked?: boolean;
 	/** Not before this time (ms): back-off. */
 	at?: number;
 	lastError?: string;
@@ -67,12 +73,16 @@ export interface OutboxStatus {
 	failing: boolean;
 	failingCount: number;
 	lastError: string | null;
+	/** Writes the server kept rejecting, set aside so the rest go on (still stored, still retried, counted in `failingCount`). */
+	parked: number;
+	/** What those writes are and why they fail, oldest first (at most 5). */
+	parkedErrors: { fn: string; error: string }[];
 	/** When a write last went through (ms), null before the first. */
 	savedAt: number | null;
 }
 
 /** The outbox status (reactive). Pass it to the header's status, or read `.state`. */
-export const outboxStatus: OutboxStatus = $state({ state: 'saved', pending: 0, waiting: 0, failing: false, failingCount: 0, lastError: null, savedAt: null });
+export const outboxStatus: OutboxStatus = $state({ state: 'saved', pending: 0, waiting: 0, failing: false, failingCount: 0, lastError: null, parked: 0, parkedErrors: [], savedAt: null });
 
 export interface SendOptions {
 	/** Queuing the same id again replaces the waiting one (default: a new id). */
@@ -103,6 +113,10 @@ const LEGACY_RUN = 'cc.run.outbox';
 /** A tab rewrites its entry at least this often while it has writes; quieter entries are adopted. */
 const BEAT_MS = 3000;
 const STALE_MS = 12_000;
+/** Server rejections in a row after which a write is parked (about a minute and a half of back-off). */
+export const PARK_AFTER = 8;
+/** A parked write is tried again this often. */
+export const PARKED_RETRY_MS = 5 * 60_000;
 
 function storage(): Storage | null {
 	try { return window.localStorage; } catch { return null; }
@@ -184,9 +198,12 @@ export function createOutbox(client: ConvexClient): Outbox {
 		const waiting = jobs.filter((j) => j.waits && !j.tries).length;
 		outboxStatus.pending = jobs.length - waiting;
 		outboxStatus.waiting = waiting;
+		const parked = jobs.filter((j) => j.parked);
 		outboxStatus.failingCount = failing.length;
 		outboxStatus.failing = failing.length > 0;
 		outboxStatus.lastError = failing[0]?.lastError ?? null;
+		outboxStatus.parked = parked.length;
+		outboxStatus.parkedErrors = parked.slice(0, 5).map((j) => ({ fn: j.fn, error: j.lastError ?? '' }));
 		const online = connection.status === 'connected' || connection.status === 'connecting';
 		outboxStatus.state = failing.length ? 'failing' : jobs.length === waiting ? 'saved' : !online ? 'offline' : 'saving';
 		if (jobs.length && now - lastBeat > BEAT_MS) persist();
@@ -240,8 +257,10 @@ export function createOutbox(client: ConvexClient): Outbox {
 			const held = new Set<string>();
 			for (const job of [...jobs]) {
 				if (!jobs.includes(job)) continue;
-				if (job.lane && held.has(job.lane)) continue;
-				if (job.at && job.at > Date.now()) { if (job.lane) held.add(job.lane); continue; }
+				// A parked write neither waits for its lane nor holds it.
+				const holds = !!job.lane && !job.parked;
+				if (holds && held.has(job.lane!)) continue;
+				if (job.at && job.at > Date.now()) { if (holds) held.add(job.lane!); continue; }
 				let waiting = false;
 				try {
 					// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -262,8 +281,15 @@ export function createOutbox(client: ConvexClient): Outbox {
 						job.lastError = String((err as Error)?.message ?? err).slice(0, 300);
 						job.at = Date.now() + backoff(job.tries);
 						if (job.tries === 3) console.warn('[outbox] still failing (kept, will retry):', job.fn, job.lastError);
+						// The server keeps rejecting it (a lost connection only delays writes, it does not
+						// reject them): set it aside so the rest of its lane goes on.
+						if (!job.parked && job.tries >= PARK_AFTER && connection.status !== 'offline') {
+							job.parked = true;
+							console.warn('[outbox] parked (kept, tried again every 5 minutes; later writes go on):', job.fn, job.lastError);
+						}
+						if (job.parked) job.at = Date.now() + PARKED_RETRY_MS;
 					}
-					if (job.lane) held.add(job.lane);
+					if (job.lane && !job.parked) held.add(job.lane);
 				}
 				persist();
 				refresh();

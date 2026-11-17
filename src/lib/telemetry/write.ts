@@ -11,8 +11,32 @@ import type { TrialMeasures } from './types';
 /** Injected by vite.config.ts (`define`): package version + git commit. */
 declare const __APP_BUILD__: string | undefined;
 
-/** Build identifier stored as `appVersion`: "0.0.1+e8606d3" (".dev" from the dev server); the bare version outside Vite. */
+/**
+ * Build identifier as Vite saw it when it started: "0.0.1+e8606d3" (".dev" from the dev server);
+ * the bare version outside Vite. The dev server keeps running while commits land, so pages ask
+ * `/build.json` for the commit actually served (`loadAppVersion`) and record that (`appVersion()`).
+ */
 export const APP_VERSION: string = typeof __APP_BUILD__ === 'string' ? __APP_BUILD__ : pkg.version;
+
+let current = APP_VERSION;
+let loading: Promise<string> | null = null;
+
+/** The build identifier to store now: the served commit once `loadAppVersion` has answered. */
+export function appVersion(): string {
+	return current;
+}
+
+/** Ask the server which commit it serves (once per page); falls back to `APP_VERSION`. */
+export function loadAppVersion(): Promise<string> {
+	return (loading ??= (async () => {
+		try {
+			const r = await fetch('/build.json', { cache: 'no-store' });
+			const b = (await r.json()) as { build?: unknown };
+			if (typeof b.build === 'string' && /^[\w.+-]{1,60}$/.test(b.build)) current = b.build;
+		} catch { /* no endpoint (tests, simulator): keep the built-in one */ }
+		return current;
+	})());
+}
 
 /** Context of a trial that the tracker does not know: who, where, with what settings. */
 export interface TrialWriteContext {
@@ -40,7 +64,7 @@ export function trialWrite(trial: TrialMeasures, recorder: Recorder, c: TrialWri
 	return {
 		key: c.key, sessionKey: c.sessionKey, blockKey: c.blockKey, trialIndex: c.trialIndex,
 		sound: c.sound, reducedMotion: c.reducedMotion, inputType: c.inputType,
-		appVersion: c.appVersion ?? APP_VERSION, difficulty: c.difficulty,
+		appVersion: c.appVersion ?? appVersion(), difficulty: c.difficulty,
 		...m, series: packSeries(series), ...(clip ? { clip } : {})
 	};
 }

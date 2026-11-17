@@ -50,14 +50,19 @@ describe('outbox', () => {
 		const box = createOutbox(client);
 		box.send('blockEnd', { key: 'b1', deaths: 0, score: 0 });
 		await run(10 * 60_000);
-		expect(calls.length).toBeGreaterThan(20);
+		// Back-off up to PARK_AFTER rejections, then every 5 minutes: it is never given up.
+		expect(calls.length).toBeGreaterThan(8);
 		expect(box.count()).toBe(1);
 		expect(outboxStatus.state).toBe('failing');
 		expect(outboxStatus.failingCount).toBe(1);
 		expect(outboxStatus.lastError).toContain('server error');
+		// The server kept rejecting it: parked, still stored and still tried, every 5 minutes.
+		expect(outboxStatus.parked).toBe(1);
+		expect(outboxStatus.parkedErrors[0]).toEqual({ fn: 'blockEnd', error: 'server error' });
 		fail = false;
-		await run(31_000);
+		await run(5 * 60_000 + 1000);
 		expect(box.count()).toBe(0);
+		expect(outboxStatus.parked).toBe(0);
 		expect(outboxStatus.state).toBe('saved');
 	});
 
@@ -76,6 +81,37 @@ describe('outbox', () => {
 		expect(calls).toContain('trials:save:B1');
 		expect(calls).not.toContain('trials:save:A1');
 		expect(box.count()).toBe(2);
+	});
+
+	test('a write the server keeps rejecting is parked, and the later writes of its lane go on', async () => {
+		const { createOutbox, outboxStatus, PARK_AFTER } = await import('./outbox.svelte.ts');
+		let reject = true;
+		const { client, calls } = fakeClient((name, args) => {
+			if (name === 'trials:save' && args.key === 'bad' && reject) throw new Error('ArgumentValidationError: extra field');
+			return 'ok';
+		});
+		const box = createOutbox(client);
+		box.send('trial', { key: 'bad', sessionKey: 'S' }, { lane: 'S' });
+		box.send('trial', { key: 'next', sessionKey: 'S' }, { lane: 'S' });
+		box.send('blockEnd', { key: 'b', sessionKey: 'S', deaths: 0, score: 0 }, { lane: 'S' });
+		// While it is retried with back-off it holds its lane: order is kept.
+		await run(10_000);
+		expect(calls).not.toContain('trials:save:next');
+		// After PARK_AFTER rejections (about a minute and a half) it is set aside.
+		await run(3 * 60_000);
+		expect(calls.filter((c) => c === 'trials:save:bad').length).toBe(PARK_AFTER);
+		expect(calls).toContain('trials:save:next');
+		expect(calls).toContain('blocks:end:b');
+		expect(box.count()).toBe(1);
+		expect(outboxStatus.parked).toBe(1);
+		expect(outboxStatus.state).toBe('failing');
+		expect(outboxStatus.failingCount).toBe(1);
+		expect(outboxStatus.lastError).toContain('ArgumentValidationError');
+		// Kept and tried again every 5 minutes; once the server takes it, it is gone.
+		reject = false;
+		await run(5 * 60_000);
+		expect(box.count()).toBe(0);
+		expect(outboxStatus.state).toBe('saved');
 	});
 
 	test('a note whose row is not there yet waits, without counting as failing or pending', async () => {
