@@ -1,7 +1,7 @@
-# Publishes the website with every version of the game (see tools/build_site.py):
-# main at the root, each branch at /v/<branch>/, each open pull request at /pr/<number>/,
-# and a list at /versions/. Only main ever deploys: a push to any other branch just asks
-# main to rebuild, which picks that branch up.
+# Publishes the website with every version of the game (see tools/build_site.py): a home page
+# at the root with a tab for every version, main at /v/main/, each branch at /v/<branch>/, each
+# open pull request at /pr/<number>/, and a list at /versions/. Only main ever deploys: a push to
+# any other branch just asks main to rebuild, which picks that branch up.
 name: Website with every version
 
 on:
@@ -10,6 +10,7 @@ on:
   pull_request_target:
     types: [opened, reopened, synchronize, edited, closed]
   workflow_dispatch:
+  page_build:
 
 permissions:
   contents: read
@@ -26,8 +27,43 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
 
+  # While Settings > Pages > Source is still "Deploy from a branch", GitHub's own build also runs on
+  # every push to main and often finishes after this workflow, replacing the whole site with the
+  # plain game. After each of those builds, check the live site and rebuild it if that happened.
+  # Once the source is "GitHub Actions" those builds stop and this job has nothing to do.
+  heal:
+    if: github.event_name == 'page_build'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Put the full site back if the branch build replaced it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          site="https://${owner}.github.io/${GITHUB_REPOSITORY#*/}/versions.json"
+          sleep 40
+          for i in 1 2 3 4 5 6; do
+            if ! curl -fsS -o /dev/null "${site}?check=$(date +%s)-$i"; then
+              # Never more than a few rebuilds in a row, in case something keeps undoing them.
+              since="$(date -u -d '-15 minutes' +%Y-%m-%dT%H:%M:%SZ)"
+              recent="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow pages.yml --event workflow_dispatch \
+                --created ">=$since" --json databaseId --jq length)"
+              if [ "$recent" -ge 6 ]; then
+                echo "::warning::The site needs a rebuild but $recent already ran in 15 minutes; leaving it."
+                exit 0
+              fi
+              echo "The live site has no versions.json, so the branch build replaced it: rebuilding."
+              gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "The full site is live."
+
   build:
-    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    if: github.event_name != 'page_build' && (github.event_name != 'push' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     concurrency:
       group: pages
