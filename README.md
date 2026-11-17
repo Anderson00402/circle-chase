@@ -43,7 +43,7 @@ Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a la
 For the class study, every game played on the website is saved to a free [Supabase](https://supabase.com) database (Postgres). Nothing personal is saved, and the title screen says that play times are recorded. Each game saves:
 
 - **which version** was played (`main`, a branch name, `pr-<number>`, or `localhost`);
-- **survival**: seconds from Start to the last death, and how long each life lasted. Pauses never count, because the game clock stops while paused;
+- **survival**: seconds from Start to the last death, and how long each life lasted. Pauses never count, because the game clock stops while paused. The **Time** box above the board shows it as you play, and the game-over card gives it to a tenth of a second;
 - for **every power dot**: whether the player chased the scared ghosts, **how much power was left when they stopped chasing** (the number on the timer bar), and **how long from then until they ate the next power dot**.
 
 *Stopped chasing* is worked out from the moves. A step toward the nearest scared ghost that doesn't lead toward any dot only makes sense if you're after the ghost; two of those without turning away start a chase, and the chase lasts while the circle keeps closing in. The last step of the chase (or the last ghost eaten) is the stop. Following a lane of dots that happens to lead to a ghost doesn't count, since eating dots looks the same.

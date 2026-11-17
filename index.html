@@ -50,7 +50,7 @@ body {
 
 /* Title block: as wide as the board */
 .stack { display: flex; flex-direction: column; gap: 10px; width: min-content; }
-.titleblock { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--rule); background: var(--panel); }
+.titleblock { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--rule); background: var(--panel); }
 .titleblock > div { padding: 6px 10px 7px; border-left: 1px solid var(--rule); min-width: 0; }
 .titleblock > div:first-child { border-left: 0; }
 .label { display: block; font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
@@ -58,8 +58,20 @@ body {
 .lives { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-height: 30px; font-family: var(--font-mono); font-size: 13px; }
 .lives i { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--you); }
 @media (max-width: 520px) {
-  .titleblock > div { padding: 5px 8px 6px; }
+  .titleblock > div { padding: 5px 6px 6px; }
+  .label { letter-spacing: 0.06em; }
+  .value { font-size: 15px; }
+  .lives { gap: 4px; }
+  .lives i { width: 10px; height: 10px; }
+}
+/* Small phones: two rows, Score / Best / Level over Lives / Time */
+@media (max-width: 400px) {
+  .titleblock { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .titleblock > div { grid-column: span 2; padding: 5px 8px 6px; }
+  .titleblock > div:nth-child(n+4) { grid-column: span 3; border-top: 1px solid var(--rule); }
+  .titleblock > div:nth-child(4) { border-left: 0; }
   .value { font-size: 17px; }
+  .lives i { width: 12px; height: 12px; }
 }
 
 /* Board */
@@ -98,6 +110,7 @@ body {
           <div><span class="label">Best</span><span class="value" id="hud-best">0</span></div>
           <div><span class="label">Level</span><span class="value" id="hud-level">1</span></div>
           <div><span class="label">Lives</span><span class="lives" id="hud-lives"></span></div>
+          <div><span class="label">Time</span><span class="value" id="hud-time">0:00</span></div>
         </div>
         <div class="sheet">
           <canvas id="board" role="img" aria-label="Game board"></canvas>
@@ -549,7 +562,7 @@ const Core = (() => {
   // Feed it every game event and call step() after every update; finish() returns the rows to save.
   function createStats(g) {
     const lives = [], ups = [];
-    let inPlay = 0, lifeStart = 0, lastDeath = 0, open = null, done = false;
+    let inPlay = 0, lifeStart = 0, lastDeath = 0, lost = false, open = null, done = false;
     let tile = -1, ateDot = false, proof = 0, chase = false;
 
     const tileOf = a => {
@@ -592,6 +605,7 @@ const Core = (() => {
         lives.push(inPlay - lifeStart);
         lifeStart = inPlay;
         lastDeath = g.time;
+        if (g.lives <= 0) lost = true;
         close('died');
       } else if (type === 'clear') close('cleared');
     }
@@ -617,6 +631,10 @@ const Core = (() => {
       if (chase) chasing();
     }
 
+    // Survival so far, for the clock on screen and the saved game: game seconds from Start, stopped at
+    // the death that ends the game (so the death animation and GAME OVER don't add to it).
+    const survival = () => (lost ? lastDeath : g.time);
+
     // ended: 'game_over', or 'quit' when the game is left or restarted first. Null if it never started.
     function finish(ended) {
       if (done || g.time <= 0) return null;
@@ -624,7 +642,7 @@ const Core = (() => {
       close('quit');
       return {
         play: {
-          difficulty: g.diffKey, ended, survival_s: round2(ended === 'game_over' ? lastDeath : g.time),
+          difficulty: g.diffKey, ended, survival_s: round2(survival()),
           life_s: lives.map(round2), score: g.score, level: g.level,
         },
         powers: ups.map(({ stoppedAt, ...u }) => ({
@@ -634,7 +652,7 @@ const Core = (() => {
       };
     }
 
-    return { event, step, finish };
+    return { event, step, finish, survival };
   }
 
   return { createGame, createStats, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED, CHASE_PROOF };
@@ -823,7 +841,7 @@ const Core = (() => {
 
   function gameOver() {
     running = false;
-    saveStats('game_over');
+    saveStats('game_over'); // after this the stats are finished, but survival() still reads the final time
     const g = game;
     let rank = -1;
     if (g.score > 0) {
@@ -836,7 +854,7 @@ const Core = (() => {
       store.set('circle-chase:scores', scores);
     }
     const label = g.diff.label;
-    let text = `You scored ${g.score.toLocaleString('en-US')} on ${label} and reached level ${g.level}.`;
+    let text = `You survived ${clock(stats.survival(), true)}, scored ${g.score.toLocaleString('en-US')} on ${label} and reached level ${g.level}.`;
     if (rank === 0) text += ' That is your new best.';
     else if (rank > 0) text += ` That is #${rank + 1} on your ${label} list.`;
     showOverlay('over', text);
@@ -848,7 +866,7 @@ const Core = (() => {
     const touch = touchUI.matches;
     const copy = {
       title: ['circle chase', 'Eat every dot. You can only catch the ghosts after a power dot.', 'Start game'],
-      paused: ['paused', 'The game is on hold.', 'Resume'],
+      paused: ['paused', `The game and the clock are on hold at ${clock(stats.survival())}.`, 'Resume'],
       over: ['game over', text, 'Play again'],
     }[mode];
     $('ov-title').textContent = copy[0];
@@ -1271,12 +1289,20 @@ const Core = (() => {
   }
 
   // ---------- HUD ----------
+  // Survival time as m:ss, or m:ss.s with tenths.
+  function clock(s, tenths = false) {
+    const d = Math.floor(s * 10 + 1e-6), sec = Math.floor(d / 10);
+    return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` + (tenths ? '.' + (d % 10) : '');
+  }
+
   function updateHud() {
     const g = game;
     const best = Math.max(g.score, scores[g.diffKey][0]?.score || 0);
-    const key = [g.score, best, g.level, g.lives].join('|');
+    const time = clock(stats.survival());
+    const key = [g.score, best, g.level, g.lives, time].join('|');
     if (key === lastHud) return;
     lastHud = key;
+    $('hud-time').textContent = time;
     $('hud-score').textContent = g.score.toLocaleString('en-US');
     $('hud-best').textContent = best.toLocaleString('en-US');
     $('hud-level').textContent = String(g.level);

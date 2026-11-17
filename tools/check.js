@@ -194,18 +194,24 @@ const stat = (name, ok, detail) => {
   power();
   walk(4, 5, 6);
   g.state = 'dying';
+  g.lives = 1;
   s.event('die');
   const firstDeath = g.time;
   g.time += 20;                       // dying, READY, and a second life of 20 s
+  const between = s.survival();       // the clock keeps running after a life is lost
   g.state = 'playing';
-  for (let i = 0; i < 120 * 10; i++) s.step(1 / 120);
+  for (let i = 0; i < 120 * 10; i++) { g.time += 1 / 120; s.step(1 / 120); }
+  g.lives = 0;
   s.event('die');
   const lastDeath = g.time;
   g.time += 1.6;                      // the death animation before GAME OVER
+  const shown = s.survival();         // the clock on screen stops at the last death
   const { play, powers } = s.finish('game_over');
   stat('survival', near(play.survival_s, lastDeath) && play.life_s.length === 2 && near(play.life_s[0], firstDeath - readyEnd) && readyEnd >= 1.8 &&
     near(play.life_s[1], 10) && powers[0].ended === 'died' && play.ended === 'game_over',
   `survived ${play.survival_s}s, lives ${play.life_s.join(' + ')}s, power-up ended ${powers[0].ended}`);
+  stat('survival clock', near(between, firstDeath + 20) && near(shown, lastDeath) && near(s.survival(), play.survival_s),
+    `${between.toFixed(2)}s between lives, stopped at ${shown.toFixed(2)}s through the death animation, same as saved`);
   stat('finish only once', s.finish('quit') === null && Core.createStats(Core.createGame()).finish('quit') === null,
     'a second finish, and a game that never started, give nothing');
 }
@@ -236,6 +242,7 @@ const stat = (name, ok, detail) => {
       chased += powers.filter(u => u.chased).length;
       const lifeSum = play.life_s.reduce((a, b) => a + b, 0);
       if (play.survival_s < lifeSum - 0.05 || play.survival_s > g.time + 0.01) bad.push(`survival ${play.survival_s} vs lives ${lifeSum}`);
+      if (Math.abs(play.survival_s - s.survival()) > 0.006) bad.push(`clock ${s.survival()} vs saved ${play.survival_s}`);
       if (play.ended === 'game_over' && play.life_s.length < g.diff.lives) bad.push(`${play.life_s.length} lives recorded`);
       powers.forEach((u, i) => {
         if (!u.ended) bad.push(`power-up ${u.n} never ended`);
