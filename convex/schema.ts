@@ -89,7 +89,16 @@ export default defineSchema({
 		pauses: v.optional(v.number()),
 		pausedSeconds: v.optional(v.number()),
 		/** Study mode: the block was left unfinished (refresh, closed tab) and the round was played again. */
-		abandoned: v.optional(v.boolean())
+		abandoned: v.optional(v.boolean()),
+		/**
+		 * One entry per page that played this block (a refresh resumes the block in a new page):
+		 * its own deaths, score and pauses, and whether it has closed. The block's `deaths`, `score`,
+		 * `pauses` and `pausedSeconds` are their sums; it is ended once every page that opened it closed.
+		 */
+		segments: v.optional(v.array(v.object({
+			id: v.string(), open: v.boolean(), deaths: v.number(), score: v.number(),
+			pauses: v.optional(v.number()), pausedSeconds: v.optional(v.number())
+		})))
 	})
 		.index('by_key', ['key'])
 		.index('by_session', ['sessionId', 'orderIndex'])

@@ -54,6 +54,28 @@ function who(s: Doc<'sessions'> | null, p: Doc<'participants'> | null) {
 
 type Row = Record<string, unknown>;
 
+/**
+ * The chase log in one CSV cell: one chase per `;`, each `ghost from at left dist gain end endDist`
+ * (seconds since the power started, power left, tiles; `-` for a missing distance), in the order the
+ * chases began. Empty for a trial without chases, `null` before rules version 3 (no log stored).
+ */
+export function chaseLogCell(log: Doc<'trials'>['chaseLog']): string | null {
+	if (!log) return null;
+	const n = (x: number | null) => (x === null ? '-' : String(Math.round(x * 1000) / 1000));
+	return log.map((c) => [c.ghost, n(c.from), n(c.at), n(c.left), n(c.dist), n(c.gain), c.end, n(c.endDist)].join(' ')).join(';');
+}
+
+/** The chase log back from its CSV cell (the inverse of `chaseLogCell`, to three decimals). */
+export function parseChaseLogCell(cell: string | null): NonNullable<Doc<'trials'>['chaseLog']> | null {
+	if (cell === null) return null;
+	if (cell === '') return [];
+	const n = (x: string) => (x === '-' ? null : Number(x));
+	return cell.split(';').map((c) => {
+		const [ghost, from, at, left, dist, gain, end, endDist] = c.split(' ');
+		return { ghost, from: n(from)!, at: n(at)!, left: n(left)!, dist: n(dist)!, gain: n(gain)!, end: end as 'turn' | 'eat' | 'open', endDist: n(endDist) };
+	});
+}
+
 /** One trial as a flat CSV row: context first, then every measure (nested values spelled out). */
 async function trialRow(t: Doc<'trials'>, j: Joins): Promise<Row> {
 	const s = await j.session(t.sessionId);
@@ -74,6 +96,9 @@ async function trialRow(t: Doc<'trials'>, j: Joins): Promise<Row> {
 		eats: t.eats.length, eatLefts: t.eats.map((e) => e.left).join(' '), lateCatch: t.lateCatch,
 		allEatenLeft: t.allEatenLeft, turnLeft: t.turnLeft, turnDist: t.turnDist, turnAt: t.turnAt,
 		turnReachable: t.turnReachable, chases: t.chases, lastChaseEnd: t.lastChaseEnd ?? null,
+		// Rules version 3 raw measures: with the columns around them, enough to recompute the class.
+		chaseEndDist: t.chaseEndDist ?? null, chaseGain: t.chaseGain ?? null, chaseGhost: t.chaseGhost ?? null,
+		gaveUpEarly: t.gaveUpEarly ?? null, chaseLog: chaseLogCell(t.chaseLog),
 		endDist: t.endDist, endClosing: t.endClosing,
 		afterSeen: t.after.seen, afterCut: t.after.cut ?? null, afterDied: t.after.died, caught: t.after.caught,
 		timeToCaught: t.after.timeToCaught, killer: t.after.killer, minDangerDist: t.after.minDangerDist,

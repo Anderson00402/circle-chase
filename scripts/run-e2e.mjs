@@ -3,8 +3,9 @@
 // with the keyboard while the engine bot plays:
 //   console: enter a participant label, pick the suggested case with its number key, Enter
 //   run 1: play while a Node subscriber watches the run sheet update live, then refresh in the
-//          middle (saved trials must stay; a new run starts)
-//   run 2: same case after the refresh; the decision tally shows outside participant view only;
+//          middle (saved trials must stay; the run carries on in the same block)
+//   run 2: the same run after the refresh: its counters continue (trial index, power-ups measured,
+//          deaths, score, pauses add up); the decision tally shows outside participant view only;
 //          End run (E), answer the two questions
 //   run 3: Next case (N) from the summary, End run, skip the questions, Esc to the console
 //   run 4: Arcade rules, case B, End run, back to the console
@@ -98,6 +99,7 @@ try {
 	const before = await live();
 	check(before && before.measured > 0, `run 1 measured power-ups while playing (${before?.measured}, ${before?.saved} saved)`);
 	check(await tallyText() === null, 'participant view (on when a run starts) hides the decision tally');
+	const deathsBefore = await page.evaluate(() => window.__cc?.game?.deaths ?? 0);
 	log('refreshing now');
 	await page.reload({ waitUntil: 'networkidle' });
 	await page.waitForTimeout(1500);
@@ -107,7 +109,11 @@ try {
 
 	// ----- run 2: tally outside participant view, End run, ratings -----
 	await startGame();
-	await page.waitForTimeout(SECONDS * 1000);
+	await page.waitForTimeout(2000);
+	const resumed = await live();
+	check(resumed?.block === before.block, 'after the refresh the run carries on in the same block');
+	check(resumed && resumed.measured >= before.measured, `the power-ups measured carry on after the refresh (${before.measured} before, ${resumed?.measured} after)`);
+	await page.waitForTimeout(SECONDS * 1000 - 2000);
 	await page.keyboard.press('v');
 	await page.waitForTimeout(600);
 	const l2 = await live(), tally = await tallyText();
@@ -201,6 +207,14 @@ try {
 	check(runs.some((r) => r.mode === 'arcade' && r.cue === 'classic-blink'), 'the arcade run of case B is stored with its rules');
 	const trials = await http.query(api.trials.list, { source: 'bot', sessionId: s.sessionId, paginationOpts: { numItems: 500, cursor: null } });
 	check(trials.page.length === runs.reduce((a, r) => a + r.trials, 0), `trials.list matches the run sheet (${trials.page.length})`);
+	// Every run, the refreshed one too, numbers its trials 0, 1, 2... with no number twice.
+	const byBlock = new Map();
+	for (const t of trials.page) byBlock.set(t.blockId, [...(byBlock.get(t.blockId) ?? []), t.trialIndex]);
+	const badBlocks = [...byBlock.values()].filter((ix) => ix.sort((a, b) => a - b).some((x, i) => x !== i));
+	check(badBlocks.length === 0, `every run numbers its trials 0..n-1 once each${badBlocks.length ? ': ' + badBlocks.map((b) => b.join(' ')).join(' | ') : ''}`);
+	const prog = await http.query(api.blocks.progress, { key: before.block });
+	check(prog && prog.segments >= 2 && prog.trials === prog.nextIndex && prog.trials >= before.measured, `the refreshed run is one block played by ${prog?.segments} pages: ${prog?.trials} trials numbered 0-${(prog?.nextIndex ?? 0) - 1}`);
+	check(prog && prog.deaths >= deathsBefore && prog.score > 0, `its deaths and score cover the whole run (${prog?.deaths} deaths, ${deathsBefore} before the refresh; score ${prog?.score})`);
 
 	// ----- a clip decodes and redraws with the real renderer -----
 	const withClip = trials.page.filter((t) => t.clipId);

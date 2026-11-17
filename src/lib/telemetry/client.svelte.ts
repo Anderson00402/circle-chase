@@ -16,6 +16,7 @@ import { api } from '#convex/_generated/api.js';
 import type { Game, Scene } from '../game/types';
 import { getOutbox, type OutboxFn } from '../study/outbox.svelte.ts';
 import { createRecorder } from './recorder';
+import { mergeProgress, readLocal, writeLocal } from './resume';
 import { createTracker } from './tracker';
 import type { LiveReadout, Outcome, TrialMeasures } from './types';
 import { APP_VERSION, trialWrite } from './write';
@@ -63,9 +64,9 @@ export interface TelemetryLive {
 	/** Writes waiting to be sent. */
 	pending: number;
 	online: boolean;
-	/** Trials stored in this block. */
+	/** Trials this page has stored in the block. */
 	saved: number;
-	/** Power-ups measured in this block so far (trials closed, whatever their outcome). Changes only when a trial closes. */
+	/** Power-ups measured in this block so far (trials closed, whatever their outcome), counting those of earlier pages of a resumed run. Changes only when a trial closes. */
 	measured: number;
 	/** Decision trials among them (`isDecision`: the trials the rates use). Changes only when a trial closes. */
 	decisions: number;
@@ -195,13 +196,28 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 			key: sessionKey, pid, mode: ctx.mode, source, cueOrder: ctx.session?.cueOrder ?? [], appVersion: APP_VERSION,
 			difficulty: ctx.difficulty ?? 'normal', sound: sound(), reducedMotion: reducedMotion(), inputType: inputLabel(inputSeen), viewport: viewport()
 		});
-		enqueue('blockStart', { key: blockKey, sessionKey, cue: ctx.cue, orderIndex: blockIndex, mode: ctx.mode, ...(ctx.practice ? { practice: true } : {}) });
+		enqueue('blockStart', { key: blockKey, sessionKey, cue: ctx.cue, orderIndex: blockIndex, mode: ctx.mode, segment: instance, ...(ctx.practice ? { practice: true } : {}) });
 	}
 
 	// ----- measuring -----
 	const tracker = createTracker();
 	const recorder = createRecorder();
-	let trialIndex = 0, deathsBefore = 0, scoreBefore = 0, lastScore = 0, lastLevel = 1, powerLeft = 0;
+	// A run resumed after a refresh carries on counting (resume.ts): this browser's record now, the
+	// server's once it answers, if no trial has closed on this page by then.
+	const seed = readLocal(blockKey);
+	let trialIndex = seed.next, ownTrials = 0;
+	live.measured = seed.measured;
+	live.decisions = seed.decisions;
+	if (ctx.blockKey) {
+		client.query(api.blocks.progress, { key: blockKey }).then((server) => {
+			if (!server || ownTrials > 0) return;
+			const m = mergeProgress(readLocal(blockKey), server);
+			trialIndex = m.next;
+			live.measured = m.measured;
+			live.decisions = m.decisions;
+		}).catch(() => { /* offline: the local record stands */ });
+	}
+	let deathsBefore = 0, scoreBefore = 0, lastScore = 0, lastLevel = 1, powerLeft = 0;
 	let game: Game | null = null;
 	let lastFrameAt = 0, lastLiveAt = 0, ended = false, pauses = 0, pausedSeconds = 0;
 
@@ -219,8 +235,10 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 			live.pending = outbox.count(mine);
 		});
 		trialInput.clear();
+		ownTrials++;
 		live.measured++;
 		if (isDecision(trial)) live.decisions++;
+		writeLocal(blockKey, { next: trialIndex, measured: live.measured, decisions: live.decisions });
 		live.recent = [
 			{ key, outcome: trial.outcome, engaged: trial.engaged, total: trial.total, turnLeft: trial.turnLeft, eats: trial.eats.length, hasClip: !!clip, saved: false },
 			...live.recent
@@ -296,7 +314,7 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		for (const t of tracker.finish()) store(t);
 		enqueue('blockEnd', {
 			key: blockKey, deaths: deathsBefore + (game?.deaths ?? 0), score: scoreBefore + lastScore,
-			pauses, pausedSeconds: Math.round(pausedSeconds * 10) / 10
+			pauses, pausedSeconds: Math.round(pausedSeconds * 10) / 10, segment: instance
 		});
 		client.mutation(api.presence.leave, { sessionKey }).catch(() => {});
 	}

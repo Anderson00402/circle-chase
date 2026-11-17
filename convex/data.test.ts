@@ -255,6 +255,44 @@ describe('blocks.end', () => {
 		expect([b?.pauses, b?.pausedSeconds]).toEqual([1, 2]);
 	});
 
+	test('a run resumed after a refresh adds up the deaths, score and pauses of every page, in any order', async () => {
+		const t = convexTest(schema, modules);
+		const k = await setup(t);
+		const block = () => t.run((ctx) => ctx.db.query('blocks').withIndex('by_key', (i) => i.eq('key', k.blockKey)).unique());
+		const session = () => t.run((ctx) => ctx.db.query('sessions').first());
+		// Page A plays, then the tab is refreshed: page B resumes the block before A's last write arrives.
+		await t.mutation(api.blocks.start, { key: k.blockKey, sessionKey: k.sessionKey, cue: 'timer-bar', orderIndex: 0, segment: 'A' });
+		for (let i = 0; i < 3; i++) await t.mutation(api.trials.save, trialArgs(k, `a${i}`, i));
+		await t.mutation(api.blocks.start, { key: k.blockKey, sessionKey: k.sessionKey, cue: 'timer-bar', orderIndex: 0, segment: 'B' });
+		expect((await t.query(api.blocks.progress, { key: k.blockKey }))).toMatchObject({ trials: 3, nextIndex: 3, segments: 2 });
+		// A's close (delivered later from the closed page's queue) does not end the block B is playing.
+		await t.mutation(api.blocks.end, { key: k.blockKey, deaths: 2, score: 1500, pauses: 1, pausedSeconds: 3.2, segment: 'A' });
+		expect((await block())?.endedAt).toBeUndefined();
+		expect((await session())?.endedAt).toBeUndefined();
+		await t.mutation(api.trials.save, trialArgs(k, 'b0', 3));
+		await t.mutation(api.blocks.end, { key: k.blockKey, deaths: 1, score: 400, pauses: 2, pausedSeconds: 1.1, segment: 'B' });
+		// A retry of A's close changes nothing.
+		await t.mutation(api.blocks.end, { key: k.blockKey, deaths: 2, score: 1500, pauses: 1, pausedSeconds: 3.2, segment: 'A' });
+		const b = await block();
+		expect([b?.deaths, b?.score, b?.pauses, b?.pausedSeconds]).toEqual([3, 1900, 3, 4.3]);
+		expect(b?.endedAt).toBeTypeOf('number');
+		expect((await session())?.endedAt).toBeTypeOf('number');
+		const p = await t.query(api.blocks.progress, { key: k.blockKey });
+		expect(p).toMatchObject({ trials: 4, nextIndex: 4, deaths: 3, score: 1900 });
+		expect(await t.query(api.blocks.progress, { key: 'nope' })).toBeNull();
+	});
+
+	test('a page that crashed without closing does not keep a resumed block open', async () => {
+		const t = convexTest(schema, modules);
+		const k = await setup(t);
+		await t.mutation(api.blocks.start, { key: k.blockKey, sessionKey: k.sessionKey, cue: 'timer-bar', orderIndex: 0, segment: 'A' });
+		await t.mutation(api.blocks.start, { key: k.blockKey, sessionKey: k.sessionKey, cue: 'timer-bar', orderIndex: 0, segment: 'B' });
+		await t.mutation(api.blocks.end, { key: k.blockKey, deaths: 0, score: 10, segment: 'B' });
+		const b = await t.run((ctx) => ctx.db.query('blocks').withIndex('by_key', (i) => i.eq('key', k.blockKey)).unique());
+		expect(b?.endedAt).toBeTypeOf('number');
+		expect(b?.score).toBe(10);
+	});
+
 	test('notes for a block that has not arrived yet answer null (the outbox waits)', async () => {
 		const t = convexTest(schema, modules);
 		expect(await t.mutation(api.blocks.end, { key: 'nope', deaths: 0, score: 0 })).toBeNull();
