@@ -2,7 +2,7 @@
 // Every download, through the real HTTP route of the running local deployment (:3211), for every
 // combination that matters: trials / ratings / blocks, CSV and JSON, source human and bot, with and
 // without a simulator run filter, with very small pages, and with filters that match nothing.
-// Each must finish within a time limit, end cleanly (no "EXPORT FAILED"), parse (every CSV row has
+// Each must keep arriving (no byte for --limit-s seconds counts as stalled), end cleanly (no "EXPORT FAILED"), parse (every CSV row has
 // the header's column count, JSON is one array), and hold the same rows as:
 //   - the same file with tiny pages (paging cannot drop or repeat rows),
 //   - the other format (CSV rows = JSON rows),
@@ -46,15 +46,23 @@ function parseCsv(text) {
 	return rows;
 }
 
-/** Download one file; returns { rows, header, seconds, bytes, error }. */
+/**
+ * Download one file; returns { rows, header, seconds, bytes, error }. A download fails as stalled
+ * when no byte arrives for `--limit-s` seconds (default 180), however long the whole file takes: on
+ * a loaded machine the 50 MB JSON can take several minutes and still be fine.
+ */
 async function download(file, params) {
 	const qs = new URLSearchParams({ to: String(TO), ...params, ...(SQUEEZE ? { simulateLimit: SQUEEZE } : {}) });
 	const t0 = Date.now();
 	const ctl = new AbortController();
-	const timer = setTimeout(() => ctl.abort(), LIMIT_S * 1000);
+	let timer = setTimeout(() => ctl.abort(), LIMIT_S * 1000);
+	const alive = () => { clearTimeout(timer); timer = setTimeout(() => ctl.abort(), LIMIT_S * 1000); };
 	try {
 		const res = await fetch(`${SITE}/export/${file}?${qs}`, { signal: ctl.signal });
-		const text = await res.text();
+		const dec = new TextDecoder();
+		let text = '';
+		for await (const chunk of res.body) { alive(); text += dec.decode(chunk, { stream: true }); }
+		text += dec.decode();
 		const seconds = (Date.now() - t0) / 1000;
 		if (res.status !== 200) return { error: `HTTP ${res.status}: ${text.slice(0, 200)}`, seconds };
 		if (text.includes('EXPORT FAILED')) return { error: text.slice(text.indexOf('EXPORT FAILED'), text.indexOf('EXPORT FAILED') + 200), seconds };
@@ -70,7 +78,7 @@ async function download(file, params) {
 		const idCol = header.indexOf(file.startsWith('trials') ? 'trialId' : file.startsWith('ratings') ? 'ratingId' : 'blockId');
 		return { rows: rows.length - 1, header, seconds, bytes: text.length, ids: rows.slice(1).map((r) => r[idCol]) };
 	} catch (e) {
-		return { error: ctl.signal.aborted ? `did not finish within ${LIMIT_S} s (stalled?)` : String(e), seconds: (Date.now() - t0) / 1000 };
+		return { error: ctl.signal.aborted ? `nothing arrived for ${LIMIT_S} s (stalled)` : String(e), seconds: (Date.now() - t0) / 1000 };
 	} finally {
 		clearTimeout(timer);
 	}
