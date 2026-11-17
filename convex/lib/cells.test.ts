@@ -173,6 +173,8 @@ describe('headline cost on a synthetic load', () => {
 		// The arithmetic itself (bootstrap and every Holm family included) fits a 300 ms budget when timed
 		// alone (`SCALE=1 npx vitest run convex/lib/cells.test.ts`); next to other test files the CPU is
 		// shared, so the everyday bound is only a guard against something growing out of hand.
-		expect(ms).toBeLessThan(process.env.SCALE ? 300 : 2000);
+		// `process` is not typed inside convex/ (Convex type-checks this folder for its own runtime).
+		const scale = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SCALE;
+		expect(ms).toBeLessThan(scale ? 300 : 2000);
 	});
 });
