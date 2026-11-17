@@ -203,7 +203,11 @@
 	const left = $derived(clockEnd - time);
 
 	/** The playhead sits on a marker (its own numbers are then shown, so they match the key numbers). */
-	const atMarker = $derived(markers.find((m) => Math.abs(clamp(m.t) - time) < 0.03) ?? null);
+	const atMarker = $derived.by(() => {
+		let best: Marker | null = null, bd = 0.03;
+		for (const m of markers) { const d = Math.abs(clamp(m.t) - time); if (d < bd || (best && d === bd)) { best = m; bd = d; } }
+		return best;
+	});
 	const seriesAt = $derived.by(() => {
 		if (!series) return null;
 		let best = -1, bd = Infinity;
@@ -215,18 +219,20 @@
 	});
 	/** At the "power out" marker the distance is the one the outcome was judged by. */
 	const distNow = $derived(
-		trial && expired && trial.endDist !== null && Math.abs(time - endT) < 0.06 ? trial.endDist
-		: trial && atMarker?.kind === 'turnAway' && trial.turnDist !== null ? trial.turnDist
+		trial && atMarker?.kind === 'turnAway' && trial.turnDist !== null ? trial.turnDist
+		: trial && expired && trial.endDist !== null && Math.abs(time - endT) < 0.06 ? trial.endDist
 		: seriesAt?.dist ?? (target.dist ?? null)
 	);
 	/** Power left as shown: at a marker, the marker's own stored number. */
 	const leftShown = $derived(atMarker?.left ?? left);
 	const deathT = $derived(markers.find((m) => m.kind === 'death')?.t ?? null);
 	const deathWord = $derived(deathLabel(trial?.outcome ?? ''));
-	// A clip ends on the frame of the death, which may fall a frame short of the stored death time: the
-	// last frames up to it read as the death, so the state and the marker agree.
+	// Older clips end on the frame of the death, which may fall a frame short of the stored death time:
+	// there the last frames read as the death, so the state and the marker agree. Newer clips run on
+	// past the death, and the state changes exactly at it.
+	const diedFrom = $derived(deathT === null ? null : t1 >= deathT ? deathT - 0.005 : t1 - 0.06);
 	const status = $derived(
-		deathT !== null && time >= Math.min(deathT, t1) - 0.06 ? { text: deathWord, tone: 'bad' }
+		diedFrom !== null && time >= diedFrom ? { text: deathWord, tone: 'bad' }
 		: left > 0 ? (left <= 3 ? { text: 'Last 3 s', tone: 'warn' } : { text: 'Power on', tone: 'accent' })
 		: expired ? { text: 'Ghosts dangerous', tone: 'bad' } : { text: 'Power cut short', tone: 'neutral' }
 	);
@@ -549,7 +555,7 @@
 							{#if trial.endReason === 'died'}
 								<div><dt>{deathWord}</dt><dd class="num bad">while the power was on</dd></div>
 							{:else}
-								<div><dt>{deathWord} after the end</dt><dd class="num" class:bad={trial.after.died}>{trial.after.died && trial.after.timeToCaught !== null ? fmt(trial.after.timeToCaught) + ' s after' : trial.after.died ? 'yes' : 'no'}</dd></div>
+								<div><dt>{deathWord} after the end</dt><dd class="num" class:bad={trial.after.died}>{trial.after.died ? `${fmt(trial.after.timeToCaught ?? trial.after.seen, 2)} s after` : 'no'}</dd></div>
 							{/if}
 						<div><dt>Ghosts eaten</dt><dd class="num">{trial.eats.length}{isLateCatch(trial) ? ' (late catch)' : ''}</dd></div>
 						<div><dt>Closest danger after</dt><dd class="num">{fmt(trial.after.minDangerDist) ?? '-'} {trial.after.minDangerDist !== null ? 'tiles' : ''}{trial.after.nearMiss ? ' (near miss)' : ''}</dd></div>
