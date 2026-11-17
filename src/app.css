@@ -37,8 +37,9 @@
 
 	/* Game colours (match BASE_COLORS in src/lib/game/render/renderer.ts) */
 	--player: #c6f23a;
-	--scared: #cfe6ff;
-	--scared-fill: #3d4fe6;
+	--scared: #d4d8df;
+	--scared-fill: #bcc0c8;
+	--scared-ink: #2b2f39;
 	--hunter: #ff3db8;
 	--ambusher: #ffd83d;
 	--guard: #3df29b;

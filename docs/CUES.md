@@ -64,7 +64,7 @@ after the stock sounds.
 | `k.scene`, `k.frame`, `k.maze` | The scene being drawn. `k.frame.phase` is `'ready'`, `'playing'`, `'dying'`, `'clear'` or `'over'`. |
 | `k.now` | Game time in seconds. Stops while paused and in the short freeze after eating a wisp. |
 | `k.reduceMotion` | The player asked for less motion. |
-| `k.colors` | The palette: maze theme (`bg wall wallGlow dot power`), `player`, `scared` (light ink of scared wisps), `scaredFill` (their body), `ghost[id]`, `ink`, `inkDim`, `accent`, `door`, `flash`, `flashInk`. |
+| `k.colors` | The palette: maze theme (`bg wall wallGlow dot power`), `player`, `scared` (light accent of the drained scared look), `scaredFill` (the pale, colourless body of a scared wisp), `scaredInk` (its dark face, stripes and outline), `ghost[id]`, `ink`, `inkDim`, `accent`, `door`, `flash`, `flashInk`. |
 | `k.fonts` | `{ display, body, mono }` font stacks from the app's design tokens. |
 
 ### Power

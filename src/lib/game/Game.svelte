@@ -342,7 +342,7 @@
 					<div class="card">
 						{#if overlay === 'title'}
 							<h2 id="cc-overlay-title">Ready?</h2>
-							<p>Eat every dot. After a power dot the ghosts turn blue and you can catch them, for a while.</p>
+							<p>Eat every dot. After a power dot the ghosts go pale and you can catch them, for a while.</p>
 						{:else if overlay === 'paused'}
 							<h2 id="cc-overlay-title">Paused</h2>
 							<p>The game is on hold.</p>

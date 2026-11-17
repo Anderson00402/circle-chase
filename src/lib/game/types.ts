@@ -450,8 +450,12 @@ export interface Palette {
 	dot: string;
 	power: string;
 	player: string;
+	/** Light accent of the scared ("drained") look, for cues that echo it on a dark board. */
 	scared: string;
+	/** Body of a scared wisp: pale and colourless, as if the colour had drained out of it. */
 	scaredFill: string;
+	/** Dark ink of a scared wisp's face, stripes and outline (falls back to `scared`). */
+	scaredInk?: string;
 	ink: string;
 	inkDim: string;
 	accent: string;

@@ -377,11 +377,19 @@ export function drawWisp(
 	if (look === 'scared' || look === 'scared-flash') {
 		const flash = look === 'scared-flash';
 		const fill = o.color ?? (flash ? pal.flash : pal.scaredFill);
-		const ink = o.ink ?? (flash ? pal.flashInk : pal.scared);
+		const ink = o.ink ?? (flash ? pal.flashInk : pal.scaredInk ?? pal.scared);
 		// A steady shiver: the same from the first to the last moment of the power-up.
 		const jx = time ? Math.sin(time * 47 + index * 3) * t * 0.022 : 0;
 		const hy = wispPath(c, T, g, index, cx + jx, cy, time, scale, 1, false);
-		c.fillStyle = fill;
+		if (flash || o.color) c.fillStyle = fill;
+		else {
+			// Drained: palest at the head, a little greyer towards the hanging tail.
+			const grad = c.createLinearGradient(cx, cy - t * 0.5, cx, cy + t * 0.5);
+			grad.addColorStop(0, mix(fill, '#ffffff', 0.3));
+			grad.addColorStop(0.6, fill);
+			grad.addColorStop(1, mix(fill, '#000000', 0.12));
+			c.fillStyle = grad;
+		}
 		c.fill();
 		if (t >= 9) {
 			// Diagonal stripes inside the body: the scared pattern, readable without colour.

@@ -20,14 +20,17 @@ import { appFonts, clamp, ease, hash, lerp, mix, noise, rgba, smoothstep, TAU } 
 
 export const BASE_COLORS = {
 	player: '#c6f23a',
-	scared: '#cfe6ff',
-	scaredFill: '#3d4fe6',
+	// Scared wisps are "drained": a pale, colourless body with dark ink, unlike any awake wisp, the
+	// lime hero or the white blink (white body, red ink). `scared` is the light accent cues echo.
+	scared: '#d4d8df',
+	scaredFill: '#bcc0c8',
+	scaredInk: '#2b2f39',
 	ink: '#f2f5ff',
 	inkDim: '#a3b6de',
 	accent: '#ff8a4c',
 	flash: '#f7f9ff',
 	flashInk: '#ff3d6b',
-	// Our own set: magenta, sunflower, mint and violet. Kept apart from the lime hero, the blue scared
+	// Our own set: magenta, sunflower, mint and violet. Kept apart from the lime hero, the drained scared
 	// look, the white blink and every maze colour (checked in `palette.test.ts`).
 	ghost: { hunter: '#ff3db8', ambusher: '#ffd83d', guard: '#3df29b', drifter: '#a866ff' }
 } as const;
