@@ -274,8 +274,12 @@
 					</ol>
 				{:else if !run.p.label && run.p.number === null}
 					<!-- The line above already says what to do. -->
-				{:else if sheetLate.current}
+				{:else if sheetLate.offline}
 					<p class="empty">Can't reach the database: runs played now are kept on this machine and appear here when it is back.</p>
+				{:else if sheetLate.late}
+					<p class="empty">Still loading the runs: the database is connected but slow to answer.</p>
+				{:else if sheet.error}
+					<p class="empty">Could not load the runs: the request failed. Reload to try again.</p>
 				{:else}
 					<p class="empty">No runs yet for this participant. Each case played appears here; click one to open its summary.</p>
 				{/if}

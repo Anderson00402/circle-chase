@@ -140,6 +140,7 @@
 						</tbody>
 					</table>
 				</div>
+				<p class="note"><a href={`/replays?${new URLSearchParams({ ...(d.source !== 'human' ? { source: d.source } : {}), p: d.participantId })}`}>All replays of {who || 'this participant'}</a></p>
 				{#if notCounted.length}
 					<p class="note">{notCounted.length} of {d.rows.length} power-up{d.rows.length === 1 ? '' : 's'} {notCounted.length === 1 ? 'does' : 'do'} not count toward the rates{d.oldRules ? `, ${d.oldRules} of them because they were recorded under older rules` : ''}; the reason is under each one.</p>
 				{/if}

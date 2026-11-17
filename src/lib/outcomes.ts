@@ -56,7 +56,7 @@ export const OUTCOME_INFO: Record<AnyOutcome, OutcomeInfo> = {
 		def: 'Turned away from a ghost it could still reach, with more than 2 s left, and chased nothing after it: power wasted.'
 	},
 	catch: {
-		id: 'catch', label: 'Caught the ghost', short: 'Ate ghost', tone: 'neutral', color: C.other, decision: false,
+		id: 'catch', label: 'Ate the ghost', short: 'Ate ghost', tone: 'neutral', color: C.other, decision: false,
 		def: 'The last chase ended by eating the ghost. Shows no decision about the end, so it is in no rate.'
 	},
 	'not-engaged': {

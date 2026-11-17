@@ -10,6 +10,7 @@ import { mutation, query } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { RULES_VERSION, isDecision } from './lib/rules';
 import { notCountedReason } from './lib/reasons';
+import { participantName } from './lib/replayDigest';
 
 /** Stored on the session: who the runs are for and how the suggested order was picked. */
 export const runInfo = v.object({
@@ -125,7 +126,8 @@ export const block = query({
 		return {
 			blockId: b._id, cue: b.cue, mode: b.mode, orderIndex: b.orderIndex, startedAt: b.startedAt, endedAt: b.endedAt ?? null,
 			deaths: b.deaths, score: b.score, source: b.source,
-			label: s?.run?.participantLabel ?? p?.nickname ?? (p ? `P${String(p.number).padStart(2, '0')}` : null),
+			label: p || s?.run ? participantName({ label: s?.run?.participantLabel, nickname: p?.nickname, runNumber: p?.runNumber, number: p?.number, source: b.source }) : null,
+			participantId: b.participantId,
 			...tally(trials),
 			rows: trials.map((t, i) => ({
 				_id: t._id, n: i + 1, trialIndex: t.trialIndex, outcome: t.outcome, engaged: t.engaged, counted: isDecision(t), total: t.total,
