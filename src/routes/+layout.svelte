@@ -101,7 +101,7 @@
 		{@render children()}
 	</main>
 
-	{#if !fill}
+	{#if !fill && page.route.id !== '/'}
 		<footer class="foot">
 			<p>
 				Circle Chase is a research prototype. It records anonymous gameplay data only, stored locally

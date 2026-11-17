@@ -75,7 +75,8 @@
 
 	const HOLD = 0.8; // seconds the last frame stays before the loop starts again
 
-	let clip = $state<PreviewClip | null>(null);
+	// Raw: the shared clip is large and read-only; a deep proxy would copy it and break identity checks.
+	let clip = $state.raw<PreviewClip | null>(null);
 	let index = $state(0);
 	let visible = $state(false);
 	let hovered = $state(false);

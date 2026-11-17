@@ -13,7 +13,11 @@
 	<div class="wrap">
 		<EmptyState {title}>
 			{#if missing}
-				<p>Nothing lives at <code>{page.url.pathname}</code>. It may be an old link: the study now runs from the console.</p>
+				{#if page.error?.message && page.error.message !== 'Not Found'}
+					<p>{page.error.message} Pick one on the run console.</p>
+				{:else}
+					<p>Nothing lives at <code>{page.url.pathname}</code>. It may be an old link: the study now runs from the console.</p>
+				{/if}
 			{:else}
 				<p>The page could not be shown{page.error?.message ? `: ${page.error.message}` : '.'} Nothing that was already saved is lost.</p>
 			{/if}

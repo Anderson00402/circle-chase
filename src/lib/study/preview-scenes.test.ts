@@ -18,3 +18,16 @@ describe('preview clip', () => {
 		expect(a).toBe(previewClip());
 	});
 });
+
+describe('compare at a moment', () => {
+	test('freezes on the first frame at or below the time asked for', async () => {
+		const { indexForLeft, MOMENTS } = await import('./preview-scenes');
+		const c = previewClip();
+		for (const m of MOMENTS) {
+			const i = indexForLeft(c, m.left);
+			expect(leftAt(c, i), m.label).toBeLessThanOrEqual(m.left + 1e-9);
+			if (i > c.startIndex) expect(leftAt(c, i - 1), m.label).toBeGreaterThan(m.left);
+		}
+		expect(MOMENTS[0].left).toBeGreaterThan(3);
+	});
+});

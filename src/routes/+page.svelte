@@ -16,8 +16,7 @@
 	import CuePreview from '#lib/ui/CuePreview.svelte';
 	import { previewMoment } from '#lib/ui/preview-moment.svelte.ts';
 	import { MOMENTS } from '#lib/study/preview-scenes.ts';
-	import { Button, ConnectionDot, CueChip, InfoTip, Kbd, Segmented, ROLE_LABEL, slow, whereLabel } from '#lib/ui/index.ts';
-	import { outboxStatus } from '#lib/study/outbox.svelte.ts';
+	import { Button, CueChip, InfoTip, Kbd, Segmented, ROLE_LABEL, slow, whereLabel } from '#lib/ui/index.ts';
 	import OutcomeBar from '#lib/study/OutcomeBar.svelte';
 	import { MODE_LABEL, outcomeMix as mixWords } from '#lib/outcomes.ts';
 	import { ensureIfNamed, newParticipant, persist, playHref, reload, run, setLabel, suggestedNext, summaryHref } from '#lib/study/run.svelte.ts';
@@ -196,7 +195,7 @@
 		ondblclick={() => play(c)}
 		data-preview-host
 	>
-		<span class="thumb"><CuePreview cue={c} fps={15} zoom={closeUp(c)} /></span>
+		<span class="thumb"><CuePreview cue={c} fps={15} zoom={closeUp(c)} />{#if closeUp(c)}<span class="zoomtag" title="This thumbnail zooms on the {closeUp(c) === 'ghost' ? 'ghosts' : 'player'}, where the cue is drawn; the selected case shows the whole board">close-up</span>{/if}</span>
 		<span class="meta">
 			<span class="code num">{c.code}</span>
 			<span class="name">{c.name}</span>
@@ -301,10 +300,6 @@
 
 		<div class="settings">
 			<div class="set">
-				<span class="lab">Playing with</span>
-				<strong class="who num">{run.p.label || 'no label yet'}</strong>
-			</div>
-			<div class="set">
 				<span class="lab">Rules <InfoTip term="Rules">Study rules: each power-up lasts a random 4 to 8 s, power dots grow back, no game over, one maze. Arcade rules: the normal game with fixed power lengths, lives and levels. Both are measured.</InfoTip></span>
 				<Segmented label="Rules" size="sm" options={[{ value: 'study', label: MODE_LABEL.study }, { value: 'arcade', label: MODE_LABEL.arcade }]} bind:value={run.settings.rules} onchange={() => persist()} />
 			</div>
@@ -329,7 +324,6 @@
 		<span><span class="num">{sheet.isLoading ? '-' : n(totals.trials)}</span> power-up{totals.trials === 1 ? '' : 's'} measured</span>
 		<span><span class="num">{sheet.isLoading ? '-' : n(totals.counted)}</span> decision{totals.counted === 1 ? '' : 's'} measured</span>
 		<span><span class="num">{sheet.isLoading ? '-' : n(totals.clips)}</span> replay{totals.clips === 1 ? '' : 's'}</span>
-		<ConnectionDot saving={outboxStatus} />
 		<span class="links"><a href={participantReplays}>This participant's replays</a><a href="/dashboard">Dashboard</a></span>
 	</footer>
 </div>
@@ -397,7 +391,8 @@
 	.case.reference { --c: var(--role-reference); }
 	.case.baseline { --c: var(--role-baseline); }
 	.case.idea { --c: var(--role-idea); }
-	.thumb { display: block; width: var(--thumb); height: var(--thumb); border-radius: var(--radius-sm); overflow: hidden; background: #05070f; }
+	.thumb { position: relative; display: block; width: var(--thumb); height: var(--thumb); border-radius: var(--radius-sm); overflow: hidden; background: #05070f; }
+	.zoomtag { position: absolute; right: 4px; bottom: 4px; padding: 0 5px; border-radius: var(--radius-pill); background: rgba(8, 12, 24, 0.8); color: var(--ink-dim); font-size: 10px; line-height: 16px; }
 	.meta { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-sm); line-height: 1.2; }
 	.code {
 		flex: none;
@@ -496,9 +491,10 @@
 	.role { color: var(--ink-faint); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; }
 	.selected h2 { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: var(--text-xl); letter-spacing: 0; text-transform: none; }
 	.tagline { color: var(--ink); }
-	.big { width: 100%; height: clamp(180px, calc(100dvh - 600px), 330px); }
-	.desc { flex: 1 1 auto; min-height: 2.6em; overflow-y: auto; color: var(--ink-dim); font-size: var(--text-sm); }
-	.settings { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) 0; border-top: 1px solid var(--rule); }
+	/* The preview takes what the text leaves, so the description is never cut off. */
+	.big { width: 100%; flex: 1 1 0; min-height: 190px; max-height: 330px; }
+	.desc { flex: none; color: var(--ink-dim); font-size: var(--text-sm); }
+	.settings { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--rule); }
 	.set { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 	.lab { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-dim); font-size: var(--text-sm); }
 	.enter { margin-left: 6px; opacity: 0.75; }

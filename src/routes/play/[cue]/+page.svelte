@@ -9,7 +9,8 @@
 	 * play out, then shows the summary. The run also ends itself that way once the run length set on
 	 * the console (a number of power-ups) has been measured. Outside participant view the header
 	 * shows the decisions measured this run, which change only when a trial closes. Keys: E end run (again: end now), R restart, [ ] previous /
-	 * next, V participant view, Esc (paused or not started) console, N next case on the summary.
+	 * next, V participant view, Esc pauses and resumes (before the first move: back to the console),
+	 * N next case and Esc console on the summary.
 	 */
 	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -26,6 +27,7 @@
 	} from '#lib/study/run.svelte.ts';
 	import { MODE_LABEL } from '#lib/outcomes.ts';
 	import { runLengthWords } from '#lib/study/length.ts';
+	import { participantName } from '#convex/lib/replayDigest.ts';
 
 	const client = useConvexClient();
 	const cue = $derived(CUES.find((c) => c.id === page.params.cue) ?? null);
@@ -33,8 +35,7 @@
 	/** The run whose summary is shown, from the address. */
 	const done = $derived(page.url.searchParams.get('done'));
 
-	// An unknown case goes back to the console.
-	$effect(() => { if (!cue) goto('/', { replace: true }); });
+	// An unknown case never gets here: +page.ts answers it with the not-found page.
 
 	/** A new run (block) for every case, rules change or restart. */
 	let blockKey = $state(uid());
@@ -86,8 +87,9 @@
 	function endRun() {
 		if (!board || ending || done) return;
 		if (finishing) { finishing = null; finish(); return; }
-		const live = board.live();
-		if (live.readout && live.readout.state !== 'idle') { finishing = { last: live.recent[0]?.key ?? null }; return; }
+		// Read the state at this moment (not the panel's readout, which lags up to 100 ms), so a press
+		// in the first moments of a power-up waits for it like any other.
+		if (board.measuring()) { finishing = { last: board.live().recent[0]?.key ?? null }; return; }
 		finish();
 	}
 	async function finish() {
@@ -99,7 +101,8 @@
 	$effect(() => {
 		if (!finishing || !board) return;
 		const live = board.live();
-		if (!live.readout || live.readout.state === 'idle' || (live.recent[0]?.key ?? null) !== finishing.last) {
+		const idle = (!live.readout || live.readout.state === 'idle') && !board.measuring();
+		if (idle || (live.recent[0]?.key ?? null) !== finishing.last) {
 			finishing = null;
 			finish();
 		}
@@ -177,7 +180,7 @@
 {#if cue}
 	<div class="play">
 		<header class="head" aria-label="Run">
-			<a class="back" href="/" title="Back to the console (Esc while paused)">
+			<a class="back" href="/" title={done ? 'Back to the console (Esc)' : 'Back to the console: ends this run'}>
 				<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
 				Console
 			</a>
@@ -189,7 +192,7 @@
 				{/if}
 				{#if rules === 'arcade'}<span class="tag">{MODE_LABEL.arcade}</span>{/if}
 			</div>
-			<span class="who" title="Participant (change it on the console)"><span class="dim">Participant</span> <strong class="num">{run.p.label || '-'}</strong>{#if !done} <span class="dim">run {orderIndex + 1}</span>{/if}</span>
+			<span class="who" title="Participant (change it on the console)"><span class="dim">Participant</span> <strong class="num">{run.p.label ? participantName({ label: run.p.label, runNumber: run.p.number }) : '-'}</strong>{#if !done} <span class="dim">run {orderIndex + 1}</span>{/if}</span>
 			{#if tally && !participantView}
 				<span class="tally" role="status" title="Updated when a power-up has been measured to its end. Run length: {runLengthWords(target)} (set on the console).">
 					Decisions measured this run: <strong class="num">{tally.decisions}</strong>
@@ -235,6 +238,7 @@
 					<RunBoard
 						bind:this={board} {cue} {rules} {blockKey} {orderIndex} participant={run.p} showPanel={!participantView}
 						onstarted={started} {onended} onexit={() => goto('/')}
+						pausedNote="E ends the run (a power-up in progress is measured first), R restarts it. Leave through Console at the top left." 
 					/>
 				{/key}
 			{/if}

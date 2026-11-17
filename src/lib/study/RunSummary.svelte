@@ -1,8 +1,9 @@
 <script lang="ts">
 	/**
-	 * The end-of-run summary (/play/<case>?done=<run>): what this run measured (live from Convex),
-	 * each trial with a link to its replay and, when it does not count, why; and an optional,
-	 * skippable card with the two 1-7 questions for the participant. An answer not yet saved is kept
+	 * The end-of-run summary (/play/<case>?done=<run>). In participant view (on whenever a run
+	 * starts) the participant sees only a thank-you and the two 1-7 questions: no outcome, so there is
+	 * no feedback between cases. The researcher's view (V) adds what this run measured (live from
+	 * Convex), each trial with a link to its replay and, when it does not count, why. An answer not yet saved is kept
 	 * as a draft on this machine, so leaving for a replay and coming back does not lose it.
 	 */
 	import { useConvexClient, useQuery } from 'convex-svelte';
@@ -81,7 +82,8 @@
 		asked = 'saved';
 	}
 
-	const pct = (k: number, n: number) => (n ? `${Math.round((k / n) * 100)}%` : '-');
+	/** "1 of 3 · 33%": every share with its denominator. */
+	const share = (k: number, n: number) => (n ? `of ${n} · ${Math.round((k / n) * 100)}%` : 'of 0');
 	const notCounted = $derived(d ? d.rows.filter((r) => !r.counted) : []);
 </script>
 
@@ -89,20 +91,20 @@
 	<header>
 		<p class="eyebrow">Run {runNo ?? ''} done{who ? ` · ${who}` : ''}{rules === 'arcade' ? ` · ${MODE_LABEL.arcade}` : ''}</p>
 		<h1>
-			{#if hideCase}Run complete{:else}<CueChip {cue} /> <span class="sr">Run complete</span>{/if}
+			{#if hideCase}Thank you{:else}<CueChip {cue} /> <span class="sr">Run complete</span>{/if}
 		</h1>
+		{#if hideCase}<p class="lead">That run is done. Two quick questions about the signal, then the next one.</p>{/if}
 	</header>
 
-	<div class="grid">
+	<div class="grid" class:solo={hideCase}>
+		{#if !hideCase}
 		<section class="what" aria-labelledby="sum-title">
 			<h2 id="sum-title">What was measured</h2>
 			<dl class="stats">
 				<div><dt>Power-ups</dt><dd class="num">{trials}</dd></div>
-				{#if !hideCase}
-					<div><dt title="Power-ups where the player had to decide about the end: turned away or stayed on. The rates use these.">Decisions measured this run</dt><dd class="num">{d?.counted ?? localDecisions ?? '-'}</dd></div>
-				{/if}
-				<div><dt>{outcomeLabel('timely-retreat')}</dt><dd class="num good">{d ? `${d.wellTimed}` : '-'} <small>{d ? pct(d.wellTimed, d.counted) : ''}</small></dd></div>
-				<div><dt>{outcomeLabel('caught')}</dt><dd class="num bad">{d ? `${d.caught}` : '-'} <small>{d ? pct(d.caught, d.counted) : ''}</small></dd></div>
+				<div><dt title="Power-ups where the player had to decide about the end: turned away or stayed on. The rates use these.">Decisions measured</dt><dd class="num">{d?.counted ?? localDecisions ?? '-'}</dd></div>
+				<div><dt>{outcomeLabel('timely-retreat')}</dt><dd class="num good">{d ? `${d.wellTimed}` : '-'} <small>{d ? share(d.wellTimed, d.counted) : ''}</small></dd></div>
+				<div><dt>{outcomeLabel('caught')}</dt><dd class="num bad">{d ? `${d.caught}` : '-'} <small>{d ? share(d.caught, d.counted) : ''}</small></dd></div>
 				<div><dt>Replays saved</dt><dd class="num">{d?.clips ?? '-'}</dd></div>
 			</dl>
 			{#if trials > 0}
@@ -142,12 +144,13 @@
 					<p class="note">{notCounted.length} of {d.rows.length} power-up{d.rows.length === 1 ? '' : 's'} {notCounted.length === 1 ? 'does' : 'do'} not count toward the rates{d.oldRules ? `, ${d.oldRules} of them because they were recorded under older rules` : ''}; the reason is under each one.</p>
 				{/if}
 			{:else if res.isLoading || (!d && recent.length)}
-				<p class="empty">{waiting.current ? "Can't reach the database yet. What was measured is kept on this machine and sent when it is back." : 'Waiting for the server...'}</p>
+				<p class="empty">{waiting.offline ? "Can't reach the database. What was measured is kept on this machine and sent when it is back." : waiting.late ? 'Still waiting for the server: it is connected but slow to answer. This fills in by itself.' : 'Waiting for the server...'}</p>
 			{/if}
 		</section>
+		{/if}
 
 		<section class="ask" aria-labelledby="ask-title">
-			<h2 id="ask-title">Ask the participant <span class="opt">optional</span></h2>
+			<h2 id="ask-title">{hideCase ? 'Two questions' : 'Ask the participant'} <span class="opt">optional</span></h2>
 			{#if asked === 'open'}
 				<Scale7 question="I could tell when the power was about to run out." low="Not at all" high="Completely" bind:value={clarity} />
 				<Scale7 question="The signal got in the way of playing." low="Not at all" high="Very much" bind:value={distraction} />
@@ -168,12 +171,13 @@
 	<footer class="go">
 		{#if next}
 			<Button variant="primary" size="lg" onclick={onnext}>
-				Next case: {hideCase ? 'suggested' : `${next.code} · ${next.name}`} <span class="k"><Kbd>N</Kbd></span>
+				Next case: <span class="num">{next.code}</span>{hideCase ? '' : ` · ${next.name}`} <span class="k"><Kbd>N</Kbd></span>
 			</Button>
 		{/if}
 		<Button size="lg" onclick={onagain}>Play this case again</Button>
 		<Button size="lg" variant="ghost" href="/">Back to console <span class="k"><Kbd>Esc</Kbd></span></Button>
 	</footer>
+	{#if hideCase}<p class="dim small">Researcher: press <Kbd>V</Kbd> for what this run measured and its replays.</p>{/if}
 </div>
 
 <style>
@@ -197,7 +201,10 @@
 	.mix .num { color: var(--ink); font-weight: 650; }
 	.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--ink-faint); vertical-align: 1px; flex: none; }
 	.mix .dot { margin-right: 0; }
-	.table-wrap { overflow: auto; max-height: 320px; }
+	/* Every row shows: the page scrolls, not a box inside it. */
+	.table-wrap { overflow-x: auto; }
+	.grid.solo { grid-template-columns: minmax(0, 640px); }
+	.lead { color: var(--ink-dim); margin-top: var(--space-2); }
 	table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 	th, td { padding: 6px 8px; border-bottom: 1px solid var(--rule); text-align: left; white-space: nowrap; vertical-align: top; }
 	thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink-dim); font-size: var(--text-xs); font-weight: 600; }

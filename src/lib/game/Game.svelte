@@ -29,9 +29,11 @@
 		compact?: boolean;
 		/** Keyboard and swipe input, overlays, pause on blur. Off: runs at once and is driven from outside via `game.steer`. */
 		controls?: boolean;
+		/** Extra line on the paused card, e.g. what the page's own keys do there. */
+		pausedNote?: string;
 	}
 	let {
-		cue, config = {}, onframe, onstart, maxTile = 34, sound = $bindable(), compact = false, controls = true
+		cue, config = {}, onframe, onstart, maxTile = 34, sound = $bindable(), compact = false, controls = true, pausedNote = ''
 	}: Props = $props();
 
 	const STEP = 1 / 120;
@@ -345,7 +347,8 @@
 							<p>Eat every dot. After a power dot the ghosts go pale and you can catch them, for a while.</p>
 						{:else if overlay === 'paused'}
 							<h2 id="cc-overlay-title">Paused</h2>
-							<p>The game is on hold.</p>
+							<p>The game is on hold. Esc or P resumes.</p>
+							{#if pausedNote}<p class="hint">{pausedNote}</p>{/if}
 						{:else}
 							<h2 id="cc-overlay-title">Game over</h2>
 							{#if newBest}<p class="best">New best</p>{/if}

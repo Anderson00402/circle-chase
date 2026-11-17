@@ -14,12 +14,14 @@
 	import { outcomeColor, outcomeDef, outcomeLabel, turnWords } from '../outcomes';
 
 	interface Props {
+		/** The participant as shown everywhere (label and console number); the internal number is never shown. */
+		participant?: string;
 		live: TelemetryLive;
 		cue: string;
 		/** Name of the case for headings (defaults to "this case"). */
 		cueName?: string;
 	}
-	let { live, cue, cueName }: Props = $props();
+	let { live, cue, cueName, participant = '' }: Props = $props();
 
 	// What is stored for this case (same source as this player), live from Convex.
 	const stored = useQuery(api.summary.byCue, () => ({ source: live.source, cue }));
@@ -84,7 +86,7 @@
 		{:else}
 			<p class="hint">{stored.isLoading ? 'Loading...' : 'Nothing stored yet.'}</p>
 		{/if}
-		<p class="hint">{live.saved} saved in this run{live.participantNumber ? ` · participant number ${live.participantNumber}` : ''}</p>
+		<p class="hint">{live.saved} saved in this run{participant ? ` · ${participant}` : ''}</p>
 	</section>
 
 	<details>

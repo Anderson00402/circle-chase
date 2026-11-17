@@ -101,20 +101,20 @@ export function previewClip(): PreviewClip {
 }
 
 /**
- * Index of the scene closest to `left` seconds of power left (negative: after the end). Used by
- * "compare at a moment", which sets every preview to the same time left.
+ * Index of the first scene at or below `left` seconds of power left (negative: after the end). Used
+ * by "compare at a moment", which sets every preview to the same time left. The first frame at or
+ * below, not the nearest: at "1 s" a counting cue must already show 1, never a 2 from 1.02 s left.
  */
 export function indexForLeft(clip: PreviewClip, left: number): number {
-	let best = clip.startIndex, err = Infinity;
-	for (let i = clip.startIndex; i < clip.scenes.length; i++) {
-		const e = Math.abs(leftAt(clip, i) - left);
-		if (e < err) { err = e; best = i; }
-	}
-	return best;
+	for (let i = clip.startIndex; i < clip.scenes.length; i++) if (leftAt(clip, i) <= left + 1e-9) return i;
+	return clip.scenes.length - 1;
 }
 
 /** The moments offered by "compare at a moment", as seconds left (negative: after the end). */
 export const MOMENTS: { left: number; label: string }[] = [
+	// The calm state, well before the last 3 s. (Half of the preview's 6 s power is 3 s, the moment
+	// below, which is already the start of the final warning on several cues.)
+	{ left: 4.5, label: '4.5 s' },
 	{ left: 3, label: '3 s' },
 	{ left: 2, label: '2 s' },
 	{ left: 1, label: '1 s' },

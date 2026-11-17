@@ -5,6 +5,8 @@
 	 * for every run. Call `end()` to close the block; `onended` follows once the writes are out.
 	 *
 	 * Pauses (P, Escape, the window losing focus) are counted by the telemetry client and stored on the block.
+	 * Escape pauses and resumes (the game's own keys); it never leaves a run that has started. Before
+	 * the first frame (the Ready card) Escape goes back to the console.
 	 */
 	import { onMount } from 'svelte';
 	import { useConvexClient } from 'convex-svelte';
@@ -14,6 +16,7 @@
 	import { createTelemetry, type Mode, type RecentTrial } from '../telemetry/client.svelte.ts';
 	import LivePanel from '../telemetry/LivePanel.svelte';
 	import type { Participant } from './run.svelte.ts';
+	import { participantName } from '#convex/lib/replayDigest.ts';
 
 	export interface RunEnd { blockKey: string; recent: RecentTrial[]; started: boolean; decisions: number }
 
@@ -27,10 +30,12 @@
 		/** The first frame was played: the run (block) exists from now on. */
 		onstarted?: () => void;
 		onended: (r: RunEnd) => void;
-		/** Escape while paused or before starting. */
+		/** Escape before the run started (nothing played yet). */
 		onexit?: () => void;
+		/** Extra line on the paused card (what the play page's keys do). */
+		pausedNote?: string;
 	}
-	let { cue, rules, blockKey, orderIndex, participant, showPanel, onstarted, onended, onexit }: Props = $props();
+	let { cue, rules, blockKey, orderIndex, participant, showPanel, onstarted, onended, onexit, pausedNote = '' }: Props = $props();
 
 	const client = useConvexClient();
 	// Created once per run; props are read at creation on purpose.
@@ -49,15 +54,26 @@
 	const config: Partial<GameConfig> = rules === 'study' ? { ...studyRules } : { difficulty: 'normal' };
 
 	let gameRef = $state<ReturnType<typeof Game>>();
-	let started = false, ending = false, lastWall = 0;
+	let started = false, ending = false;
+	/** The latest frame, read at the moment End run is pressed (the panel's readout lags up to 100 ms). */
+	let lastScene: Scene | null = null;
 
 	function onframe(scene: Scene, game: GameT) {
 		if (ending) return;
 		tel.onFrame(scene, game);
-		const wall = performance.now();
-		// The game sends no frames while paused.
-		lastWall = wall;
+		lastScene = scene;
 		if (!started) { started = true; onstarted?.(); }
+	}
+
+	/**
+	 * A power-up is being measured right now: the telemetry says so, or the latest frame has the power
+	 * on (the telemetry readout is refreshed only every 100 ms, so it can still say idle just after
+	 * the power dot was eaten).
+	 */
+	export function measuring(): boolean {
+		const r = tel.live.readout;
+		if (r && r.state !== 'idle') return true;
+		return !!lastScene && lastScene.frame.power.left > 0;
 	}
 
 	/** Close the run: the power-up in progress is kept as interrupted, everything else is sent. */
@@ -77,16 +93,14 @@
 	/** What telemetry sees now (reactive): the play page waits on it to end a run without dropping a trial. */
 	export function live() { return tel.live; }
 
-	// Escape goes back to the console when the game is paused or has not started (no frames for a
-	// moment); otherwise the game's own Escape pauses it.
+	// Escape before anything was played goes back to the console; once the run has started it only
+	// pauses and resumes (the game's own Escape), so pressing it twice never ends a run.
 	function onkey(e: KeyboardEvent) {
-		if (e.key !== 'Escape' || ending) return;
+		if (e.key !== 'Escape' || ending || started) return;
 		if ((e.target as HTMLElement).closest('input, textarea, select, dialog')) return;
-		if (!lastWall || performance.now() - lastWall > 300) {
-			e.preventDefault();
-			e.stopImmediatePropagation();
-			onexit?.();
-		}
+		e.preventDefault();
+		e.stopImmediatePropagation();
+		onexit?.();
 	}
 
 	onMount(() => {
@@ -100,11 +114,11 @@
 
 <div class="runboard" class:with-panel={showPanel}>
 	<div class="board">
-		<Game bind:this={gameRef} {cue} {config} onframe={onframe} onstart={tel.onStart} maxTile={34} />
+		<Game bind:this={gameRef} {cue} {config} onframe={onframe} onstart={tel.onStart} maxTile={34} {pausedNote} />
 	</div>
 	{#if showPanel}
 		<div class="side">
-			<LivePanel live={tel.live} cue={cue.id} cueName={cue.name} />
+			<LivePanel live={tel.live} cue={cue.id} cueName={cue.name} participant={participantName({ label: participant.label, runNumber: participant.number })} />
 		</div>
 	{/if}
 </div>
