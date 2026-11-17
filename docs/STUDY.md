@@ -39,9 +39,13 @@ One **trial** = one power-up, from eating the power dot until 3 s after the powe
   length players would simply learn the rhythm; with a random one the cue is the only way to know.
 - **Many comparable trials.** Under study rules power dots grow back after 12 s, only one
   power-up runs at a time, no power dot is on the board until 3 s after a power-up ended (so the
-  aftermath of a trial is never cut short by the next one), lives are unlimited and the maze and
-  speeds never change, so a 1-2 minute run gives several comparable trials (deaths are still
-  recorded).
+  aftermath of a trial is never cut short by the next one, even when the maze is cleared and comes
+  back), lives are unlimited and the maze and speeds never change (deaths are still recorded).
+- **Power-ups that end in a decision.** Under study rules scared ghosts close to the player run
+  from it, a little slower than the player, so a chase lasts and is often still under way when the
+  power runs out: that is when the player has to decide. See "Study-rule levers" below.
+- **Run length.** A run ends by itself after a set number of power-ups (default 16, about 4
+  minutes), finishing the one in progress first. See "How long a run is" below.
 - **Self-report, optional.** After a run the researcher can ask: "I could tell when the power was
   about to run out" and "The signal got in the way of playing", both 1-7.
 - Arcade rules (fixed power lengths, real lives, levels) also record trials, tagged `mode: 'arcade'`.
@@ -69,7 +73,7 @@ get, for long enough to mean it:
 | Part | Rule | Why this number |
 | --- | --- | --- |
 | The player's own steps | Every frame, for every scared ghost, take the path distance to where the ghost is now, from where the player is now and from where the player was one frame ago. The difference is what the player's step did. Only that counts. | A ghost that walks toward a player who stands still or runs away closes the gap too. That is not a chase. (And a ghost that runs away while the player follows is one, although the gap may grow.) |
-| A plausible target: **6 tiles** | An approach starts with a step toward a scared ghost at most 6 tiles away, and is over if the ghost gets farther than that. | The player runs 5.6 tiles/s (6.3 with the power on), a scared ghost 3.5. A ghost 6 tiles away is about 1 s away if it holds still and 2.1 s if it runs straight away (6 / (6.3 - 3.5)): it can be caught inside the 3 s warning window whatever it does. At 8 tiles a fleeing ghost takes the whole window. |
+| A plausible target: **6 tiles** | An approach starts with a step toward a scared ghost at most 6 tiles away, and is over if the ghost gets farther than that. | The player runs about 5.6 tiles/s (6.2 with the power on). Under arcade rules a scared ghost runs 3.6 and turns at random: 6 tiles is about 1 s away if it holds still and 2.3 s if it runs straight away, inside the 3 s warning window whatever it does. Under study rules (since the fleeing ghosts, see "Study-rule levers") a scared ghost within 7 tiles runs from the player at 4.7 tiles/s, so the pursuit closes about 1.5 tiles a second and a ghost 6 tiles off takes about 4 s. The number was kept: it says which ghost the player is plausibly going after, not that it will be caught. |
 | Sustained: **3 tiles** | An approach is a chase once the player's own steps closed 3 tiles on the ghost while the power was on (about half a second of running). Shorter approaches leave no trace. | A step or two toward a ghost is a blip, not a decision. With 3 tiles, a simulated player who avoids scared ghosts shows a chase in 11% of power-ups (25% with 2 tiles), while players who do chase keep about nine in ten of theirs. |
 | The end of a chase: **1 tile back, or 0.5 s without progress** | The chase is over when the player's own steps took them 1 tile back from their closest point, or brought them no closer for 0.5 s (they stopped, or dither), or the ghost got out of range. | One tile is clearly a turn and not a wobble at a corner (0.16 s of running). |
 | The turn-away moment | The player's closest point by their own steps: the last step toward the ghost before they backed off or stopped. Not the later frame on which the end was noticed. | So there is no lag: a player closest with 0.3 s left who then only moves away turned with 0.3 s left. An approach is followed past the end of the power with the same rule, so a turn after the end has a negative time left. |
@@ -136,8 +140,12 @@ Why each threshold:
   ghost 6 tiles off is harmless and shows nothing about what the player knew.
 - **Retreats need a reachable ghost.** With 0.5 s left a ghost 4 tiles away cannot be caught
   (0.5 x 5.6 = 2.8). Turning away from it is not a decision about timing: any player would. "Held
-  still" is the neutral guess for a scared ghost, which turns at random; 5.6 tiles/s is the
-  player's plain speed, on the cautious side of the 6.3 they have with the power on.
+  still" was chosen as the neutral guess for a scared ghost that turns at random; 5.6 tiles/s is
+  the player's plain speed, on the cautious side of the 6.2 they have with the power on. Under
+  study rules a scared ghost runs away, so "reachable" is now generous: a ghost 4 tiles ahead with
+  2.5 s left counts as reachable although the pursuit would need about 2.7 s. The rule was left as
+  it is (it decides classes; changing it is a new rules version). What it means is under "What
+  this measure cannot do".
 - **0.2 s** is where "in time" ends: under a fifth of a second before the end is no margin at
   all, about one reaction time; it is counted as staying too long.
 - **Giving up very early counts as "too early".** If such trials stayed outside the rates, a cue
@@ -178,13 +186,98 @@ and lack `chaseEndDist`; they keep their class and their old version and are lef
 - **"Too early" is judged by the clock, not by the distance.** Leaving a ghost 5 tiles away with
   2.3 s left is "too early" although catching it would have eaten most of that time. The stored
   turn-away time and distance allow a finer measure (time to spare after reaching the ghost).
-- **Decision trials are scarce.** Most power-ups end in a catch or without a chase near the end.
-  In the simulated runs about one trial in six was a decision: 20 to 40 per condition from 30
-  simulated participants, which is too few (see "Planted versus recovered" below). Plan the number
-  of participants and the length of a run for that.
+- **Decision trials were scarce under the first study rules**: one power-up in six. With fleeing
+  ghosts it is one in three (see "Study-rule levers"), still far from every power-up. Plan the
+  number of participants and the length of a run for that ("How long a run is").
+- **Some "too early" is a judgement of the chase, not of the clock.** A fleeing ghost is gained on
+  at about 1.5 tiles a second. A player who sees a chase will not close in time and turns away
+  with 2.5 s left is "too early" by the clock although they judged the chase well. This affects
+  every cue alike and does not create a ranking, but it puts a floor under "too early" that a
+  perfect clock cannot remove. The stored turn-away distance allows a finer measure (was the ghost
+  catchable at the gain it was being chased at?).
 - **A run at a ghost that starts in the last half second is not a chase.** The 3 tiles have to be
   closed while the power is on. A player who sets off 0.4 s before the end and runs on after it is
   recorded by the death, if there is one ("caught"), not as "stayed too long".
+
+### Study-rule levers
+
+The measures above only see a decision when a player is going after a scared ghost while the
+power runs out. Under the first study rules (scared ghosts turning at random at 3.6 tiles/s)
+about one power-up in six did. Where the others went, measured with the real tracker over 300
+simulated 90 s blocks per column (`src/lib/sim/yield.ts`, `YIELD=1 npx vitest run
+src/lib/sim/yield.test.ts`; flat awareness, the simulator's mix of participants):
+
+| Where a power-up went | First study rules, planned chases | First study rules, eager chases | Fleeing ghosts, planned | **Fleeing ghosts, eager (now)** |
+| --- | --- | --- | --- | --- |
+| A decision (in time, too early, too late) | 17% | 23% | 24% | **37%** |
+| Caught a ghost in the warning window | 29% | 32% | 14% | **23%** |
+| Chasing near the end, no clear decision | 1% | 2% | 2% | 4% |
+| Cut short (died while the power was on) | 10% | 10% | 11% | 10% |
+| Participant ignored this power-up | 7% | 7% | 6% | 7% |
+| Ate one ghost early, the rest out of range | 13% | 10% | 5% | 4% |
+| A scared ghost out but never within 6 tiles near the end | 10% | 6% | 19% | 6% |
+| One within 6 tiles, but the player believed the power over | 4% | 5% | 5% | 4% |
+| One within 6 tiles, not chased | 9% | 6% | 13% | 4% |
+| No scared ghost out near the end | 0% | 0% | 0% | 0% |
+| Decisions per minute of play | 0.69 | 0.94 | 0.99 | **1.54** |
+| Ghosts eaten per power-up | 0.94 | 1.01 | 0.39 | 0.62 |
+| Deaths per minute | 0.44 | 0.47 | 0.38 | 0.45 |
+| Score per minute | 2,448 | 2,461 | 1,975 | 2,077 |
+
+"Planned" is the simulated player of model version 1: it goes after a ghost only while it believes
+it can reach it before the power runs out. "Eager" (model version 2) goes after any scared ghost it
+can reach safely until it believes the power is about to end, the way people chase.
+
+So power-ups did not start without targets (3.2 of 4 ghosts are out and scared at the start); they
+were lost because chases ended too soon: the ghost was caught early, or wandered off out of range.
+The levers, chosen on that evidence (`STUDY_CONFIG` in `src/lib/game/engine/game.ts`):
+
+- **Scared ghosts flee** (`scaredFlee`: radius 7 tiles, 25% random). At each junction a scared ghost
+  within 7 tiles (path distance) of the player takes the exit that leads farthest from it; at one
+  junction in four it turns at random, so it can still be cornered. Farther away it wanders at
+  random as before, so a far ghost may come the player's way. Ghosts still never turn back in a
+  corridor, so a ghost heading toward the player keeps coming and can be caught head-on. Measured
+  at junctions within the radius: 84% take the farthest exit under study rules, 53% under arcade
+  rules (`game.test.ts`).
+- **Scared ghosts run at three quarters of the player's power-up speed** (`scaredSpeedShare` 0.75:
+  4.7 tiles/s against 6.2). A pursuit closes about 1.5 tiles a second, so a chase started 5 tiles
+  away lasts about 3 s and is often still under way when the power runs out.
+- Neither depends on the time left: the rule and the speed are the same for the whole power-up
+  (`game.test.ts` plays two games that differ only in power length and checks that every ghost is
+  in the same place until the shorter power ends).
+
+Tried and left out: releasing ghosts from the pen every 2 s whatever the dots eaten (+1 point of
+decisions: the ghosts are out already), power dots growing back after 8 s instead of 12 (+4% power-ups
+per minute: the lock after each power-up decides the rhythm), a radius of 5, 6 or 10 tiles and
+speeds of 0.7, 0.8 and 0.85 (0.7 keeps more catches, 27%, for fewer decisions, 34%; 0.8 and above
+leave too few catches).
+
+The game stays fair and playable: deaths per minute are unchanged, fewer ghosts are eaten (0.62
+against 1.01 per power-up; score per minute 16% lower). A scripted keyboard player that simply runs
+at the nearest scared ghost on the real page caught 9 ghosts in 8 power-ups.
+
+### How long a run is
+
+Under the final study rules a power-up comes about every 15 s and 36% of them end in a decision.
+The run console sets a **run length** in power-ups (8, 12, 16, 24 or no limit; default **16**, about
+4 minutes and 5 to 6 decisions). When the last power-up has been measured, aftermath included, the
+run ends by itself and shows its summary; End run still ends it early. The play screen shows
+"Decisions measured this run" outside participant view, updated only when a trial closes.
+
+Why 16: planted versus recovered without Convex (`src/lib/sim/recover.test.ts`, `RECOVER=1`), 40
+simulated participants, all 13 conditions, the dashboard's paired Holm comparison:
+
+| Power-ups per run | Minutes per run | Decisions per condition | Rank correlation with planted noise (in time / too late / too early) | Pairs clearly apart on "in time" |
+| --- | --- | --- | --- | --- |
+| 8 | 2 | 103-125 | -0.96 / 0.90 / 0.74 | 11 of 78 |
+| 12 | 3 | 156-186 | -0.95 / 0.94 / 0.96 | 14 of 78 |
+| **16** | **4** | 207-254 | -0.99 / 0.97 / 0.88 | **22 of 78** |
+| 24 | 6 | 318-357 | -0.99 / 0.98 / 0.89 | 24 of 78 |
+| 16, flat preset | 4 | 222-253 | no relation (none planted) | 0 of 78 |
+
+Beyond 16 the gain is small for half as much time again. Thirteen runs of 16 power-ups are about 50
+minutes of play per participant; if that is too long for one sitting, split the cases over two
+sittings rather than shortening the runs.
 
 ### Checked against recorded data
 

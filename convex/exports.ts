@@ -173,7 +173,9 @@ export const page = query({
 				rows.push(await ratingRow(r, j));
 			}
 		} else {
-			const p = await ctx.db.query('blocks').paginate(paginationOpts);
+			// One session: its own index (the whole table may hold thousands of simulated blocks).
+			const q = f.sessionId ? ctx.db.query('blocks').withIndex('by_session', (i) => i.eq('sessionId', f.sessionId!)) : ctx.db.query('blocks');
+			const p = await q.paginate(paginationOpts);
 			res = p;
 			for (const b of p.page) {
 				if (!matchesRow(b, f, b.startedAt, f.run ? await j.session(b.sessionId) : null)) continue;

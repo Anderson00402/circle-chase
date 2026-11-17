@@ -55,7 +55,11 @@ embers, sparkles and so on are computed from game time (for example hashed from 
   distances through the maze.
 - `mode: 'study'` plus `frightRange`, `powerRespawn`, `infiniteLives`, `fixedLevel`, `powerLock` (see
   `STUDY_CONFIG`) make the game produce many comparable power-ups without ever ending: random
-  power lengths, one power-up at a time, always the same maze and speeds.
+  power lengths, one power-up at a time, always the same maze and speeds. `scaredFlee` and
+  `scaredSpeedShare` make scared ghosts near the player run from it, a little slower than the
+  player, so many power-ups end with a chase under way (docs/STUDY.md "Study-rule levers").
+- `src/lib/sim/` plays simulated participants through the same engine and tracker; `yield.ts`
+  says where power-ups go, `recover.test.ts` checks planted versus recovered without Convex.
 - `Frame.power` describes the power-up: `left`, `total`, `startedAt`, `endedAt`, `endReason`,
   `serial`. Each ghost carries `scared`, `revertedAt` (when the timer turned it dangerous again)
   and `eatenAt`.

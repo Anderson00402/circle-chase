@@ -20,21 +20,18 @@
  * audit.test.ts): rates are over decision trials, catches are left out. "Too late" climbs steadily
  * with the bot's belief error.
  *
- * What the model does and does not show, now that a chase is the player's own run at a ghost
- * (rules version 3). Nothing here was tuned to the new rules.
- * - The simulated player gives a ghost up when (believed time left - caution) no longer covers the
- *   run to it at 3.95 tiles/s. With the mean caution of 1.0 s that is at about 1 s + a quarter of a
- *   second per tile: 1.5 s left for a ghost 2 tiles away, 2.5 s for one 6 tiles away. So even a
- *   simulated player who knows the time exactly turns from far ghosts with more than 2 s left,
- *   which the rules call "too early": about a quarter of its decisions (74% in time, none too
- *   late). Against the belief error the classes behave as they should: underestimating the time by
- *   more than a second gives about 90% "too early", overestimating by more than a second 60-90%
- *   "too late". Per condition, though, "too early" does not rise with the planted noise the way
- *   "in time" falls and "too late" rises, for the reason in the next point.
- * - A simulated player who believes the power is already over never starts a chase, so its worst
- *   underestimates show as "not chasing near the end", not as "too early": the noisier the
- *   condition, the more of its early mistakes leave no chase to judge.
- * - Most of its chases end in a catch: about one trial in six is a decision.
+ * What the model does and does not show (model version 2, study rules with fleeing ghosts; numbers
+ * in docs/STUDY.md "Study-rule levers" and "How long a run is"). Nothing here was tuned to the
+ * planted table.
+ * - The simulated participant chases eagerly (`CHASE_STYLE`): any scared ghost it can reach safely,
+ *   for as long as it believes (time left - caution) is above zero, however far the ghost is. With
+ *   the mean caution of 1.0 s, a participant who knows the time turns away with about 1 s left, which
+ *   the rules call "in time"; underestimating the time gives "too early", overestimating "too late".
+ *   Version 1 planned each chase (only a ghost it believed it could reach in time), so it gave up
+ *   distant ghosts early even when it knew the time, and "too early" did not follow the plant.
+ * - A simulated participant who believes the power is already over never starts a chase, so its
+ *   worst underestimates still show as "not chasing near the end" rather than "too early".
+ * - About 36% of its power-ups end in a decision, 23% in a catch.
  *
  * Pure and deterministic for a seed.
  */

@@ -38,6 +38,8 @@ measures, stores or shows data.
 | Type check | `npm run check` |
 | Unit tests | `npm test` (or `npx vitest run <path>`) |
 | Screenshot a page | `node scripts/shot.mjs /play/timer-bar .shots/x.png --keys "Enter" --wait 3000` |
+| End-to-end checks (run flow, outbox; adds bot data, deletes none) | `npm run e2e` |
+| Simulated data, planted vs recovered | `node scripts/simulate.mjs --preset planted --participants 40` (`--summary` to print only) |
 
 ## Conventions
 

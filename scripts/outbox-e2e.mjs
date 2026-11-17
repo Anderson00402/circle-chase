@@ -56,6 +56,9 @@ while (Date.now() - t0 < seconds * 1000) {
 	s = await state();
 	log(`t=${s.t.toFixed(1)} measured=${s.made} saved=${s.saved} pending=${s.pending}`);
 }
+// Stay offline until a write is actually waiting (a power-up has to close while offline).
+for (let i = 0; i < 30 && s.pending === 0; i++) { await sleep(2000); s = await state(); }
+log(`offline with ${s.pending} write(s) waiting`);
 // A pause of 2 s (then play on), then close the page while still offline: the block end is
 // queued on page hide, with the pause.
 await player.evaluate(() => window.__cc.setPaused(true));
