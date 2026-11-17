@@ -37,7 +37,7 @@
 	const participantOptions = $derived([
 		{ value: '', label: 'Everyone' },
 		...(q.data?.participants ?? []).map((p) => ({ value: p.id as string, label: ls.source === 'all' && p.source === 'bot' ? `${p.label} (simulated)` : p.label })),
-		...(ls.participant && !(q.data?.participants ?? []).some((p) => p.id === ls.participant || String(p.runNumber) === ls.participant) ? [{ value: ls.participant, label: 'Participant not in this list' }] : [])
+		...(ls.participant && !(q.data?.participants ?? []).some((p) => p.id === ls.participant || String(p.runNumber) === ls.participant) ? [{ value: ls.participant, label: !q.data ? 'Loading...' : /^\d+$/.test(ls.participant) ? `Participant #${ls.participant}` : 'Participant not in this list' }] : [])
 	]);
 	// An old link with a console number (`?p=5`) is rewritten to that participant's id.
 	$effect(() => {
