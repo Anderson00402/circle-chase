@@ -54,3 +54,12 @@ scared ghost within reach; see `docs/STUDY.md`); under study rules scared ghosts
 flee and a run ends itself after a set number of power-ups; the simulated data was re-seeded (one
 planted and one flat run of 40 simulated participants each); `npm run e2e` runs the end-to-end
 checks without deleting data.
+
+**Round 3 note.** Since round 2: the scared look is a pale "drained" grey (no longer blue), several
+cues were adjusted, replay lists read light per-session digests, exports are streamed, a refreshed
+run keeps its counters, clips carry a maze layout fingerprint, the dashboard's headline names
+groups and has a "too early" line switch and a "time to spare" view. The database was started
+fresh and re-seeded: exactly one planted and one flat simulated run of 40 participants each, and no
+human rows. Round 2 reports are `.logs/reviews/r2-*.md` and the fix plan `round2-plan.md`.
+If Convex (:3210) is down, do **not** start it yourself (a process you start dies with your
+session): stop and report it.
