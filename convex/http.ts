@@ -33,7 +33,14 @@ function filterFrom(p: URLSearchParams): Filter {
  *   /export/ratings.csv, /export/ratings.json (block and session questionnaire answers)
  *   /export/blocks.csv, /export/blocks.json   (one row per run of a case, with pauses and its rating)
  * Same filter as the read queries, as query parameters; `pageSize` (1-1000) forces smaller pages.
+ *
+ * A page that fails (on a busy machine Convex can stop a query with "too many system operations")
+ * is read again at half the size, up to `RETRIES` times, with a short pause; the smaller size is
+ * kept for the rest of the file. Only when that still fails does the file end, with a last line
+ * that starts `EXPORT FAILED` and says how many rows came before it, never a silent cut.
+ * `simulateLimit=N` (checks only) makes every page above N rows fail like that.
  */
+const RETRIES = 6;
 const ROUTES: [Kind, 'csv' | 'json'][] = [['trials', 'csv'], ['trials', 'json'], ['ratings', 'csv'], ['ratings', 'json'], ['blocks', 'csv'], ['blocks', 'json']];
 for (const [kind, format] of ROUTES) {
 	http.route({
@@ -43,12 +50,32 @@ for (const [kind, format] of ROUTES) {
 			const p = new URL(req.url).searchParams;
 			const f = filterFrom(p);
 			const asked = Number(p.get('pageSize'));
-			const size = asked >= 1 && asked <= 1000
+			let size = asked >= 1 && asked <= 1000
 				? Math.floor(asked)
 				: kind === 'trials' ? (format === 'json' ? PAGE_SIZE.trialsJson : PAGE_SIZE.trials) : PAGE_SIZE[kind];
+			const limit = Number(p.get('simulateLimit'));
+			const failAbove = limit >= 1 ? Math.floor(limit) : undefined;
 			const enc = new TextEncoder();
 			let cursor: string | null = null;
 			let first = true, rows = 0, done = false;
+
+			/** One page at the cursor; a failure is retried at half the size (kept from then on). */
+			async function readPage() {
+				let lastErr: unknown = null;
+				for (let attempt = 0; attempt <= RETRIES; attempt++) {
+					try {
+						return await ctx.runQuery(api.exports.page, { ...f, kind, format, paginationOpts: { numItems: size, cursor }, ...(failAbove ? { failAbove } : {}) });
+					} catch (err) {
+						lastErr = err;
+						if (attempt === RETRIES) break;
+						size = Math.max(1, Math.floor(size / 2));
+						await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+					}
+				}
+				const why = String((lastErr as Error)?.message ?? lastErr).replace(/\s+/g, ' ').trim();
+				throw new Error(`${why} (tried ${RETRIES + 1} times, down to pages of ${size} rows; ${rows} rows were written before this line, the rest are missing)`);
+			}
+
 			const stream = new ReadableStream<Uint8Array>({
 				async pull(out) {
 					try {
@@ -58,10 +85,10 @@ for (const [kind, format] of ROUTES) {
 						// again after a chunk was read.
 						let text = '';
 						while (!text && !done) {
-							const page = await ctx.runQuery(api.exports.page, { ...f, kind, format, paginationOpts: { numItems: size, cursor } });
+							const page = await readPage();
 							if (format === 'csv') {
 								if (first && page.header) text += page.header + '\n';
-								for (const line of page.rows as string[]) text += line + '\n';
+								for (const line of page.rows as string[]) { text += line + '\n'; rows++; }
 							} else {
 								if (first) text += '[';
 								for (const row of page.rows) text += (rows++ > 0 ? ',\n' : '') + JSON.stringify(row);
@@ -76,7 +103,8 @@ for (const [kind, format] of ROUTES) {
 					} catch (err) {
 						// Headers are already sent: end the file with a line that says it is incomplete.
 						done = true;
-						out.enqueue(enc.encode(format === 'csv' ? `\nEXPORT FAILED: ${String(err)}\n` : `\n"EXPORT FAILED: ${String(err).replace(/"/g, "'")}"\n`));
+						const msg = `EXPORT FAILED: the file is incomplete. ${String((err as Error)?.message ?? err)}`;
+						out.enqueue(enc.encode(format === 'csv' ? `\n${msg}\n` : `\n"${msg.replace(/"/g, "'")}"\n`));
 						out.close();
 					}
 				}

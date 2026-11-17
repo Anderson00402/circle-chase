@@ -4,7 +4,11 @@
  * limit, and the HTTP routes (convex/http.ts) stream page after page into one download.
  *
  * Context that lives on other rows (participant label and numbers, the Latin square row, pauses,
- * the session's app version and simulator run) is joined in per page.
+ * the session's app version and simulator run) is joined in per page, one session at a time: the
+ * blocks and ratings of a session are read with one index query each and kept for the page, so a
+ * page costs about (rows + 3 x sessions on it) reads, never a lookup per row. With the default
+ * page sizes below that stays far inside Convex's per-query budget even on a busy machine; the
+ * HTTP stream also retries a failed page at half the size (convex/http.ts).
  */
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
@@ -15,18 +19,27 @@ import { isDecision, isLateCatch } from './lib/rules';
 import { unpackSeries } from './lib/series';
 import { packedSeriesOf } from './trials';
 
-/** Rows per page by default; the HTTP routes accept `pageSize` (1-1000) to force smaller pages. */
-export const PAGE_SIZE = { trials: 400, trialsJson: 200, ratings: 1000, blocks: 500 } as const;
+/**
+ * Rows per page by default; the HTTP routes accept `pageSize` (1-1000) to force smaller pages.
+ * Kept small on purpose (round 3: 1,000 ratings or 500 blocks per page timed out with "too many
+ * system operations" on a loaded machine). A trials JSON row also reads its series, so its pages
+ * are the smallest.
+ */
+export const PAGE_SIZE = { trials: 200, trialsJson: 100, ratings: 200, blocks: 200 } as const;
 
 export const kind = v.union(v.literal('trials'), v.literal('ratings'), v.literal('blocks'));
 export type Kind = 'trials' | 'ratings' | 'blocks';
 export const format = v.union(v.literal('csv'), v.literal('json'));
 
-/** Rows joined in for context, looked up once per page. */
+/**
+ * Rows joined in for context, looked up once per page. Blocks and ratings are read a whole session
+ * at a time (one index query each), since the rows of a page come from few sessions.
+ */
 class Joins {
 	private sessions = new Map<string, Doc<'sessions'> | null>();
 	private participants = new Map<string, Doc<'participants'> | null>();
-	private blocks = new Map<string, Doc<'blocks'> | null>();
+	private blocksOf = new Map<string, Map<string, Doc<'blocks'>>>();
+	private ratingsOf = new Map<string, Map<string, Doc<'ratings'>>>();
 	constructor(private ctx: QueryCtx) {}
 	private async get<T>(map: Map<string, T | null>, id: string, load: () => Promise<T | null>): Promise<T | null> {
 		if (!map.has(id)) map.set(id, await load());
@@ -34,14 +47,39 @@ class Joins {
 	}
 	session(id: Id<'sessions'>) { return this.get(this.sessions, id, () => this.ctx.db.get(id)); }
 	participant(id: Id<'participants'>) { return this.get(this.participants, id, () => this.ctx.db.get(id)); }
-	block(id: Id<'blocks'>) { return this.get(this.blocks, id, () => this.ctx.db.get(id)); }
+	/** A block of the given session (all its blocks are read on first use). */
+	async block(sessionId: Id<'sessions'>, id: Id<'blocks'>): Promise<Doc<'blocks'> | null> {
+		let m = this.blocksOf.get(sessionId);
+		if (!m) {
+			const rows = await this.ctx.db.query('blocks').withIndex('by_session', (i) => i.eq('sessionId', sessionId)).collect();
+			this.blocksOf.set(sessionId, (m = new Map(rows.map((b) => [b._id as string, b]))));
+		}
+		// A block filed under another session (should not happen) is still found.
+		return m.get(id) ?? (await this.ctx.db.get(id));
+	}
+	/** The block rating of a block of the given session (the first, as `by_block` would give). */
+	async ratingOfBlock(sessionId: Id<'sessions'>, blockId: Id<'blocks'>): Promise<Doc<'ratings'> | null> {
+		let m = this.ratingsOf.get(sessionId);
+		if (!m) {
+			const rows = await this.ctx.db.query('ratings').withIndex('by_session', (i) => i.eq('sessionId', sessionId)).collect();
+			m = new Map();
+			for (const r of rows) if (r.blockId && !m.has(r.blockId)) m.set(r.blockId, r);
+			this.ratingsOf.set(sessionId, m);
+		}
+		return m.get(blockId) ?? null;
+	}
 }
 
 /** Who and in which run: the same columns at the start of every export. */
 function who(s: Doc<'sessions'> | null, p: Doc<'participants'> | null) {
 	return {
 		participantLabel: s?.run?.participantLabel ?? p?.nickname ?? null,
-		/** Overall order of first visit (everyone, also free play and bots). */
+		/**
+		 * The number the researcher sees on the run console and run screens ("#4"). Null outside
+		 * the run console (free play, bots on play pages).
+		 */
+		consoleNumber: s?.run?.participantNumber ?? p?.runNumber ?? null,
+		/** Overall order of first visit (everyone, also free play and bots). Not the console's "#N": use `consoleNumber`. */
 		participantNumber: p?.number ?? null,
 		/** Run-console order per source: what picks the suggested case order from now on. */
 		runNumber: p?.runNumber ?? null,
@@ -80,7 +118,7 @@ export function parseChaseLogCell(cell: string | null): NonNullable<Doc<'trials'
 async function trialRow(t: Doc<'trials'>, j: Joins): Promise<Row> {
 	const s = await j.session(t.sessionId);
 	const p = await j.participant(t.participantId);
-	const b = await j.block(t.blockId);
+	const b = await j.block(t.sessionId, t.blockId);
 	const suggested = s?.cueOrder.indexOf(t.cue) ?? -1;
 	return {
 		trialId: t._id, createdAt: new Date(t.createdAt).toISOString(),
@@ -110,7 +148,7 @@ async function trialRow(t: Doc<'trials'>, j: Joins): Promise<Row> {
 async function ratingRow(r: Doc<'ratings'>, j: Joins): Promise<Row> {
 	const s = await j.session(r.sessionId);
 	const p = await j.participant(r.participantId);
-	const b = r.blockId ? await j.block(r.blockId) : null;
+	const b = r.blockId ? await j.block(r.sessionId, r.blockId) : null;
 	return {
 		ratingId: r._id, createdAt: new Date(r.createdAt).toISOString(), kind: r.kind,
 		participantId: r.participantId, ...who(s, p), sessionId: r.sessionId, blockId: r.blockId ?? null,
@@ -120,10 +158,10 @@ async function ratingRow(r: Doc<'ratings'>, j: Joins): Promise<Row> {
 	};
 }
 
-async function blockRow(ctx: QueryCtx, b: Doc<'blocks'>, j: Joins): Promise<Row> {
+async function blockRow(b: Doc<'blocks'>, j: Joins): Promise<Row> {
 	const s = await j.session(b.sessionId);
 	const p = await j.participant(b.participantId);
-	const r = await ctx.db.query('ratings').withIndex('by_block', (i) => i.eq('blockId', b._id)).first();
+	const r = await j.ratingOfBlock(b.sessionId, b._id);
 	const suggested = s?.cueOrder.indexOf(b.cue) ?? -1;
 	return {
 		blockId: b._id, startedAt: new Date(b.startedAt).toISOString(), endedAt: b.endedAt ? new Date(b.endedAt).toISOString() : null,
@@ -167,8 +205,18 @@ export function csvHeader(rows: Row[]): string {
  * fewer rows than asked (rows outside the filter are skipped), even none.
  */
 export const page = query({
-	args: { ...filterArgs, kind, format, paginationOpts: paginationOptsValidator },
-	handler: async (ctx, { kind: k, format: fmt, paginationOpts, ...f }) => {
+	args: {
+		...filterArgs, kind, format, paginationOpts: paginationOptsValidator,
+		/**
+		 * Checks only: a page asking for more rows than this fails the way an overloaded backend
+		 * does, so the stream's retry at half the size can be tested (`scripts/export-e2e.mjs --squeeze`).
+		 */
+		failAbove: v.optional(v.number())
+	},
+	handler: async (ctx, { kind: k, format: fmt, paginationOpts, failAbove, ...f }) => {
+		if (failAbove !== undefined && paginationOpts.numItems > failAbove) {
+			throw new Error(`Simulated overload: a page of ${paginationOpts.numItems} rows is above the test limit of ${failAbove} (too many system operations)`);
+		}
 		const j = new Joins(ctx);
 		let rows: Row[] = [];
 		let res: { isDone: boolean; continueCursor: string };
@@ -181,7 +229,7 @@ export const page = query({
 					const packed = await packedSeriesOf(ctx, t);
 					const s = await j.session(t.sessionId);
 					const par = await j.participant(t.participantId);
-					const b = await j.block(t.blockId);
+					const b = await j.block(t.sessionId, t.blockId);
 					rows.push({
 						...light(t), ...who(s, par), pauses: b?.pauses ?? null, pausedSeconds: b?.pausedSeconds ?? null,
 						rulesVersion: t.rulesVersion ?? 1, decision: isDecision(t), series: packed ? unpackSeries(packed) : null
@@ -220,7 +268,7 @@ export const page = query({
 			res = p;
 			for (const b of p.page) {
 				if (!matchesRow(b, f, b.startedAt, f.run ? await j.session(b.sessionId) : null)) continue;
-				rows.push(await blockRow(ctx, b, j));
+				rows.push(await blockRow(b, j));
 			}
 		}
 		if (fmt === 'csv') {
@@ -244,7 +292,7 @@ async function emptyRow(ctx: QueryCtx, k: Kind, fmt: 'csv' | 'json'): Promise<Ro
 		return r ? ratingRow(r, j) : {};
 	}
 	const b = await ctx.db.query('blocks').first();
-	return b ? blockRow(ctx, b, j) : {};
+	return b ? blockRow(b, j) : {};
 }
 
 /** File name of a download: circle-chase-<kind>-<source>[-<run>]-<date>.<format> */

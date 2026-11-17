@@ -10,8 +10,10 @@
 //   - for unfiltered trials, the running counters (`live.counters`).
 // Every request carries the same `to`, so rows arriving meanwhile (another agent playing) do not move
 // the counts. Read only; adds and deletes nothing.
-//   node scripts/export-e2e.mjs [--quick] [--run <simRun>] [--limit-s 180]
-// --quick skips the unfiltered bot files (tens of MB). Needs Convex (:3210, :3211).
+//   node scripts/export-e2e.mjs [--quick] [--run <simRun>] [--limit-s 180] [--squeeze <rows>]
+// --quick skips the unfiltered bot files (tens of MB). --squeeze N makes every page above N rows
+// fail on the server the way a busy machine does ("too many system operations"), so every download
+// must get through by the stream's retry at half the page size. Needs Convex (:3210, :3211).
 import { ConvexHttpClient } from 'convex/browser';
 import { anyApi as api } from 'convex/server';
 
@@ -19,6 +21,7 @@ const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : def; };
 const QUICK = args.includes('--quick');
 const LIMIT_S = +opt('limit-s', 180);
+const SQUEEZE = opt('squeeze', null);
 const CONVEX = 'http://127.0.0.1:3210', SITE = 'http://127.0.0.1:3211';
 const http = new ConvexHttpClient(CONVEX);
 const TO = Date.now();
@@ -45,7 +48,7 @@ function parseCsv(text) {
 
 /** Download one file; returns { rows, header, seconds, bytes, error }. */
 async function download(file, params) {
-	const qs = new URLSearchParams({ to: String(TO), ...params });
+	const qs = new URLSearchParams({ to: String(TO), ...params, ...(SQUEEZE ? { simulateLimit: SQUEEZE } : {}) });
 	const t0 = Date.now();
 	const ctl = new AbortController();
 	const timer = setTimeout(() => ctl.abort(), LIMIT_S * 1000);
@@ -73,14 +76,23 @@ async function download(file, params) {
 	}
 }
 
-/** The same rows read straight from the query, big pages, no HTTP stream. */
+/** The same rows read straight from the query (no HTTP stream); a failed page is read again smaller. */
 async function direct(kind, params) {
 	const f = { to: TO, ...params };
 	for (const k of ['from', 'to']) if (f[k] !== undefined) f[k] = Number(f[k]);
 	delete f.pageSize;
-	let cursor = null, n = 0;
+	let cursor = null, n = 0, size = 200;
 	for (;;) {
-		const p = await http.query(api.exports.page, { ...f, kind, format: 'json', paginationOpts: { numItems: kind === 'trials' ? 300 : 1000, cursor } });
+		let p;
+		for (let attempt = 0; ; attempt++) {
+			try {
+				p = await http.query(api.exports.page, { ...f, kind, format: 'json', paginationOpts: { numItems: size, cursor } });
+				break;
+			} catch (e) {
+				if (attempt >= 6) throw e;
+				size = Math.max(1, Math.floor(size / 2));
+			}
+		}
 		n += p.rows.length;
 		if (p.isDone) return n;
 		cursor = p.continueCursor;
@@ -90,9 +102,17 @@ async function direct(kind, params) {
 const sameIds = (a, b) => a && b && a.length === b.length && new Set(a).size === a.length && a.every((x, i) => x === b[i]);
 const fmt = (d) => d.error ? `ERROR ${d.error} after ${d.seconds.toFixed(1)} s` : `${d.rows} rows, ${(d.bytes / 1e6).toFixed(2)} MB, ${d.seconds.toFixed(2)} s`;
 
-// A simulator run to filter on: the one asked for, else the newest run that has trials.
-const runId = opt('run', null) ?? (await http.query(api.trials.list, { source: 'bot', paginationOpts: { numItems: 50, cursor: null } })).page.find((t) => t.simRun)?.simRun ?? null;
-console.log(`filters up to ${new Date(TO).toISOString()}; simulator run ${runId ?? '(none found)'}${QUICK ? '; quick' : ''}`);
+// A simulator run to filter on: the one asked for, else the newest complete run (the dashboard's list).
+async function pickRun() {
+	try {
+		const f = await http.query(api.dashboard.facets, { source: 'bot', now: TO });
+		return f.runs.find((r) => r.complete)?.run ?? f.runs[0]?.run ?? null;
+	} catch {
+		return (await http.query(api.trials.list, { source: 'bot', paginationOpts: { numItems: 50, cursor: null } })).page.find((t) => t.simRun)?.simRun ?? null;
+	}
+}
+const runId = opt('run', null) ?? (await pickRun());
+console.log(`filters up to ${new Date(TO).toISOString()}; simulator run ${runId ?? '(none found)'}${QUICK ? '; quick' : ''}${SQUEEZE ? `; pages above ${SQUEEZE} rows fail on purpose` : ''}`);
 
 const cases = [];
 for (const kind of ['trials', 'ratings', 'blocks']) {
