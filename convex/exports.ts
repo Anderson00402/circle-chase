@@ -217,6 +217,11 @@ export const page = query({
 		if (failAbove !== undefined && paginationOpts.numItems > failAbove) {
 			throw new Error(`Simulated overload: a page of ${paginationOpts.numItems} rows is above the test limit of ${failAbove} (too many system operations)`);
 		}
+		// A simulator run holds simulated rows only: human rows of a run are none, so do not step
+		// through the thousands of rows of the run to find that out.
+		if (f.run && f.source !== 'bot' && f.source !== 'all') {
+			return { header: fmt === 'csv' ? csvHeader([await emptyRow(ctx, k, fmt)]) : null, rows: [], isDone: true, continueCursor: '' };
+		}
 		const j = new Joins(ctx);
 		let rows: Row[] = [];
 		let res: { isDone: boolean; continueCursor: string };
