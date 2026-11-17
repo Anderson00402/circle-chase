@@ -27,6 +27,8 @@ Your version then shows up as a tab on the [home page](https://anderson00402.git
 
 The versions come in two groups. Down the left side of the game are **improvements**: ideas that make the basic game better. In the tab row on the right are **fun modes**, which change the game just for fun (playing as a ghost, two players, dash, fog, Scream, fortnite). The main game stays the basic version, without any fun-mode extras. A branch counts as an improvement unless its name is in `FUN_MODES` in `tools/build_site.py` on `main`; when you send a pull request, say which kind your idea is.
 
+The **control** tab, next to the main game, is for the class study: the same game with the default rules instead of our fixes (no power timer, no red walls, power that runs out sooner on later levels, ghosts nearly as fast as you from the start, and one ghost the same yellow as you). Comparing its play stats with main's shows whether the fixes help. It is listed in `CONTROL` in `tools/build_site.py`.
+
 Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a label in the corner, and [/versions/](https://anderson00402.github.io/circle-chase/versions/) lists them all. To give a branch a one-line description on the home page, add it to `NOTES` in `tools/build_site.py` on `main`; otherwise the home page shows the branch's latest commit message.
 
 ## Where things are in index.html

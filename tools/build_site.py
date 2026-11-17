@@ -34,6 +34,9 @@ OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '_site')
 # latest commit message instead, and a pull request shows its title.
 NOTES = {
     'main': 'The basic game. Eat every dot; after a power dot you can catch the ghosts for a few seconds.',
+    'control': ('The control for the class study: the default rules, without our fixes. No power timer and no '
+                'red walls (only the ghosts flash), power lasts 6 s on level 1 but 1 s by level 9, the ghosts are '
+                'nearly as fast as you from the start, and one ghost is the same yellow as you.'),
     'Scream': ('Scared ghosts scream when you eat a power dot and keep wailing while you are close, '
                'and an evil laugh warns you the power-up is about to run out.'),
     'fortnite': ('Two sound clips: one gets louder as you get close to a power dot, '
@@ -53,6 +56,10 @@ NOTES = {
 # of the tab row, in this order. Every other branch is an improvement to the main game: those go
 # on the left, after the main game. Main itself stays the basic game, without any fun-mode extras.
 FUN_MODES = ['play-as-ghost', 'two-player', 'dash', 'fog', 'Scream', 'fortnite']
+
+# Control versions for the class study: the game with the default rules, to compare main against.
+# Their tabs sit right after the main game.
+CONTROL = ['control']
 
 FONTS = ('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700'
          '&family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Major+Mono+Display&display=swap')
@@ -388,13 +395,16 @@ HOME = '''<!doctype html>
 
 
 def groups(versions):
-    """(main, improvements, fun modes, pull requests): fun modes in FUN_MODES order, the rest as they came."""
+    """(main, control, improvements, fun modes, pull requests): control and fun modes in their lists'
+    order, the rest as they came."""
     is_fun = lambda v: v['kind'] == 'branch' and v['name'] in FUN_MODES
+    is_control = lambda v: v['kind'] == 'branch' and v['name'] in CONTROL
     main = [v for v in versions if v['kind'] == 'main']
-    improvements = [v for v in versions if v['kind'] == 'branch' and not is_fun(v)]
+    control = sorted(filter(is_control, versions), key=lambda v: CONTROL.index(v['name']))
+    improvements = [v for v in versions if v['kind'] == 'branch' and not is_fun(v) and not is_control(v)]
     fun = sorted(filter(is_fun, versions), key=lambda v: FUN_MODES.index(v['name']))
     pulls = [v for v in versions if v['kind'] == 'pr']
-    return main, improvements, fun, pulls
+    return main, control, improvements, fun, pulls
 
 
 def write_home(versions):
@@ -403,9 +413,9 @@ def write_home(versions):
                 + (f'<span class="kind">{html.escape(v["kind_label"])}</span>' if v['kind_label'] else '')
                 + f'{html.escape(v["tab"])}</a></li>')
 
-    main, improvements, fun, pulls = groups(versions)
-    versions = main + improvements + pulls + fun
-    tabs = ''.join(map(tab, main)) + ''.join(map(tab, pulls))
+    main, control, improvements, fun, pulls = groups(versions)
+    versions = main + control + improvements + pulls + fun
+    tabs = ''.join(map(tab, main + control + pulls))
     if fun:
         tabs += '<li class="group fun" aria-hidden="true">Fun modes</li>' + ''.join(map(tab, fun))
     # Improvements: a column of tabs on the left of the game (left out when there are none).
@@ -444,7 +454,8 @@ def items(rows, empty):
 
 
 def write_versions_page(versions):
-    main, improvements, fun, pulls = groups(versions)
+    main, control, improvements, fun, pulls = groups(versions)
+    control_list = f'<h2>Control</h2>\n{items(control, "")}\n' if control else ''
     readme = html.escape(f'https://github.com/{REPO}#make-your-own-version')
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -466,11 +477,11 @@ def write_versions_page(versions):
 </style></head>
 <body><main>
 <h1>Circle Chase versions</h1>
-<p>Every version of the game you can play. Main is the basic game. Improvements try to make it better;
-fun modes change it just for fun. You can also switch between them on the <a href="../">home page</a>.</p>
+<p>Every version of the game you can play. Main is the basic game. The control plays by the default
+rules, to compare main against. Improvements try to make it better; fun modes change it just for fun. You can also switch between them on the <a href="../">home page</a>.</p>
 <h2>Main</h2>
 {items(main, '')}
-<h2>Improvements</h2>
+{control_list}<h2>Improvements</h2>
 {items(improvements, 'No improvements being tried right now.')}
 <h2>Fun modes</h2>
 {items(fun, 'No fun modes right now.')}
