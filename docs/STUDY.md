@@ -73,11 +73,11 @@ get, for long enough to mean it:
 | Part | Rule | Why this number |
 | --- | --- | --- |
 | The player's own steps | Every frame, for every scared ghost, take the path distance to where the ghost is now, from where the player is now and from where the player was one frame ago. The difference is what the player's step did. Only that counts. | A ghost that walks toward a player who stands still or runs away closes the gap too. That is not a chase. (And a ghost that runs away while the player follows is one, although the gap may grow.) |
-| A plausible target: **6 tiles** | An approach starts with a step toward a scared ghost at most 6 tiles away, and is over if the ghost gets farther than that. | The player runs about 5.6 tiles/s (6.2 with the power on). Under arcade rules a scared ghost runs 3.6 and turns at random: 6 tiles is about 1 s away if it holds still and 2.3 s if it runs straight away, inside the 3 s warning window whatever it does. Under study rules (since the fleeing ghosts, see "Study-rule levers") a scared ghost within 7 tiles runs from the player at 4.7 tiles/s, so the pursuit closes about 1.5 tiles a second and a ghost 6 tiles off takes about 4 s. The number was kept: it says which ghost the player is plausibly going after, not that it will be caught. |
+| A plausible target: **6 tiles** | An approach starts with a step toward a scared ghost that leaves it at most 6 tiles away, and is over if the ghost is farther than that after a step. The distance is always taken **after** the player's step: the step that brings a ghost from 6.05 to 5.98 tiles counts toward the chase, the one from 6.12 to 6.05 does not (`tracker.test.ts` pins both). | The player runs about 5.6 tiles/s (6.2 with the power on). Under arcade rules a scared ghost runs 3.6 and turns at random: 6 tiles is about 1 s away if it holds still and 2.3 s if it runs straight away, inside the 3 s warning window whatever it does. Under study rules (since the fleeing ghosts, see "Study-rule levers") a scared ghost within 7 tiles runs from the player at 4.7 tiles/s, so the pursuit closes about 1.5 tiles a second and a ghost 6 tiles off takes about 4 s. The number was kept: it says which ghost the player is plausibly going after, not that it will be caught. |
 | Sustained: **3 tiles** | An approach is a chase once the player's own steps closed 3 tiles on the ghost while the power was on (about half a second of running). Shorter approaches leave no trace. | A step or two toward a ghost is a blip, not a decision. With 3 tiles, a simulated player who avoids scared ghosts shows a chase in 11% of power-ups (25% with 2 tiles), while players who do chase keep about nine in ten of theirs. |
 | The end of a chase: **1 tile back, or 0.5 s without progress** | The chase is over when the player's own steps took them 1 tile back from their closest point, or brought them no closer for 0.5 s (they stopped, or dither), or the ghost got out of range. | One tile is clearly a turn and not a wobble at a corner (0.16 s of running). |
-| The turn-away moment | The player's closest point by their own steps: the last step toward the ghost before they backed off or stopped. Not the later frame on which the end was noticed. | So there is no lag: a player closest with 0.3 s left who then only moves away turned with 0.3 s left. An approach is followed past the end of the power with the same rule, so a turn after the end has a negative time left. |
-| Eating | Eating a ghost ends the chase there, at distance 0, and wipes every approach under way. What the player does next has to earn a new chase from nothing. | An eat can end a chase but never start one: running on for a moment after a catch is not "turning away from the next ghost". |
+| The turn-away moment | The player's closest point by their own steps: the moment the running sum of their own steps since the approach began was lowest, that is, the last step toward the ghost before they backed off or stopped. Not the later frame on which the end was noticed, and not the moment of the smallest distance (a ghost walking toward a player who has stopped brings the distance down without the player's doing). If the sum comes back to the same lowest value later (the player dithers at a junction and steps in to the same point again), the **first** of those moments counts. | So there is no lag: a player closest with 0.3 s left who then only moves away turned with 0.3 s left. An approach is followed past the end of the power with the same rule, so a turn after the end has a negative time left. The first equal point is the one where the player stopped gaining; stepping back in to it shows no new progress. `tracker.test.ts` pins both readings. |
+| Eating | Eating a ghost ends the chase there, at distance 0, and wipes every approach under way, also a chase of another ghost that was already established: that one leaves no record. An eat with no approach under way still counts as a chase that ended in an eat (with 0 tiles closed), so an eat in the warning window makes the trial engaged. What the player does next has to earn a new chase from nothing. | An eat can end a chase but never start one: running on for a moment after a catch is not "turning away from the next ghost". An eat is what the player achieved in that power-up; a second chase cut by it showed no decision yet. |
 | After the end | Nothing starts, and nothing becomes a chase, once the power is over. A chase under way at the end is followed until the player turns. | Once the ghosts hunt the player, every step is toward one of them, so steps taken then prove nothing. Running on in a chase that was already under way is exactly the mistake to record. |
 
 Other measures:
@@ -144,8 +144,34 @@ Why each threshold:
   the player's plain speed, on the cautious side of the 6.2 they have with the power on. Under
   study rules a scared ghost runs away, so "reachable" is now generous: a ghost 4 tiles ahead with
   2.5 s left counts as reachable although the pursuit would need about 2.7 s. The rule was left as
-  it is (it decides classes; changing it is a new rules version). What it means is under "What
-  this measure cannot do".
+  it is (it decides classes; changing it is a new rules version). See "Fleeing ghosts and
+  reachable" just below, and "What this measure cannot do".
+
+**Fleeing ghosts and "reachable".** Under study rules a scared ghost within 7 tiles runs from the
+player at 4.7 tiles/s against the player's 6.2, so a pursuit closes about 1.5 tiles a second
+(`PURSUIT_GAIN` in `convex/lib/rules.ts`), not 5.6. Judged at that speed, 2,040 of the 3,001 "in
+time" and 291 of the 1,574 "too early" in the stored simulated data turned from a ghost the pursuit
+could no longer have caught before the end. They stay decisions about the time left, for this
+reason: what the class asks is whether the player broke off the chase *before the power ran out*,
+and only the time left says when that is. A player who keeps running at a fleeing ghost they can
+no longer catch is still exposed when it turns (a ghost 2 tiles ahead becomes a hunter 2 tiles
+away), so turning away with 1 s left from a chase that cannot succeed is exactly the timing the cue
+should support, and staying on is exactly the mistake "too late" records. What the clock alone
+cannot say is *why* a player turned with 2.4 s left: because they misjudged the time, or because
+they saw the chase would not close. That is what the second tool below separates.
+
+**Two sensitivity tools on the dashboard.** Neither changes a stored outcome; both are worked out
+from the raw fields every trial stores (`turnLeft`, `turnDist`, `lastChaseEnd`, `chaseEndDist`,
+`endDist`, the aftermath) with the same classifier.
+
+- **Where the "too early" line sits: 2.0 s (the rules) or 2.5 s** (`TIMELY_CHECK`; `?line=2.5` on
+  the dashboard). The rates, intervals and comparisons are recomputed with the other line. A
+  ranking that holds at both lines does not come from where the line was drawn.
+- **Time to spare** at each turn-away (timely and early retreats): time left minus the time the
+  pursuit still needed, `turnLeft - turnDist / 1.5` under study rules (`/ 5.6` under arcade rules,
+  where scared ghosts do not flee). Above zero, the player gave up a ghost they still had time for;
+  below zero, they broke off a chase that could not have succeeded in time. "Too early" with time
+  to spare is the mistake the class names; "too early" without it is a judgement of the chase.
 - **0.2 s** is where "in time" ends: under a fifth of a second before the end is no margin at
   all, about one reaction time; it is counted as staying too long.
 - **Giving up very early counts as "too early".** If such trials stayed outside the rates, a cue
@@ -165,16 +191,22 @@ Why each threshold:
   early" by the same few tenths. So right at the line the classes are harsher on anticipating
   than on reacting. Moving the line would not remove this (any line near a cue event has it); what
   keeps it honest is that the turn-away time is stored for every trial: look at its distribution
-  beside the rates, and recompute the rates with the line at 2.5 s as a check (one constant,
-  `TIMELY`, and `admin.reclassify`). In the simulated runs below, 30% of "too early" lay between
-  2.0 and 2.5 s, and 31% of "in time" between 1.5 and 2.0 s. The classic blink gives no information
-  before 2 s, so a blink player cannot be "too early" by reading the cue, only by guessing: that is
-  a property of that cue, not of the measure.
+  beside the rates, and recompute the rates with the line at 2.5 s as a check (the dashboard's
+  line switch, below). The line sits where turn-aways are dense: in the stored simulated data
+  (rules version 3, 16,078 trials, 5,868 decisions), 627 of the 1,018 "too early" trials that were
+  engaged (62%; 40% of all 1,574 "too early") turned between 2.0 and 2.5 s, and 878 of the 3,001
+  "in time" (29%) between 1.5 and 2.0 s. A cue that lets players anticipate (a draining bar, a
+  count) can put many turn-aways just above 2 s; a cue that marks an onset (the blink) puts them
+  just below. The classic blink gives no information before 2 s, so a blink player cannot be "too
+  early" by reading the cue, only by guessing: that is a property of that cue, not of the measure.
 
 Each trial stores `rulesVersion` and the raw measures the rules read (`lastChaseEnd`, `turnLeft`,
 `turnDist`, `chaseEndDist`, `endDist`, `engaged`, the aftermath, the chase log). The raw measures
 are the source of truth: `admin.reclassify` recomputes outcome, eligibility, wasted power and
-`gaveUpEarly` from them. Rows recorded before version 3 were measured with another idea of a chase
+`gaveUpEarly` from them. The trials CSV carries every one of them (the chase log in one cell), so
+the classes can be recomputed from the download alone: `node scripts/csv-reclassify.mjs` does that
+with its own copy of the rules (all 16,072 stored simulated trials of version 3 agree on outcome,
+eligibility, `gaveUpEarly`, wasted power and the decision flag). Rows recorded before version 3 were measured with another idea of a chase
 and lack `chaseEndDist`; they keep their class and their old version and are left out of every rate.
 
 ### What this measure cannot do
@@ -185,7 +217,7 @@ and lack `chaseEndDist`; they keep their class and their old version and are lef
   same for every cue; it lowers contrast, it does not create a ranking.
 - **"Too early" is judged by the clock, not by the distance.** Leaving a ghost 5 tiles away with
   2.3 s left is "too early" although catching it would have eaten most of that time. The stored
-  turn-away time and distance allow a finer measure (time to spare after reaching the ghost).
+  turn-away time and distance give the finer measure: the dashboard's "time to spare" (above).
 - **Decision trials were scarce under the first study rules**: one power-up in six. With fleeing
   ghosts it is one in three (see "Study-rule levers"), still far from every power-up. Plan the
   number of participants and the length of a run for that ("How long a run is").
@@ -193,8 +225,20 @@ and lack `chaseEndDist`; they keep their class and their old version and are lef
   at about 1.5 tiles a second. A player who sees a chase will not close in time and turns away
   with 2.5 s left is "too early" by the clock although they judged the chase well. This affects
   every cue alike and does not create a ranking, but it puts a floor under "too early" that a
-  perfect clock cannot remove. The stored turn-away distance allows a finer measure (was the ghost
-  catchable at the gain it was being chased at?).
+  perfect clock cannot remove. "Time to spare" (above) tells the two apart: was the ghost still
+  catchable at the gain it was being chased at?
+- **No people under the current rules yet.** Every human trial stored so far was recorded under
+  rules version 1; none under version 3. The yield figures (about one power-up in three ends in a
+  decision; 5 to 6 decisions per run of 16) and the run length chosen from them come from the
+  simulated player, which was tuned to chase eagerly the way people seem to. People may chase less
+  or more. **The first thing to run is a pilot with 2 or 3 people**: check decisions per run on the
+  run console's tally, and lengthen the run if it is far below 5.
+- **An aftermath cut short by a maze clear.** The engine keeps power dots off the board until 3 s
+  after a power-up ended, but a player can still clear the maze in the aftermath. Then the 3 s are
+  cut (`after.cut: 'clear'`) and the player cannot be "caught" in them. Such trials keep their class
+  and stay in the rates (the class stands on what was seen), and every rate result counts them
+  (`flagged.cutByClear`) so the page can say how many there are: 99 of 5,868 decision trials (1.7%)
+  in the stored simulated data, none of them caught (against 3.4% caught overall).
 - **A run at a ghost that starts in the last half second is not a chase.** The 3 tiles have to be
   closed while the power is on. A player who sets off 0.4 s before the end and runs on after it is
   recorded by the death, if there is one ("caught"), not as "stayed too long".
@@ -399,8 +443,11 @@ shows whether the player knew the time left. On the dashboard "counted" means de
 For every engaged trial, every trial that counts toward the rates and every caught trial, store a
 clip: scenes at 20 Hz from 8 s before the power ends (or its start: under study rules that is the
 whole power-up) to 3 s after, with the maze id, a dots snapshot, the cue, and markers (power
-start, each eat, turn-away, power end, death). A clip always ends on the frame that closed the
-trial, so the clip of a caught trial ends on the death itself (the `die` event, the dying phase).
+start, each eat, turn-away, power end, death). A clip always reaches the frame that closed the
+trial; a trial that ended in a death (during the power or in the aftermath) is cut half a second
+of game time later, so its clip shows the death itself and the start of the dying phase. Each clip
+also stores a fingerprint of its maze's layout (`layout`, a short hash of the tile grid), so a
+replay never draws a clip on a maze that has since changed.
 The replay page redraws the clip with the real renderer and cue, so the viewer sees the exact
 moment the ghosts switch and what the player did about it. Because a clip holds everything the
 measure saw, the stored outcome of any trial can be checked against it by hand or by the audit.
