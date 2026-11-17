@@ -1,38 +1,46 @@
 import {
-	type Cue, type CueContext, type GhostLook, type GhostView, type Maze, type Palette, type Scene, type TextOptions
+	DIRS, type Cue, type CueContext, type Dir, type GhostLook, type GhostView, type Maze, type Palette, type Scene, type TextOptions
 } from '../types';
-import { drawHero, drawWisp, softGlow, wispPath } from './actors';
-import { boardLayer, cached, geometry, makeCanvas, wallLayer, wallMask, wallMetrics } from './board';
+import { drawHero, drawWisp, heroRadius, softGlow, wispPath } from './actors';
+import { boardLayer, cached, geometry, makeCanvas, wallMask, wallLayer, wallMetrics } from './board';
 import { drawBonus, drawPowerDot } from './items';
+import { ORIGINAL_THEME } from '../engine/mazes';
 import { appFonts, clamp, ease, hash, lerp, mix, noise, rgba, smoothstep, TAU } from './util';
 
 /**
  * Draws a Scene on a canvas with one countdown cue plugged in.
  *
  * Pure: the same scene always gives the same picture, so replays match what the player saw.
- * Every effect (bursts, the death animation, the clear flash, banners) is worked out from game
- * time and timestamps in the frame, never from earlier draws. Only static pictures are cached.
+ * Every effect (the gulp, the death, the clear flash, banners) is worked out from game time,
+ * positions and timestamps in the frame, never from earlier draws. Only static pictures are cached.
  *
- * The base game never hints at the time left: scared wisps look the same from the first moment
+ * The look is the first version of the game: neon outline walls on black, a plain yellow circle,
+ * teardrop ghosts that turn into dashed outlines when scared.
+ *
+ * The base game never hints at the time left: scared ghosts look the same from the first moment
  * to the last. The only exception is the white blink, and only when the cue asks for it
  * (`cue.baseFlash`, used by the classic-blink condition).
  */
 
+/** The board of the original game, the same on every maze. */
+export const BOARD_COLORS = ORIGINAL_THEME;
+
 export const BASE_COLORS = {
-	player: '#c6f23a',
-	// Scared wisps are "drained": a pale, colourless body with dark ink, unlike any awake wisp, the
-	// lime hero or the white blink (white body, red ink). `scared` is the light accent cues echo.
-	scared: '#d4d8df',
-	scaredFill: '#bcc0c8',
-	scaredInk: '#2b2f39',
-	ink: '#f2f5ff',
+	player: '#ffd84a',
+	// Scared ghosts: a faint pale blue fill inside a dashed outline, eyes in the same ink.
+	scared: '#8fd3ff',
+	scaredFill: 'rgba(143, 211, 255, 0.12)',
+	scaredInk: '#8fd3ff',
+	ink: '#eef3ff',
 	inkDim: '#a3b6de',
+	/** The pale drafting line: the pen door, banner borders, bonus marks. */
+	line: '#dbe7ff',
 	accent: '#ff8a4c',
-	flash: '#f7f9ff',
-	flashInk: '#ff3d6b',
-	// Our own set: magenta, sunflower, mint and violet. Kept apart from the lime hero, the drained scared
-	// look, the white blink and every maze colour (checked in `palette.test.ts`).
-	ghost: { hunter: '#ff3db8', ambusher: '#ffd83d', guard: '#3df29b', drifter: '#a866ff' }
+	// The white blink keeps the scared body and turns its outline and eyes white.
+	flash: '#ffffff',
+	flashInk: '#ffffff',
+	// The original four: rose, orange, mint and lavender.
+	ghost: { hunter: '#ff6f91', ambusher: '#ff8a3d', guard: '#3fe0b0', drifter: '#b9a2ff' }
 } as const;
 
 export function paletteFor(maze: Maze): Palette {
@@ -40,7 +48,7 @@ export function paletteFor(maze: Maze): Palette {
 	return {
 		...t,
 		...BASE_COLORS,
-		door: mix(t.wall, '#ffffff', 0.55),
+		door: BASE_COLORS.line,
 		ghost: { ...BASE_COLORS.ghost }
 	};
 }
@@ -81,8 +89,38 @@ export interface Renderer {
 	readonly dpr: number;
 }
 
-// Phase timings from the engine (seconds into the phase).
-const DEATH_FREEZE = 0.35, DEATH_SHRINK = 1.05, DEATH_POP = 0.5;
+// Phase timings (seconds into the phase): ghosts vanish after the freeze; the hero shrinks away
+// while a ring goes out from it, as in the original.
+const DEATH_FREEZE = 0.35, DEATH_SHRINK = 1.1;
+// The ring that goes out from the hero when it eats a power dot.
+const POWER_RING = 0.35;
+/**
+ * The gulp, in tiles walked toward the next dot (the original's 0.16 s at its walking speed):
+ * the circle reaches for the dot over the first part and settles back as it goes down.
+ */
+const GULP_REACH = 0.9, GULP_OUT = 0.625;
+
+/**
+ * Gulp stretch for this scene, from positions only: if a dot lies ahead within reach of the
+ * moving hero, how far along the gulp it is. A dot on the board has not been eaten, so this never
+ * gulps on an empty tile, and it needs no memory of earlier frames.
+ */
+export function gulpOf(scene: Scene, reduceMotion = false): number {
+	const { maze: m, dots, frame: f } = scene;
+	if (reduceMotion || f.phase !== 'playing' || !f.player.moving) return 0;
+	const d = DIRS[f.player.face as Exclude<Dir, -1>];
+	if (!d) return 0;
+	const along = d.x ? f.player.x : f.player.y, sign = d.x || d.y;
+	const ahead = sign > 0 ? Math.ceil(along - 1e-6) : Math.floor(along + 1e-6);
+	const dist = Math.abs(ahead - along);
+	if (dist <= 1e-6 || dist >= GULP_REACH) return 0;
+	const tx = d.x ? ahead : Math.round(f.player.x), ty = d.x ? Math.round(f.player.y) : ahead;
+	if (ty < 0 || ty >= m.H) return 0;
+	const kind = dots[ty * m.W + (((tx % m.W) + m.W) % m.W)];
+	if (kind !== 1 && kind !== 2) return 0;
+	const amp = kind === 2 ? 0.24 : 0.14, u = 1 - dist / GULP_REACH;
+	return u < GULP_OUT ? amp * Math.sin((Math.PI * u) / GULP_OUT) : -0.45 * amp * Math.sin((Math.PI * (u - GULP_OUT)) / (1 - GULP_OUT));
+}
 
 export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 	const ctx = canvas.getContext('2d')!;
@@ -111,13 +149,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 		const fonts = appFonts();
 		const p = f.power;
 
-		// Small shake when caught (from the phase clock, so it replays exactly).
-		let sx = 0, sy = 0;
-		if (f.phase === 'dying' && !reduce && f.phaseTime < DEATH_FREEZE) {
-			const a = (1 - f.phaseTime / DEATH_FREEZE) * T * 0.12;
-			sx = (noise(f.phaseTime * 40, 1) - 0.5) * 2 * a;
-			sy = (noise(f.phaseTime * 40, 2) - 0.5) * 2 * a;
-		}
+		// The board never shakes (the offset stays for the layer helpers, always 0).
+		const sx = 0, sy = 0;
+		const gulp = gulpOf(scene, reduce);
 		const base = () => ctx.setTransform(dpr, 0, 0, dpr, sx * dpr, sy * dpr);
 
 		const px = (x: number, y: number): [number, number] => [(x + 0.5) * T, (y + 0.5) * T];
@@ -125,7 +159,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 			for (const off of [-m.W, 0, m.W]) { const q = x + off; if (q > -1 && q < m.W) fn((q + 0.5) * T); }
 		};
 		const wrapX = (x: number) => ((x % m.W) + m.W) % m.W;
-		const ghostY = (g: GhostView, i: number) => g.mode === 'waiting' && !reduce ? g.y + Math.sin(now * 4 + i * 2) * 0.14 : g.y;
+		const ghostY = (g: GhostView, i: number) => g.mode === 'waiting' && !reduce ? g.y + Math.sin(now * 4 + i * 2) * 0.16 : g.y;
 		const travel = f.player.x + f.player.y;
 		const drawLayer = (img: CanvasImageSource, alpha = 1, composite?: GlobalCompositeOperation) => {
 			ctx.save();
@@ -171,11 +205,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 			px, eachWrap,
 			baseFlash: () => powerFlash(p.left, reduce),
 			drawGhost: (g, i, look, cx, cy, o) => drawWisp(ctx, pal, T, g, i, look, cx, cy, time, o),
-			ghostPath: (g, i, cx, cy, o) => {
-				const lk = o?.look ?? 'normal', scared = lk === 'scared' || lk === 'scared-flash';
-				return wispPath(ctx, T, g, i, cx, cy, time, o?.scale ?? 1, scared ? 1 : 0, !scared && lk !== 'eyes');
-			},
-			drawPlayer: (cx, cy, scale = 1, o = {}) => drawHero(ctx, pal, T, cx, cy, f.player.face, travel, f.player.moving && f.phase === 'playing', time, { ...o, scale }),
+			// Every look shares one body, so `look` no longer changes the outline.
+			ghostPath: (g, i, cx, cy, o) => wispPath(ctx, T, g, i, cx, cy, time, o?.scale ?? 1),
+			drawPlayer: (cx, cy, scale = 1, o = {}) => drawHero(ctx, pal, T, cx, cy, f.player.face, travel, f.player.moving && f.phase === 'playing', time, { gulp, ...o, scale }),
 			wallLayer: (color, glow, o) => wallLayer(m, T, dpr, color, { glow, ...o }),
 			fonts,
 			geo,
@@ -243,30 +275,17 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 		ctx.globalCompositeOperation = 'source-over';
 		ctx.fillStyle = pal.bg;
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
-		drawLayer(boardLayer(m, T, dpr, pal.bg, pal.wall, pal.wallGlow, pal.door));
-		if (f.phase === 'clear') {
-			// Maze clear: the walls flash white four times (one gentle glow with reduced motion).
-			const ct = f.phaseTime;
-			const on = reduce ? ease.bump(clamp((ct - 0.3) / 1.6)) * 0.7
-				: ct > 0.4 && ct < 1.9 && Math.floor((ct - 0.4) / 0.19) % 2 === 0 ? 1 : 0;
-			if (on > 0) drawLayer(wallLayer(m, T, dpr, '#ffffff', { glow: pal.wallGlow }), on);
-		}
+		// Maze clear: the walls flash to the accent orange four times a second (not with reduced motion).
+		const clearFlash = f.phase === 'clear' && !reduce && Math.floor(f.phaseTime * 4) % 2 === 1;
+		drawLayer(clearFlash
+			? boardLayer(m, T, dpr, pal.bg, pal.accent, pal.accent, pal.door)
+			: boardLayer(m, T, dpr, pal.bg, pal.wall, pal.wallGlow, pal.door));
 		base();
 		if (cue.walls) hook(() => cue.walls!(k));
 
 		// ---- 2. pickups ----
 		const drawDots = () => {
-			const r = Math.max(1.1, T * 0.085);
-			if (T >= 12) {
-				ctx.fillStyle = rgba(pal.dot, 0.16);
-				ctx.beginPath();
-				for (const d of geo.dots) {
-					if (dots[d.i] !== 1) continue;
-					ctx.moveTo(d.cx + r * 2.2, d.cy);
-					ctx.arc(d.cx, d.cy, r * 2.2, 0, TAU);
-				}
-				ctx.fill();
-			}
+			const r = Math.max(Math.min(1.4, T * 0.14), T * 0.09);
 			ctx.fillStyle = pal.dot;
 			ctx.beginPath();
 			for (const d of geo.dots) {
@@ -279,7 +298,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 			for (let i = 0; i < dots.length; i++) {
 				if (dots[i] !== 2) continue;
 				const [cx, cy] = px(i % m.W, (i / m.W) | 0);
-				drawPowerDot(ctx, cx, cy, T, pal.power, pal.wallGlow, reduce ? 0.5 : 0.5 + 0.5 * Math.sin(now * 5 + i));
+				drawPowerDot(ctx, cx, cy, T, pal.power, reduce ? 0.5 : 0.5 + 0.5 * Math.sin(now * 6.25));
 			}
 		};
 		if (cue.dots) hook(() => cue.dots!(k, drawDots)); else drawDots();
@@ -290,7 +309,6 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 			const vis = f.bonus.left > 2 || reduce ? 1 : 0.45 + 0.55 * Math.abs(Math.cos(f.bonus.left * Math.PI * 2));
 			ctx.save();
 			ctx.globalAlpha = vis;
-			softGlow(ctx, cx, cy, T * 0.9, '#ffe9b0', 0.5);
 			drawBonus(ctx, f.bonus.kind, cx, cy + bob, T * 0.92, time);
 			ctx.restore();
 		}
@@ -315,128 +333,67 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 		// ---- 4. player ----
 		if (f.phase !== 'over') {
 			const pt = f.phaseTime;
-			let scale = 1, spin = 0, lift = 0;
-			let mood: 'normal' | 'happy' | 'dizzy' = 'normal';
-			if (f.phase === 'dying' && pt > DEATH_FREEZE) {
-				const u = clamp((pt - DEATH_FREEZE) / (DEATH_SHRINK - DEATH_FREEZE));
-				mood = 'dizzy';
-				scale = 1 - ease.inCubic(u);
-				spin = reduce ? 0 : ease.inQuad(u) * TAU * 1.5;
-				lift = reduce ? 0 : -Math.sin(u * Math.PI) * T * 0.15;
-			} else if (f.phase === 'clear') {
-				mood = 'happy';
-				lift = reduce ? 0 : -Math.abs(Math.sin(pt * 7)) * T * 0.14 * (1 - clamp(pt / 2.2));
-			}
+			// Caught: the circle shrinks away while a ring goes out from it.
+			const dying = f.phase === 'dying' ? clamp(pt / DEATH_SHRINK) : 0;
+			const scale = 1 - dying;
+			const sinceStart = now - p.startedAt;
+			const ring = f.phase === 'playing' && !reduce && p.startedAt >= 0 && sinceStart >= 0 && sinceStart < POWER_RING ? sinceStart / POWER_RING : -1;
 			eachWrap(f.player.x, (cx) => {
-				const cy = (f.player.y + 0.5) * T + lift;
-				const def = () => {
-					if (scale <= 0.02) return;
-					if (spin) {
-						ctx.save();
-						ctx.translate(cx, cy);
-						ctx.rotate(spin);
-						k.drawPlayer(0, 0, scale, { mood });
-						ctx.restore();
-					} else k.drawPlayer(cx, cy, scale, { mood });
-				};
+				const cy = (f.player.y + 0.5) * T;
+				if (f.phase === 'dying' && !reduce && dying < 1) {
+					k.ring(cx, cy, T * (0.4 + dying * 1.2), 2, pal.player, { alpha: 1 - dying });
+				}
+				const def = () => { if (heroRadius(T) * scale > 0.5) k.drawPlayer(cx, cy, scale); };
 				if (cue.player) hook(() => cue.player!(k, cx, cy, def)); else def();
+				// A power dot sends a ring out from the circle.
+				if (ring >= 0) k.ring(cx, cy, heroRadius(T) * (1 + ring), 2, pal.player, { alpha: 1 - ring });
 			});
-			if (f.phase === 'dying') deathPop(pt);
 		}
 
 		if (cue.over) hook(() => cue.over!(k));
 
-		// ---- 5. effects from timestamps ----
-		// Power-up picked up: one ripple from the hero. It says a power-up began, nothing about its end.
-		const sinceStart = now - p.startedAt;
-		if (p.startedAt >= 0 && sinceStart >= 0 && sinceStart < 0.5 && p.left > 0 && !reduce) {
-			const [cx, cy] = k.playerPos(), u = sinceStart / 0.5;
-			k.ring(cx, cy, T * (0.5 + 3.5 * ease.outCubic(u)), Math.max(1, T * 0.12 * (1 - u)), pal.power, { alpha: 0.7 * (1 - u) });
-		}
-		// Ghost eaten / bonus taken: a burst where the points pop up.
-		for (const pop of f.popups) {
-			if (pop.age > 0.45) continue;
-			const [cx, cy] = px(pop.x, pop.y), u = pop.age / 0.45;
-			k.ring(cx, cy, T * (0.3 + 0.9 * ease.outCubic(u)), Math.max(1, T * 0.1 * (1 - u)), pal.accent, { alpha: 1 - u });
-			if (reduce) continue;
-			for (let s = 0; s < 8; s++) {
-				const a = (s / 8) * TAU + hash(pop.x, pop.y, s) * 0.6, d = T * (0.35 + 1.1 * ease.outQuad(u) * (0.6 + 0.4 * hash(s, pop.x)));
-				ctx.fillStyle = rgba(s % 2 ? pal.ink : pal.accent, 1 - u);
-				ctx.beginPath();
-				ctx.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * d, Math.max(0.7, T * 0.06 * (1 - u)), 0, TAU);
-				ctx.fill();
-			}
-		}
-
-		// ---- 6. floating points ----
+		// ---- 5. floating points ----
 		for (const pop of f.popups) {
 			const [x, y0] = px(pop.x, pop.y);
-			const rise = ease.outCubic(pop.age) * T * 0.9;
-			const pop0 = reduce ? 1 : 0.6 + 0.4 * ease.outBack(clamp(pop.age / 0.25));
-			text(pop.text, x, y0 - rise, {
-				size: Math.max(8, T * 0.58), weight: 800, fill: pal.ink, stroke: pal.bg, strokeWidth: Math.max(2, T * 0.14),
-				alpha: 1 - smoothstep(0.6, 1, pop.age), scale: pop0, glow: pal.accent
+			text(pop.text, x, y0 - pop.age * 0.8 * T, {
+				size: Math.max(8, Math.round(T * 0.5)), weight: 600, font: 'mono', fill: '#ffffff', stroke: pal.bg, strokeWidth: 3,
+				alpha: 1 - pop.age
 			});
 		}
 
-		// ---- 7. banners ----
+		// ---- 6. banners ----
 		if (opts.banners !== false) banner();
 
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-		function deathPop(pt: number) {
-			const u = (pt - DEATH_SHRINK + 0.1) / DEATH_POP;
-			if (u <= 0 || u >= 1) return;
-			const [cx, cy] = k.playerPos();
-			k.ring(cx, cy, T * (0.2 + 1.2 * ease.outCubic(u)), Math.max(1, T * 0.1 * (1 - u)), pal.player, { alpha: 1 - u });
-			if (reduce) return;
-			for (let s = 0; s < 12; s++) {
-				const a = (s / 12) * TAU + 0.3, d = T * (0.2 + 1.4 * ease.outCubic(u) * (0.7 + 0.3 * hash(s, f.level)));
-				const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d + u * u * T * 0.4;
-				ctx.save();
-				ctx.translate(x, y);
-				ctx.rotate(a + u * 3);
-				ctx.fillStyle = rgba(s % 3 ? pal.player : '#4fae3a', 1 - u);
-				ctx.beginPath();
-				ctx.ellipse(0, 0, T * 0.11 * (1 - u * 0.5), T * 0.05, 0, 0, TAU);
-				ctx.fill();
-				ctx.restore();
-			}
-		}
-
+		/** READY / LEVEL n / MAZE CLEAR / GAME OVER: boxed mono text, a black box with a thin pale border. */
 		function banner() {
-			let title: string | null = null, sub: string | null = null, color = pal.ink, t0 = 0;
-			if (f.phase === 'ready') { title = opts.readyLabel ?? 'READY'; sub = m.name; t0 = f.phaseTime; color = pal.player; }
-			else if (f.phase === 'clear' && f.phaseTime > 0.3) { title = 'MAZE CLEAR'; t0 = f.phaseTime - 0.3; color = pal.ink; }
-			else if (f.phase === 'over') { title = 'GAME OVER'; t0 = f.phaseTime; color = BASE_COLORS.ghost.hunter; }
+			let title: string | null = null, sub: string | null = null;
+			if (f.phase === 'ready') { title = opts.readyLabel ?? 'READY'; sub = m.name; }
+			else if (f.phase === 'clear') title = 'MAZE CLEAR';
+			else if (f.phase === 'over') title = 'GAME OVER';
 			if (!title) return;
-			const cx = (m.W * T) / 2, cy = (m.bannerRow + 0.5) * T;
-			const size = Math.max(8, Math.round(T * 0.82));
-			const inK = reduce ? 1 : ease.outBack(clamp(t0 / 0.3));
-			const fade = reduce ? 1 : clamp(t0 / 0.15);
-			// Dark plate behind the words so they read over dots and walls.
+			const fs = Math.max(7, Math.round(T * 0.62));
+			const showSub = !!sub && T >= 12;
+			const subFs = Math.max(7, Math.round(fs * 0.55));
 			ctx.save();
-			ctx.globalAlpha = 0.82 * fade;
-			ctx.font = `800 ${size}px ${fonts.display}`;
-			const w = ctx.measureText(title).width + size * 1.6 + title.length * size * 0.08;
-			const h = size * (sub && T >= 12 ? 2.25 : 1.5);
-			const g = ctx.createLinearGradient(cx - w / 2, 0, cx + w / 2, 0);
-			g.addColorStop(0, rgba(pal.bg, 0));
-			g.addColorStop(0.18, pal.bg);
-			g.addColorStop(0.82, pal.bg);
-			g.addColorStop(1, rgba(pal.bg, 0));
-			ctx.fillStyle = g;
-			ctx.fillRect(cx - w / 2, cy - h / 2 + (sub && T >= 12 ? size * 0.3 : 0), w, h);
-			ctx.restore();
-			text(title, cx, cy, {
-				size, weight: 800, fill: color, glow: color, stroke: pal.bg, strokeWidth: Math.max(2, size * 0.16),
-				scale: inK, alpha: fade, spacing: size * 0.08
-			});
-			if (sub && T >= 12) {
-				text(sub.toUpperCase(), cx, cy + size * 0.95, {
-					size: Math.round(size * 0.42), weight: 600, font: 'mono', fill: pal.inkDim, alpha: fade, spacing: size * 0.12
-				});
+			ctx.font = `600 ${fs}px ${fonts.mono}`;
+			let w = ctx.measureText(title).width + fs * 1.2;
+			if (showSub) {
+				ctx.font = `600 ${subFs}px ${fonts.mono}`;
+				w = Math.max(w, ctx.measureText(sub!.toUpperCase()).width + fs * 1.2);
 			}
+			const h = fs * 1.7 + (showSub ? subFs * 1.3 : 0);
+			const cx = (m.W * T) / 2, cy = (m.bannerRow + 0.5) * T, top = cy - fs * 0.85;
+			const x0 = Math.round(cx - w / 2), y0 = Math.round(top);
+			ctx.fillStyle = pal.bg;
+			ctx.fillRect(x0, y0, Math.round(w), Math.round(h));
+			ctx.strokeStyle = BASE_COLORS.line;
+			ctx.lineWidth = 1;
+			ctx.strokeRect(x0 + 0.5, y0 + 0.5, Math.round(w) - 1, Math.round(h) - 1);
+			ctx.restore();
+			text(title, cx, cy + 1, { size: fs, weight: 600, font: 'mono', fill: '#ffffff' });
+			if (showSub) text(sub!.toUpperCase(), cx, cy + fs * 0.85 + subFs * 0.55, { size: subFs, weight: 600, font: 'mono', fill: pal.inkDim });
 		}
 	}
 

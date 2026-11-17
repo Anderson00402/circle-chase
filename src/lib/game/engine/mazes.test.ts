@@ -6,11 +6,11 @@ import { tunnelTiles } from './game';
 import { PATH } from '../types';
 
 describe('mazes', () => {
-	it('has five mazes with their own ids, names and colours', () => {
+	it('has five mazes with their own ids and names, all in the original look', () => {
 		expect(MAZE_DEFS).toHaveLength(5);
 		expect(new Set(MAZE_DEFS.map((d) => d.id)).size).toBe(5);
 		expect(new Set(MAZE_DEFS.map((d) => d.name)).size).toBe(5);
-		expect(new Set(MAZE_DEFS.map((d) => d.theme.wall)).size).toBe(5);
+		expect(new Set(MAZE_DEFS.map((d) => JSON.stringify(d.theme))).size).toBe(1);
 	});
 
 	for (const def of MAZE_DEFS) {

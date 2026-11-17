@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_COLORS } from './renderer';
+import { BASE_COLORS, BOARD_COLORS } from './renderer';
 import { MAZE_DEFS } from '../engine/mazes';
 
 /** Hue (degrees), saturation and lightness (0..1) of a #rrggbb colour. */
@@ -13,30 +13,6 @@ function hsl(hex: string): [number, number, number] {
 }
 const hueGap = (a: string, b: string) => { const d = Math.abs(hsl(a)[0] - hsl(b)[0]); return Math.min(d, 360 - d); };
 
-describe('character colours', () => {
-	const ghosts = Object.values(BASE_COLORS.ghost);
-
-	it('are not the classic red, pink, cyan and orange', () => {
-		for (const classic of ['#ff0000', '#ffb8ff', '#00ffff', '#ffb852']) {
-			const near = ghosts.filter((g) => hueGap(g, classic) < 12);
-			expect(near, `${classic} vs ${ghosts}`).toEqual([]);
-		}
-	});
-
-	it('are vivid and far apart from each other', () => {
-		for (const g of ghosts) expect(hsl(g)[1]).toBeGreaterThan(0.7);
-		for (let i = 0; i < ghosts.length; i++)
-			for (let j = i + 1; j < ghosts.length; j++) expect(hueGap(ghosts[i], ghosts[j])).toBeGreaterThan(40);
-	});
-
-	it('stand apart from the hero, the scared look and every maze colour', () => {
-		const others = [BASE_COLORS.player, ...MAZE_DEFS.map((d) => d.theme.wall).filter((c) => hsl(c)[1] > 0.4)];
-		for (const g of ghosts) for (const o of others) expect(hueGap(g, o), `${g} vs ${o}`).toBeGreaterThanOrEqual(20);
-		// The white blink: no ghost is anywhere near white.
-		for (const g of ghosts) expect(hsl(g)[2]).toBeLessThan(0.75);
-	});
-});
-
 /** Plain distance between two #rrggbb colours, 0..441. */
 function dist(a: string, b: string): number {
 	const p = (h: string) => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
@@ -44,38 +20,62 @@ function dist(a: string, b: string): number {
 	return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
 }
 
-describe('the drained scared look', () => {
-	const { scaredFill, scared, scaredInk, flash, flashInk, player } = BASE_COLORS;
+describe('the original palette', () => {
+	it('is pinned to the first version of the game', () => {
+		expect(BASE_COLORS.player).toBe('#ffd84a');
+		expect(BASE_COLORS.ghost).toEqual({ hunter: '#ff6f91', ambusher: '#ff8a3d', guard: '#3fe0b0', drifter: '#b9a2ff' });
+		expect(BASE_COLORS.scared).toBe('#8fd3ff');
+		expect(BASE_COLORS.scaredInk).toBe('#8fd3ff');
+		expect(BASE_COLORS.scaredFill).toBe('rgba(143, 211, 255, 0.12)');
+		expect(BASE_COLORS.flash).toBe('#ffffff');
+		expect(BASE_COLORS.accent).toBe('#ff8a4c');
+		expect(BASE_COLORS.line).toBe('#dbe7ff');
+		expect(BOARD_COLORS).toEqual({ bg: '#000000', wall: '#1c6cfc', wallGlow: '#1c6cfc', dot: '#b9cdf6', power: '#ffffff' });
+	});
+
+	it('is the same on every maze', () => {
+		for (const d of MAZE_DEFS) expect(d.theme, d.id).toEqual(BOARD_COLORS);
+	});
+});
+
+describe('character colours', () => {
 	const ghosts = Object.values(BASE_COLORS.ghost);
 
-	it('is pale and colourless, not blue', () => {
-		for (const c of [scaredFill, scared]) {
-			expect(hsl(c)[1], c).toBeLessThan(0.15);
-			expect(hsl(c)[2], c).toBeGreaterThan(0.6);
-		}
-		// The classic blue scared body is gone for good.
-		expect(dist(scaredFill, '#2121ff')).toBeGreaterThan(200);
-		expect(dist(scaredFill, '#3d4fe6')).toBeGreaterThan(150);
+	it('are vivid and apart from each other', () => {
+		for (const g of ghosts) expect(hsl(g)[1]).toBeGreaterThan(0.7);
+		for (let i = 0; i < ghosts.length; i++)
+			for (let j = i + 1; j < ghosts.length; j++) expect(hueGap(ghosts[i], ghosts[j]), `${ghosts[i]} vs ${ghosts[j]}`).toBeGreaterThan(30);
 	});
 
-	it('stands apart from every awake wisp and the hero', () => {
-		for (const c of [...ghosts, player]) {
-			expect(hsl(c)[1] - hsl(scaredFill)[1], c).toBeGreaterThan(0.55);
-			expect(dist(c, scaredFill), c).toBeGreaterThan(100);
+	// Hue first; the plain distance floor is lower than in the newer palette because the original
+	// pairs are closer in brightness (lavender and the scared blue are 65 apart), and scared ghosts
+	// differ from awake ones by form too (a dashed outline, not a solid body).
+	it('stand apart from the hero, the scared ink and the walls', () => {
+		for (const g of ghosts) for (const o of [BASE_COLORS.player, BASE_COLORS.scaredInk, BOARD_COLORS.wall]) {
+			expect(hueGap(g, o), `${g} vs ${o}`).toBeGreaterThanOrEqual(20);
+			expect(dist(g, o), `${g} vs ${o}`).toBeGreaterThan(60);
 		}
 	});
 
-	it('stands apart from the white blink: a clearly darker body and dark ink instead of red', () => {
-		expect(hsl(flash)[2] - hsl(scaredFill)[2]).toBeGreaterThan(0.18);
-		expect(hsl(flashInk)[1]).toBeGreaterThan(0.7);
-		expect(hsl(scaredInk)[1]).toBeLessThan(0.25);
-		expect(hsl(scaredInk)[2]).toBeLessThan(0.25);
+	it('stand apart from the white blink', () => {
+		for (const g of ghosts) expect(dist(g, BASE_COLORS.flash), g).toBeGreaterThan(80);
+	});
+});
+
+describe('the scared look', () => {
+	it('is a faint see-through fill of its own ink', () => {
+		const m = /^rgba\((\d+), (\d+), (\d+), ([\d.]+)\)$/.exec(BASE_COLORS.scaredFill)!;
+		expect(+m[4]).toBeLessThan(0.2);
+		const ink = parseInt(BASE_COLORS.scaredInk.slice(1), 16);
+		expect([+m[1], +m[2], +m[3]]).toEqual([ink >> 16, (ink >> 8) & 255, ink & 255]);
 	});
 
-	it('reads on every maze: lighter than each floor by a wide margin, unlike any saturated wall', () => {
-		for (const d of MAZE_DEFS) {
-			expect(hsl(scaredFill)[2] - hsl(d.theme.bg)[2], d.id).toBeGreaterThan(0.6);
-			if (hsl(d.theme.wall)[1] > 0.4) expect(dist(d.theme.wall, scaredFill), d.id).toBeGreaterThan(100);
-		}
+	it('has an ink apart from the walls, the hero and the white blink', () => {
+		const ink = BASE_COLORS.scaredInk;
+		expect(dist(ink, BOARD_COLORS.wall)).toBeGreaterThan(100);
+		expect(dist(ink, BASE_COLORS.player)).toBeGreaterThan(100);
+		expect(dist(ink, BASE_COLORS.flash)).toBeGreaterThan(80);
+		// Light enough to read on the black floor.
+		expect(hsl(ink)[2]).toBeGreaterThan(0.6);
 	});
 });

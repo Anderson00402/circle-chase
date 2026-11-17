@@ -67,7 +67,7 @@ Dark theme only. Every text colour passes WCAG AA on `--bg`, `--surface` and `--
 | Text | `--ink` main, `--ink-dim` secondary (leads, labels), `--ink-faint` captions only |
 | Accent | `--accent` (the one main action, current page, key numbers), `--accent-soft`, `--on-accent` text on accent |
 | Meaning | `--good`, `--bad`, `--warn` (+ `-soft` backgrounds), `--focus` focus rings, `--sim` simulated data |
-| Game | `--player`, `--scared`, `--hunter`, `--ambusher`, `--guard`, `--drifter` (match `BASE_COLORS` in the renderer) |
+| Game | `--player`, `--scared`, `--scared-fill`, `--hunter`, `--ambusher`, `--guard`, `--drifter`, board `--maze-bg`, `--maze-wall`, `--maze-dot`, `--maze-line` (the original palette; match `BASE_COLORS` and `BOARD_COLORS` in the renderer) |
 | Cue roles | `--role-reference`, `--role-baseline`, `--role-idea` (use these for series colours in charts too) |
 | Type | `--font-display` (Unbounded: wordmark, h1, h2 only), `--font-body` (Atkinson Hyperlegible Next), `--font-mono` (JetBrains Mono: numbers, codes); sizes `--text-xs` 12, `--text-sm` 14, `--text-md` 16, `--text-lg` 19, `--text-xl` 24, `--text-2xl` 32, `--text-3xl` fluid hero |
 | Space | `--space-1` 4 … `--space-9` 96 (4, 8, 12, 16, 24, 32, 48, 64, 96), `--gutter` fluid page side padding |

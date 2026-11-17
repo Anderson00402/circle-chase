@@ -1,5 +1,4 @@
 import { DOOR, PEN, WALL, type Maze } from '../types';
-import { mix, rgba, TAU } from './util';
 
 /**
  * Static parts of the board: maze geometry (pen box, outer perimeter, dot positions) and cached
@@ -37,10 +36,14 @@ export function makeCanvas(w: number, h: number, dpr: number): [HTMLCanvasElemen
 const mkey = (m: Maze, T: number, dpr: number) => `${m.id}:${m.W}x${m.H}:${T}:${dpr}`;
 
 // ---------- line metrics ----------
-/** How far the neon line sits from the floor, and how thick it is, at tile size T. */
+/**
+ * How far the neon line sits from the floor, and how thick it is, at tile size T. The original
+ * game's numbers (cut 0.17 of a tile, a line of a tenth of a tile but never under 2 px on a play
+ * sized board); small thumbnails get a thinner line so the corridors stay open.
+ */
 export function wallMetrics(T: number) {
-	const cut = T * 0.16;
-	const lw = Math.max(1.1, T * 0.1);
+	const cut = T * 0.17;
+	const lw = Math.max(1.1, Math.min(2, T * 0.17), T * 0.1);
 	return { cut, lw };
 }
 
@@ -226,115 +229,68 @@ export interface WallStyle {
 	glow?: string;
 	/** Only the outermost line along the board's edge (for fuses and borders). */
 	outer?: boolean;
-	/** Draw the tinted panel inside each wall block (default true). */
+	/** Kept for older callers; walls have no inner panel any more, so it changes nothing. */
 	fill?: boolean;
 }
 
 /**
- * The maze walls in one colour, in the game's look: a soft tinted panel, a glowing neon line with
- * a hot core and, on larger tiles, a thin inner line for depth. Device pixels, full board. Cached.
+ * The maze walls in one colour, in the original look: each wall block gets a rounded neon outline
+ * with a soft glow, so the one-tile border reads as a double line and walls that reach the edge
+ * end in rounded caps. Nothing else: no panel, no core, no second line. Device pixels, full
+ * board. Cached.
  */
 export function wallLayer(m: Maze, T: number, dpr: number, color: string, style: WallStyle = {}): HTMLCanvasElement {
-	const glow = style.glow ?? color, fill = style.fill !== false && !style.outer;
-	return cached(`${mkey(m, T, dpr)}:walls:${color}:${glow}:${style.outer ? 1 : 0}:${fill ? 1 : 0}`, () => {
+	const glow = style.glow ?? color;
+	return cached(`${mkey(m, T, dpr)}:walls:${color}:${glow}:${style.outer ? 1 : 0}`, () => {
 		const W = m.W * T, H = m.H * T;
 		const { cut, lw } = wallMetrics(T);
 		const [c, x] = makeCanvas(W, H, dpr);
 		x.setTransform(1, 0, 0, 1, 0, 0);
-		const keepOuter = (layer: HTMLCanvasElement) => {
-			if (!style.outer) return layer;
-			const lx = layer.getContext('2d')!;
+		const line = wallRing(m, T, dpr, cut, cut + lw, color);
+		if (style.outer) {
+			// Keep only the loop along the board's edge.
+			const lx = line.getContext('2d')!;
 			lx.setTransform(dpr, 0, 0, dpr, 0, 0);
 			lx.globalCompositeOperation = 'destination-in';
 			lx.lineWidth = T * 0.62;
 			const a = cut + lw / 2;
 			lx.strokeRect(a, a, W - 2 * a, H - 2 * a);
-			return layer;
-		};
-		if (fill) {
-			// Panel: tinted inside, a little brighter towards the line so blocks read as raised.
-			x.drawImage(wallRing(m, T, dpr, cut, cut + lw + T * 0.2, rgba(color, 0.2)), 0, 0);
-			x.drawImage(wallRing(m, T, dpr, cut + lw + T * 0.2, 1e3, rgba(color, 0.09)), 0, 0);
 		}
-		const line = keepOuter(wallRing(m, T, dpr, cut, cut + lw, color));
-		// Glow: two soft passes, wide and tight.
+		// shadowBlur ignores the transform, so it is scaled by hand.
 		x.shadowColor = glow;
-		x.shadowBlur = Math.max(2, T * 0.45) * dpr;
-		x.globalAlpha = 0.85;
-		x.drawImage(line, 0, 0);
-		x.shadowBlur = Math.max(1, T * 0.15) * dpr;
-		x.globalAlpha = 1;
+		x.shadowBlur = Math.max(3, T * 0.3) * dpr;
 		x.drawImage(line, 0, 0);
 		x.shadowBlur = 0;
 		x.shadowColor = 'transparent';
-		if (T >= 12) {
-			// Hot core down the middle of the line.
-			const core = Math.max(0.5, lw * 0.34);
-			x.drawImage(keepOuter(wallRing(m, T, dpr, cut + (lw - core) / 2, cut + (lw + core) / 2, mix(color, '#ffffff', 0.55))), 0, 0);
-		}
-		if (T >= 16 && !style.outer) {
-			// A faint second line inside the block for depth.
-			const gap = cut + lw + Math.max(1.5, T * 0.09), hair = Math.max(0.75, T * 0.035);
-			x.globalAlpha = 0.45;
-			x.drawImage(wallRing(m, T, dpr, gap, gap + hair, color), 0, 0);
-			x.globalAlpha = 1;
-		}
 		return c;
 	});
 }
 
-/**
- * The floor under everything: background colour, a soft light in the middle and a faint grid of
- * specks so the empty board has some texture. Device pixels, full board. Cached.
- */
-export function floorLayer(m: Maze, T: number, dpr: number, bg: string, tint: string): HTMLCanvasElement {
-	return cached(`${mkey(m, T, dpr)}:floor:${bg}:${tint}`, () => {
-		const W = m.W * T, H = m.H * T;
-		const [c, x] = makeCanvas(W, H, dpr);
+/** The floor: the background colour and nothing else. Device pixels, full board. Cached. */
+export function floorLayer(m: Maze, T: number, dpr: number, bg: string): HTMLCanvasElement {
+	return cached(`${mkey(m, T, dpr)}:floor:${bg}`, () => {
+		const [c, x] = makeCanvas(m.W * T, m.H * T, dpr);
 		x.fillStyle = bg;
-		x.fillRect(0, 0, W, H);
-		const g = x.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, Math.max(W, H) * 0.7);
-		g.addColorStop(0, rgba(tint, 0.09));
-		g.addColorStop(0.6, rgba(tint, 0.03));
-		g.addColorStop(1, 'rgba(0,0,0,0.25)');
-		x.fillStyle = g;
-		x.fillRect(0, 0, W, H);
-		if (T >= 12) {
-			// Specks at tile corners on the floor only.
-			x.fillStyle = rgba(tint, 0.13);
-			const s = Math.max(0.6, T * 0.035);
-			x.beginPath();
-			for (let y = 1; y < m.H; y++) for (let i = 1; i < m.W; i++) {
-				if (isWall(m, i, y) || isWall(m, i - 1, y) || isWall(m, i, y - 1) || isWall(m, i - 1, y - 1)) continue;
-				x.moveTo(i * T + s, y * T);
-				x.arc(i * T, y * T, s, 0, TAU);
-			}
-			x.fill();
-		}
-		// A soft glow inside the pen.
-		const pen = boxOf(m, T, PEN);
-		const pg = x.createRadialGradient(pen.cx, pen.cy, 0, pen.cx, pen.cy, Math.max(pen.w, pen.h) * 0.75);
-		pg.addColorStop(0, rgba(tint, 0.16));
-		pg.addColorStop(1, rgba(tint, 0));
-		x.fillStyle = pg;
-		x.fillRect(pen.x - pen.w, pen.y - pen.h, pen.w * 3, pen.h * 3);
+		x.fillRect(0, 0, m.W * T, m.H * T);
 		return c;
 	});
 }
 
-/** The pen door: a glowing bar across each DOOR tile. Drawn in CSS units on `x`. */
+/** The pen door: a pale dashed line across the DOOR tiles, reaching into the walls. CSS units on `x`. */
 export function drawDoor(x: CanvasRenderingContext2D, m: Maze, T: number, color: string) {
-	const h = Math.max(1.5, T * 0.14);
+	const { cut, lw } = wallMetrics(T);
 	x.save();
-	x.fillStyle = color;
-	x.shadowColor = color;
-	x.shadowBlur = T * 0.3;
+	x.strokeStyle = color;
+	x.globalAlpha = 0.6;
+	x.lineWidth = lw;
+	x.setLineDash([T * 0.12, T * 0.1]);
+	x.beginPath();
 	for (let y = 0; y < m.H; y++) for (let i = 0; i < m.W; i++) {
 		if (m.tiles[y * m.W + i] !== DOOR) continue;
-		x.beginPath();
-		x.roundRect(i * T - T * 0.08, (y + 0.5) * T - h / 2, T * 1.16, h, h / 2);
-		x.fill();
+		x.moveTo(i * T - cut, (y + 0.5) * T);
+		x.lineTo((i + 1) * T + cut, (y + 0.5) * T);
 	}
+	x.stroke();
 	x.restore();
 }
 
@@ -346,7 +302,7 @@ export function boardLayer(m: Maze, T: number, dpr: number, bg: string, wall: st
 	return cached(`${mkey(m, T, dpr)}:board:${bg}:${wall}:${glow}:${door}`, () => {
 		const [c, x] = makeCanvas(m.W * T, m.H * T, dpr);
 		x.setTransform(1, 0, 0, 1, 0, 0);
-		x.drawImage(floorLayer(m, T, dpr, bg, glow), 0, 0);
+		x.drawImage(floorLayer(m, T, dpr, bg), 0, 0);
 		x.drawImage(wallLayer(m, T, dpr, wall, { glow }), 0, 0);
 		x.setTransform(dpr, 0, 0, dpr, 0, 0);
 		drawDoor(x, m, T, door);

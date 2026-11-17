@@ -21,12 +21,18 @@ export interface MazeDef {
 	theme: MazeTheme;
 }
 
+/**
+ * Every maze has the look of the first version of the game: neon blue outlines on black, pale
+ * blue dots, white power dots. (Mirrored by `BOARD_COLORS` in render/renderer.ts.)
+ */
+export const ORIGINAL_THEME: MazeTheme = { bg: '#000000', wall: '#1c6cfc', wallGlow: '#1c6cfc', dot: '#b9cdf6', power: '#ffffff' };
+
 export const MAZE_DEFS: MazeDef[] = [
 	{
 		id: 'plaza',
 		name: 'Plaza',
 		about: 'Big city blocks and long straights, the pen tucked under the top edge: the calm first board.',
-		theme: { bg: '#0d0705', wall: '#e86a3a', wallGlow: '#e86a3a', dot: '#ffdcc8', power: '#ffffff' },
+		theme: ORIGINAL_THEME,
 		rows: [
 			'#########################',
 			'#o.....................o#',
@@ -59,7 +65,7 @@ export const MAZE_DEFS: MazeDef[] = [
 		id: 'rings',
 		name: 'Rings',
 		about: 'Four loops round a deep pen, joined by a few spokes; easy to get boxed in on the outer ring.',
-		theme: { bg: '#06070c', wall: '#b9c3dc', wallGlow: '#9fb0d8', dot: '#e6ebf7', power: '#ffffff' },
+		theme: ORIGINAL_THEME,
 		rows: [
 			'#######################',
 			'#o.........S.........o#',
@@ -92,7 +98,7 @@ export const MAZE_DEFS: MazeDef[] = [
 		id: 'canyon',
 		name: 'Canyon',
 		about: 'Tall channels with short bridges, a mesa in the middle and the pen sunk low; tunnels high and low.',
-		theme: { bg: '#0d0507', wall: '#e0465e', wallGlow: '#e0465e', dot: '#ffd6dc', power: '#ffffff' },
+		theme: ORIGINAL_THEME,
 		rows: [
 			'#########################',
 			'#o...###.........###...o#',
@@ -127,7 +133,7 @@ export const MAZE_DEFS: MazeDef[] = [
 		id: 'circuit',
 		name: 'Circuit',
 		about: 'A tight grid of short lanes with many crossings; the ghosts come out at the top edge.',
-		theme: { bg: '#030a0c', wall: '#1ec8c3', wallGlow: '#1ec8c3', dot: '#c8f5f2', power: '#ffffff' },
+		theme: ORIGINAL_THEME,
 		rows: [
 			'#######################',
 			'#o.........,.........o#',
@@ -160,7 +166,7 @@ export const MAZE_DEFS: MazeDef[] = [
 		id: 'hedges',
 		name: 'Hedges',
 		about: 'A garden of long hedges with staggered gaps: straight runs, many T-crossings, tunnels high and low.',
-		theme: { bg: '#040a05', wall: '#52c43c', wallGlow: '#3fae2c', dot: '#dcf5d2', power: '#ffffff' },
+		theme: ORIGINAL_THEME,
 		rows: [
 			'#######################',
 			'#o...................o#',

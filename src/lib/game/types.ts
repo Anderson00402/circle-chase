@@ -417,10 +417,11 @@ export interface GhostDrawOptions {
 export interface PlayerDrawOptions {
 	color?: string;
 	alpha?: number;
-	/** Mouth opening 0..1 instead of the chomp. */
+	/** No longer used: the hero is a whole circle with no mouth (kept so older callers still compile). */
 	open?: number;
+	/** No longer used: the hero has no face. */
 	mood?: 'normal' | 'happy' | 'dizzy';
-	/** Body only, no face. */
+	/** No longer used: the hero is always plain. */
 	plain?: boolean;
 }
 
@@ -450,11 +451,11 @@ export interface Palette {
 	dot: string;
 	power: string;
 	player: string;
-	/** Light accent of the scared ("drained") look, for cues that echo it on a dark board. */
+	/** Pale blue of the scared look (its dashed outline and eyes), for cues that echo it. */
 	scared: string;
-	/** Body of a scared wisp: pale and colourless, as if the colour had drained out of it. */
+	/** Body of a scared ghost: a faint see-through fill of the scared blue. */
 	scaredFill: string;
-	/** Dark ink of a scared wisp's face, stripes and outline (falls back to `scared`). */
+	/** Ink of a scared ghost's dashed outline and eyes (falls back to `scared`). */
 	scaredInk?: string;
 	ink: string;
 	inkDim: string;
@@ -462,9 +463,11 @@ export interface Palette {
 	ghost: Record<GhostId, string>;
 	/** Pen door bar. */
 	door: string;
-	/** Body and face colours of the white blink (classic-blink only). */
+	/** Outline and eye colour of the white blink (classic-blink only); `flashInk` matches it. */
 	flash: string;
 	flashInk: string;
+	/** The pale drafting line (pen door, banner borders, bonus marks). */
+	line?: string;
 }
 
 /**

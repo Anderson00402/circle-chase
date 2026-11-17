@@ -35,15 +35,19 @@
 	--warn-soft: rgba(255, 173, 92, 0.12);
 	--focus: #8fd3ff;
 
-	/* Game colours (match BASE_COLORS in src/lib/game/render/renderer.ts) */
-	--player: #c6f23a;
-	--scared: #d4d8df;
-	--scared-fill: #bcc0c8;
-	--scared-ink: #2b2f39;
-	--hunter: #ff3db8;
-	--ambusher: #ffd83d;
-	--guard: #3df29b;
-	--drifter: #a866ff;
+	/* Game colours, the original palette (match BASE_COLORS and BOARD_COLORS in src/lib/game/render/renderer.ts) */
+	--player: #ffd84a;
+	--scared: #8fd3ff;
+	--scared-fill: rgba(143, 211, 255, 0.12);
+	--scared-ink: #8fd3ff;
+	--hunter: #ff6f91;
+	--ambusher: #ff8a3d;
+	--guard: #3fe0b0;
+	--drifter: #b9a2ff;
+	--maze-bg: #000000;
+	--maze-wall: #1c6cfc;
+	--maze-dot: #b9cdf6;
+	--maze-line: #dbe7ff;
 
 	/* Cue roles, used by CueChip and charts: references are neutral, the baseline is cool, ideas are warm. */
 	--role-reference: #a3b3d6;

@@ -10,7 +10,6 @@
 	import type { Cue, Facing, Frame, Game, GameConfig, Scene } from './types';
 	import { createGame, DIFFICULTY } from './engine/game';
 	import { createRenderer, paletteFor, type Renderer } from './render/renderer';
-	import { drawHero } from './render/actors';
 	import { bonusName, drawBonus } from './render/items';
 	import { createSfx } from './audio/sfx';
 
@@ -197,7 +196,13 @@
 			const c = node.getContext('2d')!;
 			c.setTransform(r, 0, 0, r, 0, 0);
 			c.clearRect(0, 0, css, css);
-			if (w.life) drawHero(c, paletteFor(game.maze), css * 0.98, css / 2, css / 2 + css * 0.06, 3, 0.25, false, 0, { open: 0.6 });
+			if (w.life) {
+				// A life is a plain yellow dot, as in the original.
+				c.fillStyle = paletteFor(game.maze).player;
+				c.beginPath();
+				c.arc(css / 2, css / 2, css * 0.3, 0, Math.PI * 2);
+				c.fill();
+			}
 			else drawBonus(c, w.bonus ?? 0, css / 2, css / 2, css * 0.92);
 		};
 		paint(what);
@@ -344,7 +349,7 @@
 					<div class="card">
 						{#if overlay === 'title'}
 							<h2 id="cc-overlay-title">Ready?</h2>
-							<p>Eat every dot. After a power dot the ghosts go pale and you can catch them, for a while.</p>
+							<p>Eat every dot. After a power dot the ghosts turn into pale blue outlines and you can catch them, for a while.</p>
 						{:else if overlay === 'paused'}
 							<h2 id="cc-overlay-title">Paused</h2>
 							<p>The game is on hold. Esc or P resumes.</p>
