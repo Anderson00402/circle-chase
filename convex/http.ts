@@ -40,7 +40,7 @@ function filterFrom(p: URLSearchParams): Filter {
  * that starts `EXPORT FAILED` and says how many rows came before it, never a silent cut.
  * `simulateLimit=N` (checks only) makes every page above N rows fail like that.
  */
-const RETRIES = 6;
+const RETRIES = 8;
 const ROUTES: [Kind, 'csv' | 'json'][] = [['trials', 'csv'], ['trials', 'json'], ['ratings', 'csv'], ['ratings', 'json'], ['blocks', 'csv'], ['blocks', 'json']];
 for (const [kind, format] of ROUTES) {
 	http.route({

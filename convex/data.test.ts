@@ -245,6 +245,31 @@ describe('export downloads (HTTP)', () => {
 	});
 });
 
+describe('export downloads under a page limit (HTTP)', () => {
+	test('a page that fails is read again at half the size; past the retries the file says it is incomplete', async () => {
+		const t = convexTest(schema, modules);
+		for (let i = 0; i < 6; i++) {
+			const k = await setup(t, `bot${i}`, 'bot');
+			await t.mutation(api.trials.save, trialArgs(k, `bt${i}`, 0));
+			await t.mutation(api.ratings.saveBlock, { key: `br${i}`, blockKey: k.blockKey, clarity: 4, distraction: 4 });
+		}
+		const get = (path: string) => t.fetch(path, { method: 'GET' }).then((r) => r.text());
+		for (const kind of ['trials', 'ratings', 'blocks']) {
+			// Every page above 2 rows fails like an overloaded backend: 200 -> 100 -> ... -> 1 row pages.
+			const csv = await get(`/export/${kind}.csv?source=bot&simulateLimit=2`);
+			expect(csv, kind).not.toContain('EXPORT FAILED');
+			expect(csv.trim().split('\n'), kind).toHaveLength(7);
+			expect(JSON.parse(await get(`/export/${kind}.json?source=bot&simulateLimit=2`)), kind).toHaveLength(6);
+		}
+		// Pages of 1,000 halved 8 times are still 3 rows, above a limit of 1: the file ends with the reason.
+		const failed = await get('/export/ratings.csv?source=bot&pageSize=1000&simulateLimit=1');
+		const last = failed.trim().split('\n').at(-1)!;
+		expect(last).toMatch(/^EXPORT FAILED: the file is incomplete\. .*tried 9 times, down to pages of 3 rows; 0 rows were written before this line/);
+		const json = await get('/export/ratings.json?source=bot&pageSize=1000&simulateLimit=1');
+		expect(json).toContain('EXPORT FAILED');
+	}, 60_000);
+});
+
 describe('participants.ensure numbering', () => {
 	test('run-console participants are numbered on their own, per source; play pages use no number', async () => {
 		const t = convexTest(schema, modules);

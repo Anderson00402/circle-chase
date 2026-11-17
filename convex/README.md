@@ -167,9 +167,9 @@ gets stuck); `outboxStatus` is reactive:
 Pages are small by default (trials 200, trials JSON 100, ratings 200, blocks 200: `PAGE_SIZE` in
 `exports.ts`), and the context of a row (session, participant, block, the block's rating) is read
 once per session on the page, not per row. On a busy machine Convex can still stop a query ("too
-many system operations"); the stream then reads the same page again at half the size, up to 6
+many system operations"); the stream then reads the same page again at half the size, up to 8
 times with a short pause, and keeps the smaller size for the rest of the file. Only if that fails
-too does the file end with `EXPORT FAILED: the file is incomplete. <error> (tried 7 times, down to
+too does the file end with `EXPORT FAILED: the file is incomplete. <error> (tried 9 times, down to
 pages of N rows; R rows were written before this line, the rest are missing)`. `simulateLimit=N`
 (checks only) makes every page above N rows fail that way: `node scripts/export-e2e.mjs --squeeze 7`.
 
