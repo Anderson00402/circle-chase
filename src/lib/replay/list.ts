@@ -16,7 +16,7 @@ export interface ListState {
 	source: Source;
 	cue: string;
 	outcome: string;
-	/** Participant number as text, '' for everyone. */
+	/** Participant id (`participants` document id), '' for everyone. */
 	participant: string;
 	sort: Sort;
 }

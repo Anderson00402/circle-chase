@@ -9,6 +9,7 @@ import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { RULES_VERSION, isDecision } from './lib/rules';
+import { notCountedReason } from './lib/reasons';
 
 /** Stored on the session: who the runs are for and how the suggested order was picked. */
 export const runInfo = v.object({
@@ -106,29 +107,8 @@ export const session = query({
 	}
 });
 
-/**
- * Why a trial of a run is not among the decisions the rates use, in plain words; null when it counts.
- * Shown on the run summary so "not counted" always comes with a reason.
- */
-export function notCountedReason(t: Pick<Doc<'trials'>, 'outcome' | 'inRates' | 'rulesVersion' | 'endReason' | 'after'>, current: number): string | null {
-	if (isDecision(t)) return null;
-	if ((t.rulesVersion ?? 1) !== current) return 'Recorded under older rules';
-	switch (t.endReason) {
-		case 'died': return 'Died while the power was on';
-		case 'cleared': return 'The level was cleared while the power was on';
-		case 'refreshed': return 'Another power dot was eaten while the power was on';
-		case 'quit': return 'The run ended while the power was on';
-	}
-	if (t.after?.cut === 'quit') return 'The run ended less than 3 s after the power ran out';
-	if (t.after?.cut === 'power') return 'A new power-up started less than 3 s after this one ended';
-	if (t.after?.cut === 'clear') return 'The level was cleared less than 3 s after the power ran out';
-	switch (t.outcome) {
-		case 'not-engaged': return 'Not chasing a ghost in the last 3 s';
-		case 'catch': return 'Ate the ghost: no decision about the end';
-		case 'other': return 'Chasing near the end, but no clear decision';
-	}
-	return t.inRates ? null : 'Not eligible for the rates';
-}
+/** Why a trial of a run is not counted (shared with the replay player): convex/lib/reasons.ts. */
+export { notCountedReason };
 
 /** One run for the end-of-run summary: tally, every trial (light) in order, and its rating. Null until the block exists. */
 export const block = query({

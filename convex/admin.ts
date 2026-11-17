@@ -9,10 +9,11 @@ import { internalMutation, mutation, type MutationCtx } from './_generated/serve
 import { RULES_VERSION, rescore } from './lib/rules';
 import type { Doc, Id } from './_generated/dataModel';
 import { rowOf } from './lib/digest';
+import { patchReplayRows } from './lib/replayDigest';
 
-const TABLES: TableNames[] = ['clips', 'trialSeries', 'trialDigests', 'trials', 'ratings', 'blocks', 'presence', 'sessions', 'participants', 'counters'];
+const TABLES: TableNames[] = ['clips', 'trialSeries', 'trialDigests', 'replayDigests', 'trials', 'ratings', 'blocks', 'presence', 'sessions', 'participants', 'counters'];
 /** Clips are the heavy rows (10-15 KB); keep a batch well inside one mutation's limits. */
-const BATCH: Partial<Record<TableNames, number>> = { clips: 200, trialDigests: 20 };
+const BATCH: Partial<Record<TableNames, number>> = { clips: 200, trialDigests: 20, replayDigests: 20 };
 const DEFAULT_BATCH = 500;
 /** Rows one call may read in all, well under Convex's 4,096 reads per function. */
 const READ_BUDGET = 2000;
@@ -110,6 +111,8 @@ export const reclassifyStep = internalMutation({
 			const byId = new Map(ts.map((t) => [t._id, t]));
 			await ctx.db.patch(d._id, { rows: d.rows.map((row) => (byId.has(row.id) ? rowOf(byId.get(row.id)!, undefined, row) : row)) });
 		}
+		// The replay browser's digests likewise.
+		for (const [sessionId, ts] of touched) await patchReplayRows(ctx, sessionId, ts);
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(0, internal.admin.reclassifyStep, { cursor: page.continueCursor, seen, changed, old });
 		} else {

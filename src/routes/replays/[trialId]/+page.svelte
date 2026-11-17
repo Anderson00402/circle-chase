@@ -20,7 +20,11 @@
 	import type { GhostId } from '#lib/game/types.ts';
 	import { cueById } from '#lib/game/cues/index.ts';
 	import { decodeClip, type EncodedClip, type Marker } from '#lib/telemetry/recorder.ts';
-	import { Badge, Button, CueChip, EmptyState, InfoTip, Kbd, Page, Segmented, Select, cueListings, slow } from '#lib/ui/index.ts';
+	import { Badge, Button, CueChip, EmptyState, InfoTip, Kbd, LoadState, Page, Segmented, Select, cueListings, slow } from '#lib/ui/index.ts';
+	import { WRONG_MAZE_NOTE, clipFitsMaze } from '#lib/replay/layout.ts';
+	import { DEFINITIONS } from '#lib/definitions.ts';
+	import { notCountedReason } from '#convex/lib/reasons.ts';
+	import { participantName } from '#convex/lib/replayDigest.ts';
 	import ReplayBoard from '#lib/replay/ReplayBoard.svelte';
 	import Timeline from '#lib/replay/Timeline.svelte';
 	import { indexAt, sceneAt, stepTime } from '#lib/replay/interp.ts';
@@ -43,8 +47,10 @@
 		&& (clipQ.data == null || clipQ.data.trialId === id)
 	);
 	const switching = $derived(!!trial && !current && !trialQ.error);
-	const missing = $derived(!!trialQ.error || (!trialQ.isLoading && trialQ.data === null));
-	const late = slow(() => !trial && !missing);
+	/** No such trial: the id is unknown, or not a trial id at all. Any other failure is shown as a failure. */
+	const badId = $derived(!!trialQ.error && /validator|Invalid ID|not a valid|does not match/i.test(trialQ.error.message ?? ''));
+	const missing = $derived(badId || (!trialQ.isLoading && !trialQ.error && trialQ.data === null));
+	const wait = slow(() => !trial && !missing && !trialQ.error);
 
 	// The clip belongs to the trial on screen (while switching, the old one's clip stays).
 	const decoded = $derived.by(() => {
@@ -52,7 +58,9 @@
 		if (!c || !trial || c.trialId !== trial._id) return null;
 		try { return decodeClip(c as unknown as EncodedClip); } catch { return null; }
 	});
-	const scenes = $derived(decoded?.scenes ?? []);
+	/** The clip was recorded on an earlier version of this maze: never draw it on the current one. */
+	const wrongMaze = $derived(!!decoded && !clipFitsMaze(clipQ.data as unknown as { mazeId: string; layout?: string }, decoded.scenes));
+	const scenes = $derived(decoded && !wrongMaze ? decoded.scenes : []);
 
 	// ---------- time range and markers ----------
 	const startT = $derived(trial?.startedAt ?? 0);
@@ -94,7 +102,7 @@
 			m.push({ kind: 'turnAway', t: trial.startedAt + trial.turnAt, left: trial.turnLeft ?? undefined });
 		}
 		m.push({ kind: 'powerEnd', t: endT, left: trial.leftAtEnd });
-		if (trial.endReason === 'died') m.push({ kind: 'death', t: endT });
+		if (trial.endReason === 'died') m.push({ kind: 'death', t: endT, left: trial.leftAtEnd });
 		else if (trial.after.died) m.push({ kind: 'death', t: endT + (trial.after.timeToCaught ?? trial.after.seen), ghost: (trial.after.killer ?? undefined) as GhostId | undefined });
 		return m.sort((a, b) => a.t - b.t);
 	});
@@ -194,6 +202,8 @@
 	const target = $derived(scenes.length ? targets(nearestIndex(time)) : { ghost: -1, dist: null, danger: false });
 	const left = $derived(clockEnd - time);
 
+	/** The playhead sits on a marker (its own numbers are then shown, so they match the key numbers). */
+	const atMarker = $derived(markers.find((m) => Math.abs(clamp(m.t) - time) < 0.03) ?? null);
 	const seriesAt = $derived.by(() => {
 		if (!series) return null;
 		let best = -1, bd = Infinity;
@@ -206,12 +216,17 @@
 	/** At the "power out" marker the distance is the one the outcome was judged by. */
 	const distNow = $derived(
 		trial && expired && trial.endDist !== null && Math.abs(time - endT) < 0.06 ? trial.endDist
+		: trial && atMarker?.kind === 'turnAway' && trial.turnDist !== null ? trial.turnDist
 		: seriesAt?.dist ?? (target.dist ?? null)
 	);
+	/** Power left as shown: at a marker, the marker's own stored number. */
+	const leftShown = $derived(atMarker?.left ?? left);
 	const deathT = $derived(markers.find((m) => m.kind === 'death')?.t ?? null);
 	const deathWord = $derived(deathLabel(trial?.outcome ?? ''));
+	// A clip ends on the frame of the death, which may fall a frame short of the stored death time: the
+	// last frames up to it read as the death, so the state and the marker agree.
 	const status = $derived(
-		deathT !== null && time >= deathT ? { text: deathWord, tone: 'bad' }
+		deathT !== null && time >= Math.min(deathT, t1) - 0.06 ? { text: deathWord, tone: 'bad' }
 		: left > 0 ? (left <= 3 ? { text: 'Last 3 s', tone: 'warn' } : { text: 'Power on', tone: 'accent' })
 		: expired ? { text: 'Ghosts dangerous', tone: 'bad' } : { text: 'Power cut short', tone: 'neutral' }
 	);
@@ -327,10 +342,14 @@
 	const W = $derived(scene?.maze.W ?? 28);
 	const H = $derived(scene?.maze.H ?? 31);
 	const outcome = $derived((trial?.outcome ?? 'other') as keyof typeof OUTCOME_MEANING);
-	const who = $derived(trial?.participant ? (trial.participant.nickname ?? `P${String(trial.participant.number).padStart(2, '0')}`) : '-');
+	const who = $derived(trial?.participant ? participantName(trial.participant) : '-');
+	/** This participant's other replays, in their own data source. */
+	const whoHref = $derived(trial?.participant ? `/replays?${new URLSearchParams({ ...(trial.source !== 'human' ? { source: trial.source } : {}), p: trial.participant.id })}` : null);
+	const notCounted = $derived(trial ? notCountedReason(trial) : null);
 	const oldRules = $derived(!!trial && (trial.rulesVersion ?? 1) !== RULES_VERSION);
 	const noClipReason = $derived.by(() => {
 		if (!trial) return '';
+		if (wrongMaze) return `${WRONG_MAZE_NOTE} Its numbers and distance chart are here.`;
 		if (trial.outcome === 'interrupted') {
 			const why: Record<string, string> = {
 				died: 'The player was caught while the power was still on',
@@ -364,7 +383,7 @@
 		<div class="marks" role="group" aria-label="Jump to a moment">
 			{#each markers as m (m.kind + m.t)}
 				<button type="button" class="mk {m.kind}" class:at={Math.abs(clamp(m.t) - time) < 0.03} onclick={() => { playing = false; seek(m.t); }}>
-					{markerText(m)} <span class="num">{m.t < t0 - 0.06 ? 'before the clip' : leftWords(clockEnd - m.t)}</span>
+					{markerText(m)} <span class="num">{m.t < t0 - 0.06 ? 'before the clip' : leftWords(m.left ?? clockEnd - m.t, 2)}</span>
 				</button>
 			{/each}
 		</div>
@@ -409,13 +428,7 @@
 			{#snippet actions()}<Button variant="primary" href="/replays">Browse replays</Button>{/snippet}
 		</EmptyState>
 	{:else if !trial}
-		{#if late.current}
-			<EmptyState title="Can't reach the database" icon="replay" compact>
-				The replay appears as soon as the connection is back. Nothing needs to be reloaded.
-			</EmptyState>
-		{:else}
-			<p class="loading">Loading the replay&hellip;</p>
-		{/if}
+		<LoadState {wait} error={trialQ.error} what="this replay" icon="replay" />
 	{:else}
 		<div class="player" class:compare class:switching style:--aspect={W / H} style:--n={compare ? 2 : 1}>
 			<section class="stage" aria-label="Replay board">
@@ -441,7 +454,7 @@
 					{#if compare}{@render timeline()}{/if}
 				{:else}
 					<div class="noclip">
-						<EmptyState title="No recording for this trial" icon="replay">
+						<EmptyState title={wrongMaze ? 'The board cannot be redrawn' : 'No recording for this trial'} icon="replay">
 							{noClipReason}
 						</EmptyState>
 					</div>
@@ -456,15 +469,15 @@
 
 				<section class="readouts" aria-label="At the playhead" aria-live="off">
 					<div class="ro big">
-						<span class="lab">{left >= 0 ? 'Power left' : 'After the end'}</span>
-						<span class="val num" class:after={left < 0}>{signed(left)}<small> s</small></span>
+						<span class="lab">{leftShown >= 0 ? 'Power left' : 'Since the end'}</span>
+						<span class="val num" class:after={leftShown < 0}>{Math.abs(leftShown).toFixed(2)}<small> s</small></span>
 					</div>
 					<div class="ro">
-						<span class="lab">Distance <InfoTip term="Distance">Path distance through the maze to the nearest scared ghost (after the end: to the ghosts that were scared and now hunt the player).</InfoTip></span>
+						<span class="lab">Distance <InfoTip term="Distance">{DEFINITIONS.distance}{atMarker?.kind === 'turnAway' ? ' At the turn-away marker: to the chased ghost.' : ''}</InfoTip></span>
 						<span class="val num">{distNow != null ? distNow.toFixed(1) : '-'}<small> tiles</small></span>
 					</div>
 					<div class="ro">
-						<span class="lab">Chasing <InfoTip term="Chasing">Distance to the nearest scared ghost within 8 tiles shrinking over the last 0.3 s, or at most 1 tile.</InfoTip></span>
+						<span class="lab">Chasing <InfoTip term="Chasing">{DEFINITIONS.chasing}</InfoTip></span>
 						<span class="val small" class:yes={seriesAt?.chasing}>{seriesAt ? (seriesAt.chasing ? 'Closing in' : 'Not chasing') : '-'}</span>
 					</div>
 					<div class="ro">
@@ -530,22 +543,26 @@
 					<h2 class="eyebrow">Key numbers</h2>
 					<dl>
 						<div><dt>Power length</dt><dd class="num">{fmt(trial.total)} s</dd></div>
-						<div><dt>{trial.outcome === 'catch' || trial.lastChaseEnd === 'eat' ? 'Ate the ghost' : 'Turned away'} <InfoTip term="Turn-away time">Time left when the player was closest, before they stopped closing in for good (for a chase that ended by eating the ghost: when it was eaten). Negative: after the end.</InfoTip></dt><dd class="num">{trial.turnLeft === null ? 'never' : signed(trial.turnLeft) + ' s'}</dd></div>
+						<div><dt>{trial.outcome === 'catch' || trial.lastChaseEnd === 'eat' ? 'Ate the ghost' : 'Turned away'} <InfoTip term="Turn-away time">{DEFINITIONS.turnAway}</InfoTip></dt><dd class="num">{trial.turnLeft === null ? 'never' : signed(trial.turnLeft) + ' s'}</dd></div>
 						{#if trial.lastChaseEnd !== 'eat' && trial.outcome !== 'catch'}<div><dt>Distance at the turn</dt><dd class="num">{fmt(trial.turnDist) ?? '-'} {trial.turnDist !== null ? 'tiles' : ''}</dd></div>{/if}
 						<div><dt>Distance at the end</dt><dd class="num">{fmt(trial.endDist) ?? '-'} {trial.endDist !== null ? 'tiles' : ''}</dd></div>
-						<div><dt>{trial.outcome === 'caught' ? 'Caught after the end' : 'Died after the end'}</dt><dd class="num" class:bad={trial.after.died}>{trial.after.died && trial.after.timeToCaught !== null ? fmt(trial.after.timeToCaught) + ' s after' : trial.after.died ? 'yes' : 'no'}</dd></div>
+							{#if trial.endReason === 'died'}
+								<div><dt>{deathWord}</dt><dd class="num bad">while the power was on</dd></div>
+							{:else}
+								<div><dt>{deathWord} after the end</dt><dd class="num" class:bad={trial.after.died}>{trial.after.died && trial.after.timeToCaught !== null ? fmt(trial.after.timeToCaught) + ' s after' : trial.after.died ? 'yes' : 'no'}</dd></div>
+							{/if}
 						<div><dt>Ghosts eaten</dt><dd class="num">{trial.eats.length}{isLateCatch(trial) ? ' (late catch)' : ''}</dd></div>
 						<div><dt>Closest danger after</dt><dd class="num">{fmt(trial.after.minDangerDist) ?? '-'} {trial.after.minDangerDist !== null ? 'tiles' : ''}{trial.after.nearMiss ? ' (near miss)' : ''}</dd></div>
-						<div><dt>Reaction <InfoTip term="Reaction">For players still closing in at the end: time from the end until they first moved away.</InfoTip></dt><dd class="num">{trial.reaction !== null ? fmt(trial.reaction, 2) + ' s' : '-'}</dd></div>
+						<div><dt>Reaction <InfoTip term="Reaction">{DEFINITIONS.reaction}</InfoTip></dt><dd class="num">{trial.reaction !== null ? fmt(trial.reaction, 2) + ' s' : '-'}</dd></div>
 						{#if trial.wasted !== null}<div><dt>Power left unused</dt><dd class="num">{fmt(trial.wasted)} s</dd></div>{/if}
-						<div><dt>Counts in the rates</dt><dd>{isDecision(trial) ? 'yes' : oldRules ? 'no: classed by older rules' : trial.outcome === 'catch' ? 'no: a catch shows no decision' : trial.outcome === 'interrupted' ? 'no: cut short' : trial.outcome === 'not-engaged' ? 'no: not chasing near the end' : trial.after.cut === 'quit' ? 'no: the run ended within 3 s' : 'no'}</dd></div>
+							<div class="wide"><dt>Counts in the rates <InfoTip term="Counts in the rates">{DEFINITIONS.counted}</InfoTip></dt><dd>{isDecision(trial) ? 'yes' : `no: ${(notCounted ?? 'not a decision').charAt(0).toLowerCase()}${(notCounted ?? 'not a decision').slice(1)}`}</dd></div>
 					</dl>
 				</section>
 
 				<section class="context" aria-label="Context">
 					<h2 class="eyebrow">Context</h2>
 					<dl>
-						<div><dt>Participant</dt><dd class="num">{who}</dd></div>
+						<div><dt>Participant</dt><dd class="num">{who}{#if whoHref} <a class="more" href={whoHref}>their replays</a>{/if}</dd></div>
 						<div><dt>Data</dt><dd>{#if trial.source === 'bot'}<Badge tone="sim">Simulated player</Badge>{:else}Human{/if}</dd></div>
 						<div><dt>Condition</dt><dd><CueChip cue={cue} size="sm" /></dd></div>
 						<div><dt>Run</dt><dd class="num">{trial.blockIndex + 1} ({modeLabel(trial.mode)})</dd></div>
@@ -738,6 +755,8 @@
 	dt { display: flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--ink-faint); }
 	dd { margin: 2px 0 0; color: var(--ink); }
 	dd.bad { color: var(--bad); }
+	.numbers .wide { grid-column: 1 / -1; }
+	dd .more { margin-left: 6px; font-size: var(--text-xs); }
 	h2.eyebrow { margin: 0; }
 	.keys ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px var(--space-4); font-size: var(--text-sm); color: var(--ink-dim); }
 

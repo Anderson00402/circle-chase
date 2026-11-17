@@ -9,6 +9,7 @@ import { clipFields, measures, outcome, packedSeries, trialContext } from './val
 import { bump, trialCounts } from './counters';
 import { rescore } from './lib/rules';
 import { syncDigest } from './lib/digest';
+import { syncReplayDigest } from './lib/replayDigest';
 
 /**
  * Store one finished trial, and its clip when there is one (idempotent by `key`). Context (cue,
@@ -54,7 +55,9 @@ export const save = mutation({
 			});
 			await ctx.db.patch(trialId, { clipId });
 		}
-		await syncDigest(ctx, (await ctx.db.get(trialId))!, series);
+		const stored = (await ctx.db.get(trialId))!;
+		await syncDigest(ctx, stored, series);
+		await syncReplayDigest(ctx, stored);
 		if (!b.practice) await bump(ctx, s.source, trialCounts({ ...trial, createdAt: now }, !!clip));
 		await ctx.db.patch(b._id, { trialCount: b.trialCount + 1, engagedCount: b.engagedCount + (trial.engaged ? 1 : 0) });
 		await ctx.db.patch(s._id, { trials: s.trials + 1, lastActiveAt: now });
@@ -120,7 +123,7 @@ export const get = query({
 			...light(t),
 			series: packed ? unpackSeries(packed) : null,
 			clipId: t.clipId ?? null,
-			participant: participant ? { number: participant.number, nickname: participant.nickname ?? null } : null,
+			participant: participant ? { number: participant.number, nickname: participant.nickname ?? null, id: participant._id, runNumber: participant.runNumber ?? null, source: participant.source } : null,
 			block: block ? { cue: block.cue, orderIndex: block.orderIndex, trialCount: block.trialCount } : null
 		};
 	}

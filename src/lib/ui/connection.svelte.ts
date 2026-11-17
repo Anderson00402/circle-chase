@@ -13,6 +13,8 @@ export type Conn = 'connecting' | 'connected' | 'reconnecting' | 'offline';
 
 /** Seconds of trouble before saying the database cannot be reached. */
 export const GRACE = 5;
+/** Seconds a write may stay unanswered on an open socket before the connection counts as lost. */
+const HUNG = 20;
 
 const state = $state<{ status: Conn; since: number }>({ status: 'connecting', since: Date.now() });
 
@@ -45,8 +47,9 @@ export function watchConnection(client: ConvexClient): () => void {
 		let cs;
 		try { cs = client.connectionState(); } catch { return; }
 		const now = Date.now();
-		// A request in flight for a long time means the socket is open but nothing comes back.
-		const hung = cs.timeOfOldestInflightRequest !== null && now - cs.timeOfOldestInflightRequest.getTime() > GRACE * 1000;
+		// A write in flight for a long time with the socket open means nothing comes back. A busy
+		// server can take a few seconds, which is slow, not offline: only a long silence counts.
+		const hung = cs.timeOfOldestInflightRequest !== null && now - cs.timeOfOldestInflightRequest.getTime() > HUNG * 1000;
 		const ok = cs.isWebSocketConnected && !hung;
 		if (ok) { troubleSince = null; set('connected'); return; }
 		troubleSince ??= now;
@@ -61,15 +64,23 @@ export function watchConnection(client: ConvexClient): () => void {
 }
 
 /**
- * True once `loading()` has stayed true for `ms`, or at once while the database is unreachable.
- * Call during component setup: `const late = slow(() => q.isLoading)`, then read `late.current`.
+ * How a load is going, for the words a page shows while it waits. Call during component setup:
+ * `const wait = slow(() => q.isLoading)`, then read:
+ * - `offline`: the database cannot be reached (lost connection): "Can't reach the database".
+ * - `late`: still loading after `ms` with the connection up: slow, not offline ("Still loading").
+ * - `current`: either of the two (the old single flag).
+ * A query that failed is `q.error`, which pages show in its own words.
  */
-export function slow(loading: () => boolean, ms = GRACE * 1000): { readonly current: boolean } {
+export function slow(loading: () => boolean, ms = GRACE * 1000): { readonly current: boolean; readonly offline: boolean; readonly late: boolean } {
 	let late = $state(false);
 	$effect(() => {
 		if (!loading()) { late = false; return; }
 		const t = setTimeout(() => (late = true), ms);
 		return () => clearTimeout(t);
 	});
-	return { get current() { return loading() && (late || state.status === 'offline'); } };
+	return {
+		get offline() { return loading() && state.status === 'offline'; },
+		get late() { return loading() && late && state.status !== 'offline'; },
+		get current() { return loading() && (late || state.status === 'offline'); }
+	};
 }

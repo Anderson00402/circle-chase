@@ -166,6 +166,8 @@
 		}
 	}
 
+	/** This participant's replays: their console number within their own data source (humans or simulated). */
+	const participantReplays = $derived(`/replays?${new URLSearchParams({ ...(run.p.source !== 'human' ? { source: run.p.source } : {}), ...(run.p.number ? { p: String(run.p.number) } : {}) })}`);
 	const n = (x: number | undefined) => (x === undefined ? '-' : x.toLocaleString('en-US'));
 
 	onMount(() => {
@@ -328,7 +330,7 @@
 		<span><span class="num">{sheet.isLoading ? '-' : n(totals.counted)}</span> decision{totals.counted === 1 ? '' : 's'} measured</span>
 		<span><span class="num">{sheet.isLoading ? '-' : n(totals.clips)}</span> replay{totals.clips === 1 ? '' : 's'}</span>
 		<ConnectionDot saving={outboxStatus} />
-		<span class="links"><a href="/replays{run.p.number ? `?p=${run.p.number}` : ''}">This participant's replays</a><a href="/dashboard">Dashboard</a></span>
+		<span class="links"><a href={participantReplays}>This participant's replays</a><a href="/dashboard">Dashboard</a></span>
 	</footer>
 </div>
 

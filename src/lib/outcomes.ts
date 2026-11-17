@@ -41,19 +41,19 @@ const C = {
 export const OUTCOME_INFO: Record<AnyOutcome, OutcomeInfo> = {
 	caught: {
 		id: 'caught', label: 'Caught', short: 'Caught', tone: 'bad', color: C.caught, decision: true,
-		def: 'Was close to a ghost when the power ran out and was caught by it within 3 s.'
+		def: 'Was within 5 tiles of a ghost that had just turned dangerous when the power ran out, and was caught within 3 s.'
 	},
 	overstayed: {
 		id: 'overstayed', label: 'Stayed too long', short: 'Too long', tone: 'warn', color: C.overstayed, decision: true,
-		def: 'Was still chasing a ghost within 5 tiles when the power ran out (turned with less than 0.2 s left, or never), but was not caught.'
+		def: 'Was still chasing a ghost within 5 tiles when the power ran out (turned with less than 0.2 s left, after the end, or never), but was not caught.'
 	},
 	'timely-retreat': {
 		id: 'timely-retreat', label: 'Turned away in time', short: 'In time', tone: 'good', color: C.well, decision: true,
-		def: 'Turned away from a ghost in reach with 0.2 to 2 s of power left: well timed.'
+		def: 'Turned away from a ghost it could still reach, with 0.2 to 2 s of power left.'
 	},
 	'early-retreat': {
 		id: 'early-retreat', label: 'Turned away too early', short: 'Too early', tone: 'warn', color: C.early, decision: true,
-		def: 'Turned away from a ghost in reach with more than 2 s left, and chased nothing after it: power wasted.'
+		def: 'Turned away from a ghost it could still reach, with more than 2 s left, and chased nothing after it: power wasted.'
 	},
 	catch: {
 		id: 'catch', label: 'Caught the ghost', short: 'Ate ghost', tone: 'neutral', color: C.other, decision: false,
@@ -69,7 +69,7 @@ export const OUTCOME_INFO: Record<AnyOutcome, OutcomeInfo> = {
 	},
 	other: {
 		id: 'other', label: 'Other', short: 'Other', tone: 'neutral', color: C.other, decision: false,
-		def: 'Was chasing near the end, but it shows no decision: the ghost was out of reach, or too far off to be a danger. In no rate.'
+		def: 'Was chasing in the last 3 s, but it shows no decision: still chasing a ghost more than 5 tiles off when the power ran out, or turned away from one that could no longer be reached. In no rate.'
 	},
 	'late-catch': {
 		id: 'late-catch', label: 'Late catch (older rules)', short: 'Older rules', tone: 'neutral', color: C.other, decision: false,

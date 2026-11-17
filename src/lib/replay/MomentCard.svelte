@@ -11,7 +11,9 @@
 	import { Badge, CueChip } from '#lib/ui/index.ts';
 	import { sceneAt } from './interp';
 	import { keyTime, type Moment } from './list';
-	import { OUTCOME_TONE, ago, leftWords, outcomeLabel } from './story';
+	import { OUTCOME_TONE, ago, outcomeLabel } from './story';
+	import { turnWords } from '../outcomes';
+	import { clipFitsMaze } from './layout';
 	import ZoomView from './ZoomView.svelte';
 	import { focusWindow } from './focus';
 
@@ -30,18 +32,25 @@
 		return () => io.disconnect();
 	});
 
-	const clip = useQuery(api.clips.get, () => (visible ? { id: m.clipId } : 'skip'));
+	const clip = useQuery(api.clips.byTrial, () => (visible ? { trialId: m.trialId } : 'skip'));
+	/** The still, or 'wrong-maze' when the clip was recorded on an earlier version of the maze. */
 	const still = $derived.by(() => {
 		if (!clip.data) return null;
 		try {
 			const d = decodeClip(clip.data as unknown as EncodedClip);
+			if (!clipFitsMaze(clip.data as { mazeId: string; layout?: string }, d.scenes)) return 'wrong-maze' as const;
 			return d.scenes.length ? sceneAt(d.scenes, keyTime(m)) : null;
 		} catch { return null; }
 	});
+	const scene = $derived(still && still !== 'wrong-maze' ? still : null);
 	const cue = $derived(cueById(m.cue));
 	const outcome = $derived(m.outcome as keyof typeof OUTCOME_TONE);
 	// The still zooms on the player and the ghost that matters, so they are not dots in a whole maze.
-	const view = $derived(still ? focusWindow(still.frame, still.maze, { min: 11, pad: 6 }) : null);
+	const view = $derived(scene ? focusWindow(scene.frame, scene.maze, { min: 11, pad: 6 }) : null);
+	/** The turn-away (or the eat that ended the last chase) in the same words as everywhere else. */
+	const ateLast = $derived(m.outcome === 'catch' || m.lastChaseEnd === 'eat');
+	const turn = $derived(m.outcome === 'interrupted' ? '-' : m.turnLeft === null ? 'never' : (turnWords(m.outcome, m.turnLeft, m.lastChaseEnd) ?? '-').replace(/^ate it with /, ''));
+	const death = $derived(m.died ? (m.outcome === 'caught' ? 'Caught' : 'Died') : null);
 	const stillLabel = $derived(
 		(m.outcome === 'timely-retreat' || m.outcome === 'early-retreat') && m.turnAt !== null ? 'At the turn-away'
 		: (m.outcome === 'catch' || m.outcome === 'late-catch') && m.lastEatAt !== null ? 'At the catch'
@@ -53,12 +62,14 @@
 
 <a class="card" {href} bind:this={el} aria-label="{outcomeLabel(outcome)} with {cue.name}, participant {m.label ?? 'unknown'}{m.source === 'bot' ? ', simulated' : ''}{m.oldRules ? ', older rules' : ''}">
 	<div class="thumb">
-		{#if still}
-			<ZoomView scene={still} {cue} view={view!} reduceMotion={reduce} label="Close-up still of the moment" />
+		{#if scene}
+			<ZoomView {scene} {cue} view={view!} reduceMotion={reduce} label="Close-up still of the moment" />
+		{:else if still === 'wrong-maze'}
+			<div class="ph wrong"><span>Recorded on an earlier version of this maze: numbers only</span></div>
 		{:else}
 			<div class="ph" aria-hidden="true"></div>
 		{/if}
-		<span class="still-tag">{stillLabel}</span>
+		{#if still !== 'wrong-maze'}<span class="still-tag">{stillLabel}</span>{/if}
 	</div>
 	<div class="body">
 		<div class="row1">
@@ -70,9 +81,9 @@
 		</div>
 		<CueChip {cue} size="sm" />
 		<dl>
-			<div><dt>{m.outcome === 'catch' ? 'Ate the ghost' : 'Turned away'}</dt><dd class="num">{m.outcome === 'interrupted' ? '-' : m.turnLeft === null ? 'never' : leftWords(m.turnLeft, Math.abs(m.turnLeft) < 0.1 ? 2 : 1)}</dd></div>
+			<div><dt>{ateLast ? 'Ate the ghost' : 'Turned away'}</dt><dd class="num">{turn}</dd></div>
 			<div><dt>At the end</dt><dd class="num">{m.endDist === null ? '-' : m.endDist.toFixed(1) + ' tiles'}</dd></div>
-			{#if m.timeToCaught !== null}<div class="wide"><dt>Caught</dt><dd class="num bad">{m.timeToCaught.toFixed(1)} s after the end</dd></div>{/if}
+			{#if death}<div class="wide"><dt>{death}</dt><dd class="num bad">{m.diedDuring || m.endReason === 'died' ? 'while the power was on' : m.timeToCaught !== null ? `${m.timeToCaught.toFixed(1)} s after the end` : 'after the end'}</dd></div>{/if}
 		</dl>
 		<p class="meta"><span class="num">{m.label ?? 'Unknown participant'}</span> &middot; run {m.blockIndex + 1}, power-up {m.trialIndex + 1} &middot; {ago(m.createdAt, now)}</p>
 	</div>
@@ -96,6 +107,7 @@
 	.thumb { position: relative; min-width: 0; aspect-ratio: 1; background: var(--bg); overflow: hidden; }
 	.tags { display: inline-flex; gap: 4px; }
 	.ph { width: 100%; height: 100%; border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--surface-2), var(--bg)); }
+	.ph.wrong { display: grid; place-items: center; padding: var(--space-4); text-align: center; font-size: var(--text-xs); color: var(--ink-dim); }
 	.still-tag {
 		position: absolute;
 		left: 8px;

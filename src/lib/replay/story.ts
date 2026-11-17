@@ -40,97 +40,110 @@ export const signed = (left: number, digits = 2) => (left < 0 ? '−' : '') + Ma
 /** The trial fields the story needs (a `trials.get` row has all of them). */
 export interface StoryTrial {
 	outcome: Outcome | string;
-	/** Rules version the outcome was computed with; below 2 the sentence says so. */
+	/** Rules version the outcome was computed with; below the current one the sentence says so. */
 	rulesVersion?: number;
 	total: number;
 	endReason: string;
 	turnLeft: number | null;
 	turnDist: number | null;
 	endDist: number | null;
+	/** How the last chase ended: 'turn', 'eat', 'open' (still running), or null without a chase. */
+	lastChaseEnd?: string | null;
+	/** Distance to the last chase's ghost when the power ran out (rules version 3). */
+	chaseEndDist?: number | null;
 	eats: { t: number; left: number; ghost: string }[];
 	allEatenLeft: number | null;
 	wasted: number | null;
 	reaction: number | null;
-	after: { died: boolean; caught: boolean; timeToCaught: number | null; killer: string | null; nearMiss: boolean; minDangerDist: number | null; cut?: string | null };
+	after: { died: boolean; caught: boolean; timeToCaught: number | null; killer: string | null; nearMiss: boolean; minDangerDist: number | null; cut?: string | null; seen?: number };
 }
 
 /**
- * One sentence about what happened. `turnGhost` / `endGhost` name the ghost the player was up
- * against at the turn and at the end (worked out from the clip); without them the sentence falls
- * back to the killer or the last ghost eaten.
+ * One sentence about what happened, matching the board, the markers and the key numbers:
+ * - a last chase that ended by eating the ghost is told as an eat, never as a turn-away;
+ * - a death is "caught" only in a trial classed caught, "died" otherwise, and is told in every class;
+ * - "other" says which of its two cases it was.
+ * `turnGhost` / `endGhost` name the ghost the player was up against at the turn and at the end
+ * (worked out from the clip); without them the sentence falls back to the killer or the last ghost eaten.
  */
 export function describe(t: StoryTrial, opts: { turnGhost?: string | null; endGhost?: string | null } = {}): string {
+	const old = t.rulesVersion !== undefined && t.rulesVersion !== RULES_VERSION ? ' (Classed by older rules; not in the rates.)' : '';
+	return said(t, opts) + old;
+}
+
+function said(t: StoryTrial, opts: { turnGhost?: string | null; endGhost?: string | null }): string {
 	const a = t.after;
 	const killer = ghostName(a.killer);
 	const lastEat = t.eats.length ? t.eats[t.eats.length - 1] : null;
 	const the = (name: string | null | undefined) => (name ? `the ${name}` : 'a ghost');
 	const turnG = the(ghostName(opts.turnGhost) ?? killer);
 	const endG = the(ghostName(opts.endGhost) ?? ghostName(opts.turnGhost) ?? killer);
-	const tiles = (d: number | null) => (d === null ? '' : `, ${s1(d)} tiles away`);
-	const caughtTail = a.timeToCaught !== null ? `${s1(a.timeToCaught)} s after the power ended` : 'after the power ended';
-
-	const old = t.rulesVersion !== undefined && t.rulesVersion !== RULES_VERSION ? ' (Classed by older rules; not in the rates.)' : '';
-	return said(t, a, { killer, lastEat, turnG, endG, tiles, caughtTail }) + old;
-}
-
-function said(
-	t: StoryTrial, a: StoryTrial['after'],
-	w: { killer: string | null; lastEat: StoryTrial['eats'][number] | null; turnG: string; endG: string; tiles: (d: number | null) => string; caughtTail: string }
-): string {
-	const { killer, lastEat, turnG, endG, tiles, caughtTail } = w;
-	// A death after the end that does not count as "caught" (too far away when the power ended, or a
-	// ghost that had not been scared) leaves the class as it is; say what happened anyway.
-	const afterDeath = !a.died ? ''
+	const tiles = (d: number | null | undefined) => (d === null || d === undefined ? '' : `, ${s1(d)} tiles away`);
+	// When the death came: the time to the catch, else the end of what was seen (the death closes the trial).
+	const deathAt = a.timeToCaught ?? (a.died && a.seen !== undefined ? a.seen : null);
+	const after = deathAt !== null ? `${s1(deathAt)} s after the power ended` : 'after the power ended';
+	const by = killer ? ` by the ${killer}` : '';
+	const to = killer ? ` to the ${killer}` : '';
+	const ateLast = t.lastChaseEnd === 'eat' || t.outcome === 'catch';
+	/** The eat that ended the last chase. */
+	const ate = lastEat ? `Ate the ${ghostName(lastEat.ghost)} with ${s1(lastEat.left)} s left${lastEat.left <= 1.5 ? ' (a late catch)' : ''}` : 'Ate the ghost';
+	// A death after the end in a trial not classed caught: say it, with the word "died".
+	const died = !a.died ? ''
 		: a.caught
-			? `; then died${killer ? ` to the ${killer}` : ''} ${caughtTail}, but had been too far from it when the power ran out for that to count as caught`
-			: '; later died to a ghost that had not been scared';
+			? `; then died${to} ${after}, but was more than 5 tiles from a dangerous ghost when the power ran out, so it does not count as caught`
+			: killer ? `; then died to the ${killer} ${after}, a ghost that had not been scared` : `; then died ${after} to a ghost that had not been scared`;
+
 	switch (t.outcome) {
+		case 'interrupted': {
+			const why: Record<string, string> = {
+				died: `Died${to} while the power was still on`,
+				cleared: 'The maze was cleared before the power ran out',
+				refreshed: 'A second power dot restarted the power',
+				quit: 'The run ended before the power ran out'
+			};
+			const w = why[t.endReason] ?? (a.cut === 'quit' ? 'The run ended during the seconds after the end' : 'The power did not run out by itself');
+			return `${w}, so there is no ending to judge.`;
+		}
 		case 'caught': {
-			const by = killer ? ` by the ${killer}` : '';
+			const near = `was ${t.endDist !== null ? `${s1(t.endDist)} tiles` : 'close'} from a ghost that had just turned dangerous when the power ran out, and was caught${by} ${after}`;
+			if (ateLast) return `${ate} and chased nothing after it, but ${near}.`;
+			if (t.lastChaseEnd === null || (t.lastChaseEnd === undefined && t.turnLeft === null)) return `Was not chasing near the end, but ${near}.`;
 			if (t.turnLeft !== null && t.turnLeft < 0) {
 				const later = a.timeToCaught !== null ? ` ${s1(Math.max(0, a.timeToCaught + t.turnLeft))} s later` : '';
 				return `Kept chasing ${turnG} until ${s1(-t.turnLeft)} s after the power ended${tiles(t.turnDist)}, and was caught${by}${later}.`;
 			}
-			if (t.turnLeft !== null && t.turnLeft < 0.2) {
-				return `Was still closing in on ${turnG} when the power ran out${tiles(t.endDist)}, and was caught${by} ${caughtTail}.`;
-			}
-			if (t.turnLeft !== null) {
-				return `Turned away from ${turnG} with ${s1(t.turnLeft)} s left, but was still ${t.endDist !== null ? `${s1(t.endDist)} tiles` : 'close'} from a ghost when the power ran out, and was caught${by} ${caughtTail}.`;
-			}
-			return `Was ${t.endDist !== null ? s1(t.endDist) + ' tiles' : 'close'} from ${endG} when the power ran out, and was caught${by} ${caughtTail}.`;
+			if (t.turnLeft === null || t.turnLeft < 0.2) return `Was still closing in on ${turnG} when the power ran out${tiles(t.endDist)}, and was caught${by} ${after}.`;
+			return `Turned away from ${turnG} with ${s1(t.turnLeft)} s left, but ${near}.`;
 		}
 		case 'catch':
 		case 'late-catch': {
-			const ate = lastEat ? `Caught the ${ghostName(lastEat.ghost)} with ${s1(lastEat.left)} s left${lastEat.left <= 1.5 ? ' (a late catch)' : ''}` : 'Caught the ghost';
-			const tail = a.died ? `, then was caught ${caughtTail}` : a.nearMiss ? ', then got away with a near miss' : ', then got away';
+			const tail = a.died ? died : a.nearMiss ? ', then got away with a near miss' : ', then got away';
 			return `${ate} and chased nothing after it${tail}. A catch shows no decision about the end, so it is in no rate.`;
 		}
 		case 'overstayed': {
 			const near = a.nearMiss && a.minDangerDist !== null ? ` with a near miss (${s1(a.minDangerDist)} tiles)` : '';
 			const react = t.reaction === null ? '' : t.reaction < 0.05 ? ', moved away right as it ran out' : `, moved away ${s1(t.reaction)} s after it ran out`;
 			const when = t.turnLeft === null ? '' : t.turnLeft < 0 ? ` (turned ${s1(-t.turnLeft)} s after the end)` : t.turnLeft > 0.005 ? ` (turned with only ${s1(t.turnLeft)} s left)` : '';
-			const tail = a.died ? afterDeath : `, and got away${near}`;
-			return `Stayed too long: was still chasing ${endG} when the power ran out${tiles(t.endDist)}${when}${react}${tail}.`;
+			return `Stayed too long: was still chasing ${endG} when the power ran out${tiles(t.chaseEndDist ?? t.endDist)}${when}${react}${a.died ? died : `, and got away${near}`}.`;
 		}
 		case 'timely-retreat':
-			return `Turned away from ${turnG} in time, with ${s1(t.turnLeft ?? 0)} s left${tiles(t.turnDist)}${a.died ? afterDeath : ', and was clear when the ghosts turned dangerous'}.`;
+			return `Turned away from ${turnG} in time, with ${s1(t.turnLeft ?? 0)} s left${tiles(t.turnDist)}${a.died ? died : ', and was clear when the ghosts turned dangerous'}.`;
 		case 'early-retreat': {
 			const waste = t.wasted !== null ? `, leaving ${s1(t.wasted)} s of power unused` : '';
-			return `Turned away too early: gave up chasing ${turnG} with ${s1(t.turnLeft ?? 0)} s left${tiles(t.turnDist)} while a ghost was still in reach${waste}${afterDeath}.`;
+			return `Turned away too early: gave up chasing ${turnG} with ${s1(t.turnLeft ?? 0)} s left${tiles(t.turnDist)} while it could still be reached${waste}${died}.`;
 		}
-		case 'not-engaged':
-			return `Was not chasing in the last 3 s of the ${s1(t.total)} s power, so there is no ending to judge.`;
-		case 'other':
-			return 'Was chasing near the end, but none of the classes fits.';
-		case 'interrupted': {
-			const why: Record<string, string> = {
-				died: 'The player was caught while the power was still on',
-				cleared: 'The maze was cleared before the power ran out',
-				refreshed: 'A second power dot restarted the power',
-				quit: 'The player left before the power ran out'
-			};
-			const w = why[t.endReason] ?? (a.cut === 'quit' ? 'The player left during the seconds after the end' : 'The power did not run out by itself');
-			return `${w}, so there is no ending to judge.`;
+		case 'not-engaged': {
+			const what = ateLast ? `${ate}, before the last 3 s, and chased nothing after it`
+				: t.lastChaseEnd === 'turn' && t.turnLeft !== null ? `Turned away from ${turnG} with ${s1(t.turnLeft)} s left, when it could no longer be reached, and chased nothing after it`
+				: `Was not chasing a ghost in the last 3 s of the ${s1(t.total)} s power`;
+			return `${what}, so there is no ending to judge${died}.`;
+		}
+		case 'other': {
+			const still = t.lastChaseEnd === 'open' || (t.turnLeft !== null && t.turnLeft < 0.2);
+			const what = still
+				? `Was still chasing ${endG} when the power ran out, but it was ${t.chaseEndDist != null ? `${s1(t.chaseEndDist)} tiles` : 'more than 5 tiles'} off, too far to be a danger`
+				: `Turned away from ${turnG} with ${s1(t.turnLeft ?? 0)} s left, when it could no longer be reached before the power ran out`;
+			return `${what}, so it shows no decision${died}.`;
 		}
 		default:
 			return '';

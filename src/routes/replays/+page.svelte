@@ -9,7 +9,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api } from '#convex/_generated/api.js';
-	import { Badge, Button, EmptyState, CONSOLE_HREF, Page, PageHeader, Segmented, Select, cueListings } from '#lib/ui/index.ts';
+	import { Badge, Button, EmptyState, CONSOLE_HREF, LoadState, Page, PageHeader, Segmented, Select, cueListings } from '#lib/ui/index.ts';
 	import MomentCard from '#lib/replay/MomentCard.svelte';
 	import { SORTS, queryArgs, readState, toSearch, type ListState, type Source } from '#lib/replay/list.ts';
 	import { OUTCOME_LABEL, OUTCOME_ORDER } from '#lib/replay/story.ts';
@@ -21,7 +21,7 @@
 	const q = useQuery(api.replays.list, () => ({ ...queryArgs(ls), limit: shown }), { keepPreviousData: true });
 	const list = $derived(q.data?.rows ?? []);
 	const total = $derived(q.data?.total ?? 0);
-	const late = slow(() => q.isLoading && !q.data);
+	const wait = slow(() => !q.data && !q.error);
 
 	function set(patch: Partial<ListState>) {
 		shown = PAGE;
@@ -36,9 +36,15 @@
 	]);
 	const participantOptions = $derived([
 		{ value: '', label: 'Everyone' },
-		...(q.data?.participants ?? []).map((p) => ({ value: String(p.number), label: p.label })),
-		...(ls.participant && !(q.data?.participants ?? []).some((p) => String(p.number) === ls.participant) ? [{ value: ls.participant, label: `Participant ${ls.participant}` }] : [])
+		...(q.data?.participants ?? []).map((p) => ({ value: p.id as string, label: ls.source === 'all' && p.source === 'bot' ? `${p.label} (simulated)` : p.label })),
+		...(ls.participant && !(q.data?.participants ?? []).some((p) => p.id === ls.participant || String(p.runNumber) === ls.participant) ? [{ value: ls.participant, label: 'Participant not in this list' }] : [])
 	]);
+	// An old link with a console number (`?p=5`) is rewritten to that participant's id.
+	$effect(() => {
+		if (!/^\d+$/.test(ls.participant) || !q.data) return;
+		const hit = q.data.participants.filter((p) => String(p.runNumber) === ls.participant);
+		if (hit.length === 1) set({ participant: hit[0].id });
+	});
 	const sourceOptions: { value: Source; label: string }[] = [
 		{ value: 'human', label: 'Humans' },
 		{ value: 'bot', label: 'Simulated' },
@@ -98,18 +104,8 @@
 		{/if}
 	</section>
 
-	{#if q.isLoading && !q.data}
-		{#if late.current}
-			<EmptyState title="Can't reach the database" icon="replay" compact>
-				The replays will appear as soon as the connection is back. Nothing needs to be reloaded.
-			</EmptyState>
-		{:else}
-			<p class="status">Loading moments&hellip;</p>
-		{/if}
-	{:else if q.error}
-		<EmptyState title="Could not load replays" icon="replay">
-			The database did not answer. Check that the Convex dev server is running, then reload.
-		</EmptyState>
+	{#if !q.data}
+		<LoadState {wait} error={q.error} what="the replays" icon="replay" />
 	{:else if !outcomeCounts.all && !ls.cue && !ls.participant}
 		{#if ls.source === 'human' && q.data?.has.bot}
 			<EmptyState title="No human replays yet" icon="replay">
@@ -150,9 +146,6 @@
 			<div class="more">
 				<Button onclick={() => (shown += PAGE * 2)} disabled={q.isLoading}>Show more ({total - list.length} left)</Button>
 			</div>
-		{/if}
-		{#if q.data?.truncated}
-			<p class="status">Only the newest 4,000 trials are scanned.</p>
 		{/if}
 	{/if}
 </Page>
