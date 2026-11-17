@@ -2,8 +2,10 @@
  * The app's one write outbox: every telemetry and run-console write goes through here.
  *
  *   startOutbox(client)        once, in the root layout (adopts writes left by closed pages)
- *   outboxStatus               reactive: { state, pending, failing, failingCount, lastError, savedAt }
- *   getOutbox(client).send(fn, args, { id?, lane?, onDone? })
+ *   outboxStatus               reactive: { state, pending, failing, failingCount, lastError, parked, parkedWrites, savedAt }
+ *   getOutbox(client).send(fn, args, { id?, lane?, onDone?, about? })
+ *   retryParked(id?), discardParked(id), parkedJson()   what the researcher can do with parked writes
+ *   <OutboxParked />           (outbox-parked.svelte) the small button and panel that lists them
  *
  * Promises:
  * - **Nothing is dropped.** A write is retried with back-off (up to 30 s apart) for as long as the
@@ -15,7 +17,10 @@
  * - **One bad write does not hold the rest.** A write the server keeps rejecting (not a lost
  *   connection: that only delays) is *parked* after `PARK_AFTER` rejections: it stays stored, is
  *   tried again every `PARKED_RETRY_MS`, counts as failing with its error (`parked`, `parkedErrors`),
- *   and no longer holds its lane, so the later writes of its session go on.
+ *   and no longer holds its lane, so the later writes of its session go on. It is never counted as
+ *   "on the way" (`pending`): it is listed in `parkedWrites` (what, whose, the server's error, since
+ *   when), and the researcher can try it again now, download it as JSON or discard it. A parked
+ *   write stays parked (with its count and error) when another page adopts it.
  * - **Rows that are not there yet.** The run notes (`setup`, `markBlock`) and ratings answer null
  *   while the session or block they belong to has not arrived (it may still be in another tab's
  *   queue); they are tried again every few seconds and do not count as failing.
@@ -40,6 +45,12 @@ const FNS = {
 	markBlock: api.runs.markBlock
 } as const;
 export type OutboxFn = keyof typeof FNS;
+/** The Convex function each write calls, for the JSON download. */
+const FN_NAMES: Record<OutboxFn, string> = {
+	ensure: 'participants:ensure', sessionStart: 'sessions:start', sessionUpdate: 'sessions:update',
+	blockStart: 'blocks:start', blockEnd: 'blocks:end', trial: 'trials:save', rateBlock: 'ratings:saveBlock',
+	rateSession: 'ratings:saveSession', setup: 'runs:setup', markBlock: 'runs:markBlock'
+};
 
 /** These answer null while the row they refer to does not exist yet: wait, do not count as failing. */
 const WAITS = new Set<OutboxFn>(['setup', 'markBlock', 'rateBlock', 'rateSession', 'sessionUpdate', 'blockEnd']);
@@ -58,6 +69,39 @@ interface Job {
 	/** Not before this time (ms): back-off. */
 	at?: number;
 	lastError?: string;
+	/** When it was queued, first rejected, parked and last tried (ms). */
+	queuedAt?: number;
+	firstErrorAt?: number;
+	parkedAt?: number;
+	lastTryAt?: number;
+	/** Who and what it is about, for the researcher (participant label, case). */
+	about?: WriteAbout;
+}
+
+/** Context a caller can attach to a write so a stuck one can be named in plain words. */
+export interface WriteAbout {
+	participant?: string | null;
+	cue?: string | null;
+}
+
+/** A write the server kept rejecting, as the researcher sees it. */
+export interface ParkedWrite {
+	id: string;
+	fn: OutboxFn;
+	/** Plain words: "Power-up 3 (trial)", "Answers after a run"... */
+	what: string;
+	/** Participant label when known. */
+	participant: string | null;
+	/** The session key (one run console participant or one play page). */
+	session: string | null;
+	cue: string | null;
+	/** The server's last error. */
+	error: string;
+	tries: number;
+	queuedAt: number | null;
+	firstErrorAt: number | null;
+	parkedAt: number | null;
+	lastTryAt: number | null;
 }
 
 export type OutboxState = 'saved' | 'saving' | 'offline' | 'failing';
@@ -65,7 +109,7 @@ export type OutboxState = 'saved' | 'saving' | 'offline' | 'failing';
 export interface OutboxStatus {
 	/** saved: nothing waiting. saving: on the way. offline: waiting for the connection. failing: some writes keep erroring. */
 	state: OutboxState;
-	/** Writes on the way (not counting `waiting`). */
+	/** Writes on the way (not counting `waiting` or `parked`: a parked write is not on the way). */
 	pending: number;
 	/** Notes waiting for their session or block to be played (a label typed before the first run). */
 	waiting: number;
@@ -77,12 +121,14 @@ export interface OutboxStatus {
 	parked: number;
 	/** What those writes are and why they fail, oldest first (at most 5). */
 	parkedErrors: { fn: string; error: string }[];
+	/** Every parked write in full, oldest first (for the panel: `OutboxParked`). */
+	parkedWrites: ParkedWrite[];
 	/** When a write last went through (ms), null before the first. */
 	savedAt: number | null;
 }
 
 /** The outbox status (reactive). Pass it to the header's status, or read `.state`. */
-export const outboxStatus: OutboxStatus = $state({ state: 'saved', pending: 0, waiting: 0, failing: false, failingCount: 0, lastError: null, parked: 0, parkedErrors: [], savedAt: null });
+export const outboxStatus: OutboxStatus = $state({ state: 'saved', pending: 0, waiting: 0, failing: false, failingCount: 0, lastError: null, parked: 0, parkedErrors: [], parkedWrites: [], savedAt: null });
 
 export interface SendOptions {
 	/** Queuing the same id again replaces the waiting one (default: a new id). */
@@ -91,6 +137,8 @@ export interface SendOptions {
 	lane?: string;
 	/** Called once Convex has the write, with its result (not kept across pages). */
 	onDone?: (result: unknown) => void;
+	/** Who and what it is about, shown if the write gets stuck. */
+	about?: WriteAbout;
 }
 
 export interface Outbox {
@@ -103,6 +151,12 @@ export interface Outbox {
 	readonly state: OutboxStatus;
 	/** Write the queue to storage now (the page is going away). */
 	persist(): void;
+	/** Try parked writes again now (one by id, or all). */
+	retryParked(id?: string): void;
+	/** Drop a parked write for good (only parked ones; the caller confirms first). Returns whether one was dropped. */
+	discardParked(id: string): boolean;
+	/** Parked writes with their stored arguments, as JSON text (bytes as base64), for a download. */
+	parkedJson(id?: string): string;
 }
 
 // ---------- storage ----------
@@ -162,6 +216,37 @@ function laneOf(fn: string, args: Record<string, unknown>): string | undefined {
 	return undefined;
 }
 
+/** Plain words for a write, for the parked list. */
+const WHAT: Record<OutboxFn, string> = {
+	ensure: 'Participant record',
+	sessionStart: 'Start of a session',
+	sessionUpdate: 'Session details',
+	blockStart: 'Start of a run',
+	blockEnd: 'End of a run',
+	trial: 'Power-up',
+	rateBlock: 'Answers after a run',
+	rateSession: 'Answers at the end',
+	setup: 'Participant label and case order',
+	markBlock: 'Run notes (pauses)'
+};
+
+const str = (x: unknown): string | null => (typeof x === 'string' && x ? x : null);
+
+export function describeWrite(job: Job): ParkedWrite {
+	const a = job.args;
+	const run = (a.run ?? null) as { participantLabel?: string } | null;
+	const index = typeof a.trialIndex === 'number' ? ` ${a.trialIndex + 1}` : '';
+	return {
+		id: job.id, fn: job.fn,
+		what: WHAT[job.fn] + (job.fn === 'trial' ? index : ''),
+		participant: job.about?.participant ?? str(run?.participantLabel) ?? str(a.nickname) ?? null,
+		session: str(a.sessionKey) ?? (job.fn === 'sessionStart' || job.fn === 'sessionUpdate' ? str(a.key) : null),
+		cue: job.about?.cue ?? str(a.cue) ?? null,
+		error: job.lastError ?? '', tries: job.tries,
+		queuedAt: job.queuedAt ?? null, firstErrorAt: job.firstErrorAt ?? null, parkedAt: job.parkedAt ?? null, lastTryAt: job.lastTryAt ?? null
+	};
+}
+
 // ---------- the outbox ----------
 
 let shared: Outbox | null = null;
@@ -173,6 +258,13 @@ export function startOutbox(client: ConvexClient): Outbox {
 
 /** The app's outbox (started on first use if the layout has not yet). */
 export const getOutbox = startOutbox;
+
+/** Try parked writes again now (one, or all). Does nothing before the outbox started. */
+export function retryParked(id?: string): void { shared?.retryParked(id); }
+/** Drop a parked write for good (confirm with the researcher first). */
+export function discardParked(id: string): boolean { return shared?.discardParked(id) ?? false; }
+/** Parked writes (one, or all) as JSON text for a download. */
+export function parkedJson(id?: string): string { return shared?.parkedJson(id) ?? '{"writes":[]}'; }
 
 /** A new outbox (the app uses the one from `startOutbox`; tests make their own). */
 export function createOutbox(client: ConvexClient): Outbox {
@@ -196,16 +288,18 @@ export function createOutbox(client: ConvexClient): Outbox {
 		const now = Date.now();
 		const failing = jobs.filter((j) => j.tries >= 3);
 		const waiting = jobs.filter((j) => j.waits && !j.tries).length;
-		outboxStatus.pending = jobs.length - waiting;
 		outboxStatus.waiting = waiting;
 		const parked = jobs.filter((j) => j.parked);
+		// A parked write is not on the way: it is listed apart, never counted as pending.
+		outboxStatus.pending = jobs.length - waiting - parked.length;
+		outboxStatus.parkedWrites = parked.map(describeWrite);
 		outboxStatus.failingCount = failing.length;
 		outboxStatus.failing = failing.length > 0;
 		outboxStatus.lastError = failing[0]?.lastError ?? null;
 		outboxStatus.parked = parked.length;
 		outboxStatus.parkedErrors = parked.slice(0, 5).map((j) => ({ fn: j.fn, error: j.lastError ?? '' }));
 		const online = connection.status === 'connected' || connection.status === 'connecting';
-		outboxStatus.state = failing.length ? 'failing' : jobs.length === waiting ? 'saved' : !online ? 'offline' : 'saving';
+		outboxStatus.state = failing.length ? (online ? 'failing' : 'offline') : jobs.length === waiting ? 'saved' : !online ? 'offline' : 'saving';
 		if (jobs.length && now - lastBeat > BEAT_MS) persist();
 	}
 
@@ -235,7 +329,9 @@ export function createOutbox(client: ConvexClient): Outbox {
 		}
 		if (!found.length) return;
 		const known = new Set(jobs.map((j) => j.id));
-		jobs = [...found.filter((j) => FNS[j.fn] && !known.has(j.id)).map((j) => ({ ...j, tries: 0, at: undefined })), ...jobs];
+		// A fresh start for writes that were only delayed; a parked write keeps its count, its error and
+		// its slow retry (it was rejected, not delayed), so it is never shown as "on the way" again.
+		jobs = [...found.filter((j) => FNS[j.fn] && !known.has(j.id)).map((j) => (j.parked ? { ...j, at: Math.min(j.at ?? 0, Date.now() + PARKED_RETRY_MS) } : { ...j, tries: 0, at: undefined })), ...jobs];
 		persist();
 		kick();
 	}
@@ -262,6 +358,7 @@ export function createOutbox(client: ConvexClient): Outbox {
 				if (holds && held.has(job.lane!)) continue;
 				if (job.at && job.at > Date.now()) { if (holds) held.add(job.lane!); continue; }
 				let waiting = false;
+				job.lastTryAt = Date.now();
 				try {
 					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 					const res = await client.mutation(FNS[job.fn] as any, job.args as any);
@@ -278,6 +375,7 @@ export function createOutbox(client: ConvexClient): Outbox {
 						job.at = Date.now() + Math.min(15_000, 3000 * (1 + Math.floor(job.waits / 20)));
 					} else {
 						job.tries++;
+						job.firstErrorAt ??= Date.now();
 						job.lastError = String((err as Error)?.message ?? err).slice(0, 300);
 						job.at = Date.now() + backoff(job.tries);
 						if (job.tries === 3) console.warn('[outbox] still failing (kept, will retry):', job.fn, job.lastError);
@@ -285,6 +383,7 @@ export function createOutbox(client: ConvexClient): Outbox {
 						// reject them): set it aside so the rest of its lane goes on.
 						if (!job.parked && job.tries >= PARK_AFTER && connection.status !== 'offline') {
 							job.parked = true;
+							job.parkedAt = Date.now();
 							console.warn('[outbox] parked (kept, tried again every 5 minutes; later writes go on):', job.fn, job.lastError);
 						}
 						if (job.parked) job.at = Date.now() + PARKED_RETRY_MS;
@@ -323,7 +422,7 @@ export function createOutbox(client: ConvexClient): Outbox {
 		send(fn, args, opts) {
 			const o: SendOptions = typeof opts === 'string' ? { id: opts } : opts ?? {};
 			const id = o.id ?? uid();
-			const job: Job = { id, fn, args, tries: 0, ...(o.lane ? { lane: o.lane } : {}) };
+			const job: Job = { id, fn, args, tries: 0, queuedAt: Date.now(), ...(o.lane ? { lane: o.lane } : {}), ...(o.about ? { about: o.about } : {}) };
 			const at = jobs.findIndex((j) => j.id === id);
 			if (at >= 0) jobs[at] = job;
 			else jobs.push(job);
@@ -338,6 +437,24 @@ export function createOutbox(client: ConvexClient): Outbox {
 			const until = Date.now() + timeout;
 			while (count(prefix) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
 		},
-		persist
+		persist,
+		retryParked(id) {
+			for (const j of jobs) if (j.parked && (!id || j.id === id)) j.at = undefined;
+			persist();
+			kick();
+		},
+		discardParked(id) {
+			const before = jobs.length;
+			jobs = jobs.filter((j) => !(j.parked && j.id === id));
+			if (jobs.length === before) return false;
+			callbacks.delete(id);
+			persist();
+			refresh();
+			return true;
+		},
+		parkedJson(id) {
+			const list = jobs.filter((j) => j.parked && (!id || j.id === id)).map((j) => ({ ...describeWrite(j), function: FN_NAMES[j.fn], args: j.args }));
+			return encodeJobs({ savedAt: new Date().toISOString(), note: 'Writes the database kept rejecting, kept by the outbox. Bytes (series, clips) are base64 under __b64.', writes: list });
+		}
 	};
 }

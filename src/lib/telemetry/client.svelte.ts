@@ -179,7 +179,7 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 	const mine = `tel:${instance}:`;
 	let seq = 0;
 	function enqueue(fn: OutboxFn, args: Record<string, unknown>, onDone?: (r: unknown) => void) {
-		outbox.send(fn, args, { id: `${mine}${seq++}`, lane: sessionKey, onDone });
+		outbox.send(fn, args, { id: `${mine}${seq++}`, lane: sessionKey, onDone, about: { participant: ctx.nickname ?? null, cue: ctx.cue } });
 		live.pending = outbox.count(mine);
 	}
 
@@ -354,11 +354,11 @@ export function createTelemetry(client: ConvexClient, ctx: TelemetryContext): Te
 		},
 		rateBlock(clarity, distraction) {
 			if (!opened) open();
-			outbox.send('rateBlock', { key: blockKey + ':rating', blockKey, clarity, distraction }, { id: `rate:${blockKey}` });
+			outbox.send('rateBlock', { key: blockKey + ':rating', blockKey, clarity, distraction }, { id: `rate:${blockKey}`, about: { participant: ctx.nickname ?? null, cue: ctx.cue } });
 		},
 		rateSession(a) {
 			if (!opened) open();
-			outbox.send('rateSession', { key: sessionKey + ':rating', sessionKey, ...a }, { id: `rate:${sessionKey}` });
+			outbox.send('rateSession', { key: sessionKey + ':rating', sessionKey, ...a }, { id: `rate:${sessionKey}`, about: { participant: ctx.nickname ?? null } });
 		},
 		destroy() {
 			clearInterval(beat);

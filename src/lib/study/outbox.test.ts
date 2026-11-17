@@ -114,6 +114,52 @@ describe('outbox', () => {
 		expect(outboxStatus.state).toBe('saved');
 	});
 
+	test('a parked write is listed (what, whose, error, when), never pending, and can be retried, downloaded and discarded', async () => {
+		const { createOutbox, outboxStatus, decodeJobs } = await import('./outbox.svelte.ts');
+		let reject = true;
+		const { client, calls } = fakeClient((name, args) => {
+			if (name === 'trials:save' && args.key === 'bad' && reject) throw new Error('ArgumentValidationError: extra field');
+			return 'ok';
+		});
+		const box = createOutbox(client);
+		box.send('trial', { key: 'bad', sessionKey: 'S', trialIndex: 2, series: new Uint8Array([7]).buffer }, { lane: 'S', about: { participant: 'P07', cue: 'timer-bar' } });
+		await run(4 * 60_000);
+		expect(outboxStatus.parked).toBe(1);
+		expect(outboxStatus.pending).toBe(0);
+		const [w] = outboxStatus.parkedWrites;
+		expect(w).toMatchObject({ fn: 'trial', what: 'Power-up 3', participant: 'P07', cue: 'timer-bar', session: 'S' });
+		expect(w.error).toContain('ArgumentValidationError');
+		expect(w.parkedAt).toBeGreaterThan(0);
+		expect(w.firstErrorAt).toBeLessThanOrEqual(w.parkedAt!);
+		// The download carries the stored arguments, bytes included.
+		const dump = decodeJobs<{ writes: { function: string; args: { key: string; series: ArrayBuffer } }[] }>(box.parkedJson());
+		expect(dump.writes[0].function).toBe('trials:save');
+		expect(new Uint8Array(dump.writes[0].args.series)[0]).toBe(7);
+		// "Try again now" does not wait 5 minutes.
+		const before = calls.length;
+		box.retryParked(w.id);
+		await run(100);
+		expect(calls.length).toBe(before + 1);
+		// Only a parked write can be discarded; then it is gone for good.
+		expect(box.discardParked('no-such-id')).toBe(false);
+		expect(box.discardParked(w.id)).toBe(true);
+		expect(box.count()).toBe(0);
+		expect(outboxStatus.parkedWrites).toEqual([]);
+		expect(outboxStatus.state).toBe('saved');
+	});
+
+	test('a parked write stays parked when another page adopts it (never shown as on the way)', async () => {
+		const { createOutbox, encodeJobs, outboxStatus, PARK_AFTER } = await import('./outbox.svelte.ts');
+		store.setItem('cc.outbox.gone', encodeJobs({ at: Date.now() - 60_000, jobs: [{ id: 'p', fn: 'trial', args: { key: 'bad', sessionKey: 'S' }, lane: 'S', tries: PARK_AFTER, parked: true, parkedAt: 1, lastError: 'rejected' }] }));
+		const { client } = fakeClient(() => { throw new Error('rejected again'); });
+		createOutbox(client);
+		await run(1000);
+		expect(outboxStatus.parked).toBe(1);
+		expect(outboxStatus.pending).toBe(0);
+		expect(outboxStatus.parkedWrites[0].tries).toBeGreaterThanOrEqual(PARK_AFTER);
+		expect(outboxStatus.state).toBe('failing');
+	});
+
 	test('a note whose row is not there yet waits, without counting as failing or pending', async () => {
 		const { createOutbox, outboxStatus } = await import('./outbox.svelte.ts');
 		let there = false;
