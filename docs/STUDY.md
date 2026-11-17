@@ -338,6 +338,22 @@ Flat runs `ubzd01cu`, `uscnvkm9`, `v6zkvjx1` (final rules): 0, 0 and 7 of 78 pai
 apart". The 7 all come from one condition that reached 75% in time on 20 decisions by chance.
 Under rules version 2 a planted run gave -0.48 and 0.52 with 2 pairs.
 
+**Under the final study rules** (fleeing ghosts, model version 2, runs of 16 power-ups; the demo
+data, 40 simulated participants each, `node scripts/simulate.mjs --summary --run <id>`):
+
+| Run | Decisions per condition | Rank correlation with planted noise: in time / too late / too early | Pairs clearly apart (paired, Holm): in time / too late / too early | Dashboard takeaway |
+| --- | --- | --- | --- | --- |
+| Planted `yd3y8vwk` | 205-232 | -0.97 / 0.95 / 0.91 | 20 / 15 / 3 of 78, all 20 in the planted direction | "No condition is clearly best yet": timer bar 76% is not clearly ahead of 7 others; 20 of 78 pairs differ, every clear difference as planted |
+| Flat `yqglh095` | 195-251 | none planted | 0 / 0 / 0 of 78 | "No condition is clearly best yet: across all 78 pairs of conditions, no difference is larger than chance would explain" |
+
+"Clearly best" is a high bar on purpose: the top of the planted table is close (timer bar 0.3 s,
+final count 0.4, burning fuse 0.5), and 40 people do not separate neighbours that close. The
+pairs that do separate are those more than about 0.7 s of planted noise apart. `--summary` and the
+dashboard count separated pairs with the same code (`convex/lib/compare.ts` through
+`dashboard.simCheck`), so they cannot disagree.
+
+The text below describes the runs under the first study rules (random scared ghosts, model version 1).
+
 Read this as follows. The measure itself follows what was planted: against the simulated player's
 own error about the time left, underestimating by more than a second gives about 90% "too early",
 being right about 75% "in time" and none "too late", overestimating by more than a second 60 to
