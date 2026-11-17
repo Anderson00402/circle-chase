@@ -49,9 +49,9 @@
 	</button>
 	<Dialog bind:open title={n === 1 ? 'A write the database refused' : `${n} writes the database refused`} width="lg">
 		<p class="lead">
-			The database turned {n === 1 ? 'this write' : 'these writes'} down several times. {n === 1 ? 'It is' : 'They are'} kept
-			on this machine and tried again every 5 minutes, but {n === 1 ? 'it is' : 'they are'} not on the way: the rest of the
-			session was saved without {n === 1 ? 'it' : 'them'}. Download {n === 1 ? 'it' : 'them'} before discarding anything.
+			The database turned {n === 1 ? 'this write' : 'these writes'} down several times, so {n === 1 ? 'it is' : 'they are'} not
+			saved. {n === 1 ? 'It is' : 'They are'} kept on this machine and tried again every 5 minutes; the rest of the session was
+			saved without {n === 1 ? 'it' : 'them'}. Download {n === 1 ? 'it' : 'them'} before discarding anything.
 		</p>
 		<ul class="list">
 			{#each list as w (w.id)}
