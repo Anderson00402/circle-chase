@@ -191,3 +191,16 @@ export const rebuildDigests = internalMutation({
 		return { cursor: page.continueCursor, isDone: page.isDone, sessions: page.page.length, rows };
 	}
 });
+
+/**
+ * The clip of a trial for the player, wrapped so the answer is never a bare null: convex-svelte does
+ * not notice a result that goes from null (the previous trial had no clip) to null (neither has this
+ * one), which left the player waiting forever when stepping between trials without a recording.
+ */
+export const clipOf = query({
+	args: { trialId: v.id('trials') },
+	handler: async (ctx, { trialId }) => ({
+		trialId,
+		clip: await ctx.db.query('clips').withIndex('by_trial', (i) => i.eq('trialId', trialId)).unique()
+	})
+});

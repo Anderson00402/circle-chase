@@ -37,14 +37,16 @@
 
 	const id = $derived(page.params.trialId ?? '');
 	const trialQ = useQuery(api.trials.get, () => ({ id: id as Id<'trials'> }), { keepPreviousData: true });
-	const clipQ = useQuery(api.clips.byTrial, () => ({ trialId: id as Id<'trials'> }), { keepPreviousData: true });
+	// Wrapped (`{ trialId, clip }`): a bare null result would not be noticed when moving between two trials without a clip.
+	const clipWrapQ = useQuery(api.replays.clipOf, () => ({ trialId: id as Id<'trials'> }), { keepPreviousData: true });
+	const clipQ = { get data() { return clipWrapQ.data?.clip ?? null; }, get isLoading() { return clipWrapQ.isLoading || clipWrapQ.data?.trialId !== id; } };
 	const seriesQ = useQuery(api.trials.series, () => ({ trialId: id as Id<'trials'> }), { keepPreviousData: true });
 	/** The trial on screen: the one asked for, or the previous one until it has loaded. */
 	const trial = $derived(trialQ.data ?? null);
 	/** Everything for the trial in the address has arrived. */
 	const current = $derived(
 		!!trial && trial._id === id && !clipQ.isLoading && !seriesQ.isLoading
-		&& (clipQ.data == null || clipQ.data.trialId === id)
+		&& clipWrapQ.data?.trialId === id
 	);
 	const switching = $derived(!!trial && !current && !trialQ.error);
 	/** No such trial: the id is unknown, or not a trial id at all. Any other failure is shown as a failure. */
