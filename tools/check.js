@@ -117,4 +117,183 @@ for (const key of Object.keys(Core.DIFFICULTY)) {
   console.log(`${key}: random play ran without errors`);
 }
 
+// Play stats. Scenes are posed by hand on level 1 (Neon), whose row 1 is a straight lane from x=1 to x=17.
+// The scene's maze has dots only where a scene puts them.
+const near = (a, b) => a != null && Math.abs(a - b) < 0.011;
+function scene(dotsAt = [2]) {
+  const g = Core.createGame('normal');
+  const s = Core.createStats(g);
+  const m = g.maze;
+  m.dots.fill(0);
+  for (const x of dotsAt) m.dots[1 * m.W + x] = 1;
+  m.left = dotsAt.length;
+  g.state = 'playing';
+  g.time = 10;
+  const ghost = g.enemies[0];
+  // A power-up with one scared ghost parked at (16, 1) and the circle at (3, 1).
+  const power = () => {
+    g.fright = g.frightTotal = 6;
+    Object.assign(ghost, { x: 16, y: 1, t: 0, dir: -1, state: 'active', scared: true });
+    s.event('power');
+  };
+  // One tile per step, as fast as the circle really moves, eating any dot it lands on.
+  const walk = (...xs) => xs.forEach(x => {
+    const dt = 1 / Core.PLAYER_SPEED;
+    Object.assign(g.player, { x, y: 1, t: 0, dir: -1 });
+    g.time += dt;
+    g.fright = Math.max(0, g.fright - dt);
+    const i = 1 * m.W + x;
+    if (m.dots[i]) { m.dots[i] = 0; m.left--; s.event('dot'); }
+    s.step(dt);
+  });
+  const runOut = () => { g.time += g.fright; g.fright = 0; ghost.scared = false; s.step(1 / 120); };
+  Object.assign(g.player, { x: 3, y: 1, t: 0, dir: -1 });
+  return { g, s, ghost, power, walk, runOut };
+}
+const stat = (name, ok, detail) => {
+  if (!ok) fail++;
+  console.log(`stats, ${name}: ${detail} -> ${ok ? 'OK' : 'FAIL'}`);
+};
+
+{
+  // The only dot is behind the circle. Close in for 3 tiles, turn back, let the power run out,
+  // then eat the next power dot 4 s later.
+  const { g, s, power, walk, runOut } = scene();
+  power();
+  walk(4, 5, 6);
+  const leftAtStop = g.fright, stopAt = g.time;
+  walk(5, 4, 3, 2);
+  runOut();
+  const nextAt = g.time + 4;
+  g.time = nextAt;
+  power();
+  const u = s.finish('quit').powers[0];
+  stat('chase then turn back', u.chased && near(u.stopped_left_s, leftAtStop) && u.ended === 'ran_out' &&
+    near(u.to_next_power_s, nextAt - stopAt) && u.length_s === 6,
+  `stopped with ${u.stopped_left_s}s of power left, next power ${u.to_next_power_s}s later, ended ${u.ended}`);
+}
+{
+  const { s, power, walk, runOut } = scene();
+  power();
+  walk(2);
+  runOut();
+  const u = s.finish('quit').powers[0];
+  stat('never chased', !u.chased && u.stopped_left_s === null && u.to_next_power_s === null, `chased ${u.chased}, stopped ${u.stopped_left_s}`);
+}
+{
+  const { s, power, walk, runOut } = scene();
+  power();
+  walk(4, 3);
+  runOut();
+  const u = s.finish('quit').powers[0];
+  stat('one step toward a ghost is not a chase', !u.chased, `chased ${u.chased}`);
+}
+{
+  // A lane of dots leads to the ghost: eating them looks the same as chasing, so it is not counted.
+  const { s, power, walk, runOut } = scene([4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  power();
+  walk(4, 5, 6, 7, 8, 9, 10, 11, 12);
+  runOut();
+  const u = s.finish('quit').powers[0];
+  stat('eating dots toward a ghost is not a chase', !u.chased, `chased ${u.chased}`);
+}
+{
+  // Off the dots, a chase continues through a lane of dots for as long as the circle keeps closing in.
+  const { g, s, power, walk, runOut } = scene([2, 7, 8, 9]);
+  power();
+  walk(4, 5, 6, 7, 8, 9);
+  const leftAtStop = g.fright;
+  walk(8, 7);
+  runOut();
+  const u = s.finish('quit').powers[0];
+  stat('a chase keeps going through dots', u.chased && near(u.stopped_left_s, leftAtStop), `stopped with ${u.stopped_left_s}s left`);
+}
+{
+  // Eating a ghost counts as chasing even without the steps; with no scared ghost left the power-up is over.
+  const { g, s, ghost, power, walk } = scene();
+  power();
+  walk(4);
+  g.fright = 3.25;
+  ghost.scared = false;
+  ghost.state = 'returning';
+  s.event('eat');
+  walk(5);
+  const u = s.finish('quit').powers[0];
+  stat('eating a ghost', u.chased && u.ghosts_eaten === 1 && near(u.stopped_left_s, 3.25) && u.ended === 'no_ghosts_left',
+    `ate ${u.ghosts_eaten} with ${u.stopped_left_s}s left, ended ${u.ended}`);
+}
+{
+  // Survival: Start to the last death; each life counts only time the circle could move.
+  const { g, s, power, walk } = scene();
+  g.time = 0;
+  g.state = 'ready';
+  while (g.state === 'ready') { g.update(1 / 120); s.step(1 / 120); } // the READY wait: not part of a life
+  const readyEnd = g.time;
+  for (let i = 0; i < 120 * 5; i++) { g.time += 1 / 120; s.step(1 / 120); }  // 5 s of play
+  power();
+  walk(4, 5, 6);
+  g.state = 'dying';
+  g.lives = 1;
+  s.event('die');
+  const firstDeath = g.time;
+  g.time += 20;                       // dying, READY, and a second life of 20 s
+  const between = s.survival();       // the clock keeps running after a life is lost
+  g.state = 'playing';
+  for (let i = 0; i < 120 * 10; i++) { g.time += 1 / 120; s.step(1 / 120); }
+  g.lives = 0;
+  s.event('die');
+  const lastDeath = g.time;
+  g.time += 1.6;                      // the death animation before GAME OVER
+  const shown = s.survival();         // the clock on screen stops at the last death
+  const { play, powers } = s.finish('game_over');
+  stat('survival', near(play.survival_s, lastDeath) && play.life_s.length === 2 && near(play.life_s[0], firstDeath - readyEnd) && readyEnd >= 1.8 &&
+    near(play.life_s[1], 10) && powers[0].ended === 'died' && play.ended === 'game_over',
+  `survived ${play.survival_s}s, lives ${play.life_s.join(' + ')}s, power-up ended ${powers[0].ended}`);
+  stat('survival clock', near(between, firstDeath + 20) && near(shown, lastDeath) && near(s.survival(), play.survival_s),
+    `${between.toFixed(2)}s between lives, stopped at ${shown.toFixed(2)}s through the death animation, same as saved`);
+  stat('finish only once', s.finish('quit') === null && Core.createStats(Core.createGame()).finish('quit') === null,
+    'a second finish, and a game that never started, give nothing');
+}
+
+// Random games with stats attached: the numbers always make sense.
+{
+  let games = 0, ups = 0, chased = 0, bad = [];
+  for (const key of Object.keys(Core.DIFFICULTY)) {
+    for (let run = 0; run < 4; run++) {
+      let s;
+      const g = Core.createGame(key, type => s.event(type));
+      s = Core.createStats(g);
+      // A circle that heads for the nearest scared ghost about half the time.
+      for (let i = 0; i < 120 * 900 && g.state !== 'over'; i++) {
+        if (i % 30 === 0) {
+          const target = g.fright > 0 && Math.random() < 0.5 && g.enemies.find(e => e.scared);
+          if (target) {
+            const dx = target.x - g.player.x, dy = target.y - g.player.y;
+            g.steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 3 : 1) : (dy > 0 ? 2 : 0));
+          } else g.steer(Math.floor(Math.random() * 4));
+        }
+        g.update(1 / 120);
+        s.step(1 / 120);
+      }
+      const { play, powers } = s.finish(g.state === 'over' ? 'game_over' : 'quit');
+      games++;
+      ups += powers.length;
+      chased += powers.filter(u => u.chased).length;
+      const lifeSum = play.life_s.reduce((a, b) => a + b, 0);
+      if (play.survival_s < lifeSum - 0.05 || play.survival_s > g.time + 0.01) bad.push(`survival ${play.survival_s} vs lives ${lifeSum}`);
+      if (Math.abs(play.survival_s - s.survival()) > 0.006) bad.push(`clock ${s.survival()} vs saved ${play.survival_s}`);
+      if (play.ended === 'game_over' && play.life_s.length < g.diff.lives) bad.push(`${play.life_s.length} lives recorded`);
+      powers.forEach((u, i) => {
+        if (!u.ended) bad.push(`power-up ${u.n} never ended`);
+        if (u.n !== i + 1) bad.push(`power-up numbered ${u.n} at ${i + 1}`);
+        if (u.chased !== (u.stopped_left_s !== null)) bad.push(`power-up ${u.n}: chased ${u.chased} but stop ${u.stopped_left_s}`);
+        if (u.stopped_left_s !== null && (u.stopped_left_s < 0 || u.stopped_left_s > u.length_s)) bad.push(`stop ${u.stopped_left_s} of ${u.length_s}`);
+        if (u.to_next_power_s !== null && (u.to_next_power_s < 0 || i === powers.length - 1)) bad.push(`to next ${u.to_next_power_s}`);
+      });
+    }
+  }
+  stat('random games', !bad.length && ups > 0 && chased > 0,
+    `${games} games, ${ups} power-ups, ${chased} chased${bad.length ? '; ' + bad.slice(0, 5).join('; ') : ''}`);
+}
+
 process.exit(fail ? 1 : 0);
