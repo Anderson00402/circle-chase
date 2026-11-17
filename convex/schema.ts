@@ -92,7 +92,8 @@ export default defineSchema({
 	})
 		.index('by_key', ['key'])
 		.index('by_session', ['sessionId', 'orderIndex'])
-		.index('by_cue', ['cue', 'startedAt']),
+		.index('by_cue', ['cue', 'startedAt'])
+		.index('by_source_started', ['source', 'startedAt']),
 
 	/** One power-up, measured (STUDY.md "What is recorded for every trial"). */
 	trials: defineTable({
@@ -188,7 +189,8 @@ export default defineSchema({
 		.index('by_key', ['key'])
 		.index('by_session', ['sessionId'])
 		.index('by_cue', ['cue', 'createdAt'])
-		.index('by_block', ['blockId']),
+		.index('by_block', ['blockId'])
+		.index('by_source_created', ['source', 'createdAt']),
 
 	/** Who is playing what right now. Refreshed by a heartbeat; stale rows are removed by a cron. */
 	presence: defineTable({

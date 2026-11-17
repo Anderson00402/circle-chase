@@ -177,6 +177,47 @@ describe('exports.page', () => {
 	});
 });
 
+describe('export downloads (HTTP)', () => {
+	/** Download one file through the real route; fails the test if it does not finish in time. */
+	async function get(t: ReturnType<typeof convexTest>, path: string): Promise<string> {
+		const res = await Promise.race([
+			t.fetch(path, { method: 'GET' }).then((r) => r.text()),
+			new Promise<never>((_, no) => setTimeout(() => no(new Error(`${path} did not finish`)), 5000))
+		]);
+		return res;
+	}
+
+	test('finish with every matching row when most pages match nothing (human rows among bot rows)', async () => {
+		const t = convexTest(schema, modules);
+		// Bot rows first, then one human block, rating and trial, then more bot rows: with pages of one
+		// row nearly every page holds nothing for the human filter.
+		const bots = [];
+		for (let i = 0; i < 4; i++) bots.push(await setup(t, `bot${i}`, 'bot'));
+		const h = await setup(t, 'human1');
+		for (let i = 4; i < 7; i++) bots.push(await setup(t, `bot${i}`, 'bot'));
+		let n = 0;
+		for (const k of bots) {
+			await t.mutation(api.trials.save, trialArgs(k, `bt${n}`, 0));
+			await t.mutation(api.ratings.saveBlock, { key: `br${n++}`, blockKey: k.blockKey, clarity: 4, distraction: 4 });
+		}
+		await t.mutation(api.trials.save, trialArgs(h, 'ht', 0));
+		await t.mutation(api.ratings.saveBlock, { key: 'hr', blockKey: h.blockKey, clarity: 6, distraction: 1 });
+		for (const kind of ['trials', 'ratings', 'blocks']) {
+			for (const size of ['', '&pageSize=1', '&pageSize=2']) {
+				const csv = await get(t, `/export/${kind}.csv?source=human${size}`);
+				expect(csv.trim().split('\n'), `${kind}.csv${size}`).toHaveLength(2);
+				const json = JSON.parse(await get(t, `/export/${kind}.json?source=human${size}`));
+				expect(json, `${kind}.json${size}`).toHaveLength(1);
+				const bot = JSON.parse(await get(t, `/export/${kind}.json?source=bot${size}`));
+				expect(bot, `${kind}.json bot${size}`).toHaveLength(7);
+			}
+			// A filter that matches nothing still ends: a header alone, an empty array.
+			expect((await get(t, `/export/${kind}.csv?source=human&cue=nothing&pageSize=1`)).trim().split('\n')).toHaveLength(1);
+			expect(JSON.parse(await get(t, `/export/${kind}.json?source=bot&run=nothing&pageSize=1`))).toEqual([]);
+		}
+	});
+});
+
 describe('participants.ensure numbering', () => {
 	test('run-console participants are numbered on their own, per source; play pages use no number', async () => {
 		const t = convexTest(schema, modules);

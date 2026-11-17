@@ -30,11 +30,11 @@ function filterFrom(p: URLSearchParams): Filter {
 /**
  * Download links, streamed page by page so they work at any size:
  *   /export/trials.csv, /export/trials.json  (one row per trial; JSON adds the unpacked series)
- *   /export/ratings.csv                      (block and session questionnaire answers)
- *   /export/blocks.csv                       (one row per run of a case, with pauses and its rating)
+ *   /export/ratings.csv, /export/ratings.json (block and session questionnaire answers)
+ *   /export/blocks.csv, /export/blocks.json   (one row per run of a case, with pauses and its rating)
  * Same filter as the read queries, as query parameters; `pageSize` (1-1000) forces smaller pages.
  */
-const ROUTES: [Kind, 'csv' | 'json'][] = [['trials', 'csv'], ['trials', 'json'], ['ratings', 'csv'], ['blocks', 'csv']];
+const ROUTES: [Kind, 'csv' | 'json'][] = [['trials', 'csv'], ['trials', 'json'], ['ratings', 'csv'], ['ratings', 'json'], ['blocks', 'csv'], ['blocks', 'json']];
 for (const [kind, format] of ROUTES) {
 	http.route({
 		path: `/export/${kind}.${format}`,
@@ -52,24 +52,30 @@ for (const [kind, format] of ROUTES) {
 			const stream = new ReadableStream<Uint8Array>({
 				async pull(out) {
 					try {
-						if (done) { out.close(); return; }
-						const page = await ctx.runQuery(api.exports.page, { ...f, kind, format, paginationOpts: { numItems: size, cursor } });
+						// Keep reading pages until one has something to send or the export is done. A page
+						// may match no row at all (human rows among thousands of simulated ones); returning
+						// without enqueuing would leave the stream waiting forever, since it only asks
+						// again after a chunk was read.
 						let text = '';
-						if (format === 'csv') {
-							if (first && page.header) text += page.header + '\n';
-							for (const line of page.rows as string[]) text += line + '\n';
-						} else {
-							if (first) text += '[';
-							for (const row of page.rows) text += (rows++ > 0 ? ',\n' : '') + JSON.stringify(row);
-							if (page.isDone) text += ']\n';
+						while (!text && !done) {
+							const page = await ctx.runQuery(api.exports.page, { ...f, kind, format, paginationOpts: { numItems: size, cursor } });
+							if (format === 'csv') {
+								if (first && page.header) text += page.header + '\n';
+								for (const line of page.rows as string[]) text += line + '\n';
+							} else {
+								if (first) text += '[';
+								for (const row of page.rows) text += (rows++ > 0 ? ',\n' : '') + JSON.stringify(row);
+								if (page.isDone) text += ']\n';
+							}
+							first = false;
+							cursor = page.continueCursor;
+							if (page.isDone) done = true;
 						}
-						first = false;
-						cursor = page.continueCursor;
-						if (page.isDone) done = true;
 						if (text) out.enqueue(enc.encode(text));
-						else if (done) out.close();
+						if (done) out.close();
 					} catch (err) {
 						// Headers are already sent: end the file with a line that says it is incomplete.
+						done = true;
 						out.enqueue(enc.encode(format === 'csv' ? `\nEXPORT FAILED: ${String(err)}\n` : `\n"EXPORT FAILED: ${String(err).replace(/"/g, "'")}"\n`));
 						out.close();
 					}

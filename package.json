@@ -16,7 +16,7 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest run",
-		"e2e": "node scripts/run-e2e.mjs && node scripts/outbox-e2e.mjs",
+		"e2e": "node scripts/run-e2e.mjs && node scripts/outbox-e2e.mjs && node scripts/export-e2e.mjs",
 		"convex": "CONVEX_AGENT_MODE=anonymous convex dev",
 		"dev:all": "(CONVEX_AGENT_MODE=anonymous convex dev &) && vite dev"
 	},

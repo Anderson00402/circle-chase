@@ -164,7 +164,16 @@ export const page = query({
 				} else rows.push(await trialRow(t, j));
 			}
 		} else if (k === 'ratings') {
-			const p = await ctx.db.query('ratings').paginate(paginationOpts);
+			// The narrowest index: one session, else one cue, else one source, in the time range.
+			const src = f.source ?? 'human', from = f.from ?? 0, to = f.to ?? Number.MAX_SAFE_INTEGER;
+			const q = f.sessionId
+				? ctx.db.query('ratings').withIndex('by_session', (i) => i.eq('sessionId', f.sessionId!))
+				: f.cue
+					? ctx.db.query('ratings').withIndex('by_cue', (i) => i.eq('cue', f.cue!).gte('createdAt', from).lte('createdAt', to))
+				: src !== 'all'
+					? ctx.db.query('ratings').withIndex('by_source_created', (i) => i.eq('source', src).gte('createdAt', from).lte('createdAt', to))
+					: ctx.db.query('ratings');
+			const p = await q.paginate(paginationOpts);
 			res = p;
 			for (const r of p.page) {
 				if (f.run || !matchesRow(r, f, r.createdAt, null)) {
@@ -173,8 +182,15 @@ export const page = query({
 				rows.push(await ratingRow(r, j));
 			}
 		} else {
-			// One session: its own index (the whole table may hold thousands of simulated blocks).
-			const q = f.sessionId ? ctx.db.query('blocks').withIndex('by_session', (i) => i.eq('sessionId', f.sessionId!)) : ctx.db.query('blocks');
+			// One session, else one source in the time range: the whole table holds thousands of simulated blocks.
+			const src = f.source ?? 'human', from = f.from ?? 0, to = f.to ?? Number.MAX_SAFE_INTEGER;
+			const q = f.sessionId
+				? ctx.db.query('blocks').withIndex('by_session', (i) => i.eq('sessionId', f.sessionId!))
+				: f.cue
+					? ctx.db.query('blocks').withIndex('by_cue', (i) => i.eq('cue', f.cue!).gte('startedAt', from).lte('startedAt', to))
+				: src !== 'all'
+					? ctx.db.query('blocks').withIndex('by_source_started', (i) => i.eq('source', src).gte('startedAt', from).lte('startedAt', to))
+					: ctx.db.query('blocks');
 			const p = await q.paginate(paginationOpts);
 			res = p;
 			for (const b of p.page) {
@@ -182,9 +198,9 @@ export const page = query({
 				rows.push(await blockRow(ctx, b, j));
 			}
 		}
-		const empty = await emptyRow(ctx, k, fmt);
 		if (fmt === 'csv') {
-			return { header: csvHeader([rows[0] ?? empty]), rows: rows.map((r) => Object.values(r).map(cell).join(',')), isDone: res.isDone, continueCursor: res.continueCursor };
+			// The header comes from a matching row; only a page without one reads a stand-in row.
+			return { header: csvHeader([rows[0] ?? (await emptyRow(ctx, k, fmt))]), rows: rows.map((r) => Object.values(r).map(cell).join(',')), isDone: res.isDone, continueCursor: res.continueCursor };
 		}
 		return { header: null, rows, isDone: res.isDone, continueCursor: res.continueCursor };
 	}
