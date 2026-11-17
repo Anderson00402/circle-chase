@@ -435,8 +435,8 @@ data, 40 simulated participants each, `node scripts/simulate.mjs --summary --run
 
 | Run | Decisions per condition | Rank correlation with planted noise: in time / too late / too early | Pairs clearly apart (paired, Holm): in time / too late / too early | Dashboard takeaway |
 | --- | --- | --- | --- | --- |
-| Planted `2xy6xrqq` | 189-229 | -0.99 / 0.95 / 0.91 | 32 / 9 / 5 of 78, all 32 in the planted direction | A top group led by the timer bar (74%), final count (72%), ink refill (71%) and burning fuse (69%), none clearly apart from each other; dot sweep and no signal (36%) at the bottom |
-| Flat `3allkras` | 198-226 | none planted | 0 / 0 / 0 of 78 | No condition stands out: no difference is larger than chance would explain |
+| Planted `2xy6xrqq` | 189-229 | -0.99 / 0.95 / 0.91 | 32 / 9 / 5 of 78, all 32 in the planted direction "Timer bar and Final count lead: each is clearly ahead of 6 others, and they cannot be told apart from each other yet." Ink refill, burning fuse, deflating player, clock halos and waking ghosts are not clearly behind them; the classic blink and five others are |
+| Flat `3allkras` | 198-226 | none planted | 0 / 0 / 0 of 78 "No condition stands out yet: none of the 78 pairs of conditions differs by more than chance would explain." |
 
 "Clearly best" is a high bar on purpose: the top of the planted table is close (timer bar 0.3 s,
 final count 0.4, burning fuse 0.5, ink refill 0.6), and 40 people do not separate neighbours that
