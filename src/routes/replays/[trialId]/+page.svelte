@@ -374,6 +374,8 @@
 		: trial?.endReason === 'quit' ? 'Run ended'
 		: 'Power cut';
 
+	/** The whole run at the playhead (the run player turns this trial's game time into run time). */
+	const wholeRunHref = $derived(trial?.block?.key ? `/replays/run/${trial.block.key}#trial=${trial._id}&at=${time.toFixed(2)}` : '');
 	const fmt = (x: number | null | undefined, d = 1) => (x === null || x === undefined ? null : Math.abs(x) < 0.1 && x !== 0 && d === 1 ? x.toFixed(2) : x.toFixed(d));
 	const W = $derived(scene?.maze.W ?? 28);
 	const H = $derived(scene?.maze.H ?? 31);
@@ -453,6 +455,7 @@
 				{#if trial.source === 'bot'}<Badge tone="sim" title="Recorded from a simulated player, not a person">Simulated</Badge>{/if}
 				{#if oldRules}<Badge tone="warn" title="Classed by older rules: shown, but left out of the rates">Older rules</Badge>{/if}
 				{#if switching}<span class="switching" role="status">Loading the next replay&hellip;</span>{/if}
+				{#if trial.block?.key}<a class="whole" href={wholeRunHref} title="Open the recording of the whole run at this moment">Watch in the whole run</a>{/if}
 			</div>
 			<div class="prevnext">
 				{#if navError}
@@ -670,6 +673,7 @@
 	.nav-error { color: var(--warn); font-size: var(--text-sm); max-width: 42ch; }
 	.loading { color: var(--ink-dim); padding: var(--space-6) 0; }
 	.switching { color: var(--ink-dim); font-size: var(--text-sm); }
+	.whole { font-size: var(--text-sm); }
 	.player.switching { opacity: 0.6; transition: opacity var(--dur) var(--ease); }
 
 	.player {

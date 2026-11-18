@@ -125,7 +125,7 @@ export const get = query({
 			series: packed ? unpackSeries(packed) : null,
 			clipId: t.clipId ?? null,
 			participant: participant ? { number: participant.number, nickname: participant.nickname ?? null, id: participant._id, runNumber: participant.runNumber ?? null, source: participant.source } : null,
-			block: block ? { cue: block.cue, orderIndex: block.orderIndex, trialCount: block.trialCount } : null
+			block: block ? { key: block.key, cue: block.cue, orderIndex: block.orderIndex, trialCount: block.trialCount } : null
 		};
 	}
 });

@@ -12,11 +12,14 @@
 	import { api } from '#convex/_generated/api.js';
 	import { Badge, Button, EmptyState, CONSOLE_HREF, LoadState, Page, PageHeader, Segmented, Select, cueListings } from '#lib/ui/index.ts';
 	import MomentCard from '#lib/replay/MomentCard.svelte';
+	import WholeRuns from '#lib/replay/WholeRuns.svelte';
 	import { SORTS, dashboardHref, dashboardScope, queryArgs, readState, toSearch, type ListState, type Source } from '#lib/replay/list.ts';
 	import { OUTCOME_LABEL, OUTCOME_ORDER } from '#lib/replay/story.ts';
 	import { slow } from '#lib/ui/connection.svelte.ts';
 
 	const PAGE = 24;
+	/** "Whole runs" (every run recorded from start to end) instead of the moments. */
+	const runsView = $derived(page.url.searchParams.get('view') === 'runs');
 	const ls = $derived(readState(page.url.searchParams));
 	/**
 	 * How far "Show more" went and where the page was scrolled, per list (its query), for this tab:
@@ -36,7 +39,7 @@
 	beforeNavigate(() => {
 		try { sessionStorage.setItem(VIEW_KEY(toSearch(ls)), JSON.stringify({ shown, y: Math.round(window.scrollY) })); } catch { /* storage blocked */ }
 	});
-	const q = useQuery(api.replays.list, () => ({ ...queryArgs(ls), limit: shown }), { keepPreviousData: true });
+	const q = useQuery(api.replays.list, () => (runsView ? 'skip' : { ...queryArgs(ls), limit: shown }), { keepPreviousData: true });
 	const list = $derived(q.data?.rows ?? []);
 	const total = $derived(q.data?.total ?? 0);
 	const wait = slow(() => !q.data && !q.error);
@@ -110,6 +113,15 @@
 		{/snippet}
 	</PageHeader>
 
+	<nav class="views" aria-label="What to list">
+		<a href="/replays" aria-current={runsView ? undefined : 'page'}>Moments</a>
+		<a href="/replays?view=runs" aria-current={runsView ? 'page' : undefined}>Whole runs</a>
+	</nav>
+
+	{#if runsView}
+		<WholeRuns />
+	{:else}
+
 	<section class="filters" aria-label="Filters">
 		<div class="row">
 			<Segmented label="Data" options={sourceOptions} value={ls.source} onchange={(v) => set({ source: v, participant: '' })} />
@@ -182,7 +194,10 @@
 		</p>
 		<ul class="grid">
 			{#each list as m (m.trialId)}
-				<li data-trial={m.trialId}><MomentCard {m} {now} href="/replays/{m.trialId}{search}" /></li>
+				<li data-trial={m.trialId}>
+					<MomentCard {m} {now} href="/replays/{m.trialId}{search}" />
+					<a class="whole" href="/replays/run/{m.trialId}" title="Watch the whole run this power-up was played in">Whole run</a>
+				</li>
 			{/each}
 		</ul>
 		{#if total > list.length}
@@ -190,6 +205,7 @@
 				<Button onclick={() => (shown += PAGE * 2)} disabled={q.isLoading}>Show more ({total - list.length} left)</Button>
 			</div>
 		{/if}
+	{/if}
 	{/if}
 </Page>
 
@@ -244,7 +260,13 @@
 		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 		gap: var(--space-4);
 	}
-	.grid > li { min-width: 0; }
+	.grid > li { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+	.whole { align-self: flex-end; font-size: var(--text-xs); color: var(--ink-dim); }
+	.whole:hover { color: var(--accent); }
+	.views { display: flex; gap: var(--space-1); margin: 0 0 var(--space-3); }
+	.views a { padding: 6px 14px; border-radius: var(--radius-pill); border: 1px solid var(--rule); color: var(--ink-dim); text-decoration: none; font-size: var(--text-sm); font-weight: 600; }
+	.views a:hover { color: var(--ink); background: var(--surface-2); }
+	.views a[aria-current='page'] { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
 	.more { display: flex; justify-content: center; padding: var(--space-5) 0; }
 	@media (max-width: 520px) {
 		.grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }

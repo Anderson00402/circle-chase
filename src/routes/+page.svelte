@@ -292,11 +292,14 @@
 						{#each runs as r (r.key)}
 							{@const c = cueById(r.cue)}
 							<li>
-								<a href={summaryHref(r.cue, r.key, r.mode)} title="Open the summary of run {r.orderIndex + 1}: {r.counted} decision{r.counted === 1 ? '' : 's'} from {r.trials} power-ups{r.trials ? `; ${mixWords(r.outcomes, 8)}` : ''}">
+								<a class="row" href={summaryHref(r.cue, r.key, r.mode)} title="Open the summary of run {r.orderIndex + 1}: {r.counted} decision{r.counted === 1 ? '' : 's'} from {r.trials} power-ups{r.trials ? `; ${mixWords(r.outcomes, 8)}` : ''}">
 									<span class="i num">{r.orderIndex + 1}</span>
 									<span class="what"><span class="num">{c.code}</span> {c.name}{r.mode === 'arcade' ? ` (${MODE_LABEL.arcade.toLowerCase()})` : ''}</span>
 									<span class="count num">{r.counted}<span class="of"> / {r.trials}</span></span>
 									<span class="bar"><OutcomeBar outcomes={r.outcomes} height={4} /></span>
+								</a>
+								<a class="whole" href="/replays/run/{r.key}" title="Watch run {r.orderIndex + 1} from start to end" aria-label="Watch run {r.orderIndex + 1} from start to end">
+									<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4 3l9 5-9 5z" fill="currentColor" /></svg>
 								</a>
 							</li>
 						{/each}
@@ -524,11 +527,16 @@
 	.suggest.good { color: var(--good); }
 	.link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 650; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 	.runs { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
-	.runs-head { display: grid; grid-template-columns: 22px minmax(0, 1fr) 52px 70px; gap: 8px; padding: 0 4px; margin: 0; color: var(--ink-faint); font-size: var(--text-xs); }
+	.runs-head { display: grid; grid-template-columns: 22px minmax(0, 1fr) 52px 70px; gap: 8px; padding: 0 30px 0 4px; margin: 0; color: var(--ink-faint); font-size: var(--text-xs); }
+	.runs li { display: flex; align-items: center; gap: 4px; }
+	.runs a.row { flex: 1; min-width: 0; }
+	.runs a.whole { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--radius-sm); color: var(--ink-faint); }
+	.runs a.whole:hover { color: var(--accent); background: var(--surface-2); }
+	.runs a.whole:focus-visible { outline: 2px solid var(--focus); }
 	.runs-head span:first-child, .runs-head span:nth-child(3) { text-align: right; }
-	.runs a { display: grid; grid-template-columns: 22px minmax(0, 1fr) 52px 70px; align-items: center; gap: 8px; padding: 2px 4px; border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--ink); text-decoration: none; }
-	.runs a:hover { background: var(--surface-2); }
-	.runs a:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+	.runs a.row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 52px 70px; align-items: center; gap: 8px; padding: 2px 4px; border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--ink); text-decoration: none; }
+	.runs a.row:hover { background: var(--surface-2); }
+	.runs a.row:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
 	.runs .i { color: var(--ink-faint); text-align: right; }
 	.runs .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.runs .count { text-align: right; color: var(--ink); font-weight: 650; }

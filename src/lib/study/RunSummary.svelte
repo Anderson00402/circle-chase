@@ -115,7 +115,10 @@
 	<div class="grid" class:solo={hideCase}>
 		{#if !hideCase}
 		<section class="what" aria-labelledby="sum-title">
-			<h2 id="sum-title">What was measured</h2>
+			<div class="what-head">
+				<h2 id="sum-title">What was measured</h2>
+				<Button size="sm" href="/replays/run/{blockKey}">Watch the whole run</Button>
+			</div>
 			<dl class="stats">
 				<div><dt>Power-ups</dt><dd class="num">{trials}</dd></div>
 				<div><dt title="Power-ups where the player had to decide about the end: turned away or stayed on. The rates use these.">Decisions measured</dt><dd class="num">{d?.counted ?? localDecisions ?? '-'}</dd></div>
@@ -205,6 +208,8 @@
 </div>
 
 <style>
+	.what-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+	.what-head h2 { margin: 0; }
 	.summary { width: 100%; max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-4); padding-bottom: var(--space-3); }
 	.eyebrow { color: var(--accent); }
 	h1 { display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-2xl); font-weight: 600; margin-top: var(--space-1); }
