@@ -66,6 +66,29 @@ describe('outbox', () => {
 		expect(outboxStatus.state).toBe('saved');
 	});
 
+	test('run chunks (quiet writes) go after the trial writes, in their own order, and do not show as saving', async () => {
+		const { createOutbox, outboxStatus } = await import('./outbox.svelte.ts');
+		let release: () => void = () => {};
+		let hold = true;
+		const { client, calls } = fakeClient((name) => (hold && name === 'trials:save' ? new Promise<string>((r) => (release = () => r('ok'))) : 'ok'));
+		const box = createOutbox(client);
+		box.send('runChunk', { blockKey: 'b', i: 0 }, { id: 'rec:b:0', lane: 'rec:b:', quiet: true });
+		box.send('runChunk', { blockKey: 'b', i: 1 }, { id: 'rec:b:1', lane: 'rec:b:', quiet: true });
+		box.send('trial', { key: 't1', sessionKey: 's' }, { lane: 's' });
+		box.send('runFinish', { blockKey: 'b' }, { id: 'rec:b:end', lane: 'rec:b:', quiet: true });
+		await run(5);
+		// The trial was tried first; the chunks only after it.
+		expect(calls[0]).toBe('trials:save:t1');
+		hold = false;
+		release();
+		await run(50);
+		expect(calls).toEqual(['trials:save:t1', 'runRecordings:saveChunk:b', 'runRecordings:saveChunk:b', 'runRecordings:finish:b']);
+		// While only fresh quiet writes wait, the indicator says saved.
+		box.send('runChunk', { blockKey: 'b', i: 2 }, { id: 'rec:b:2', lane: 'rec:b:', quiet: true });
+		expect(outboxStatus.state).toBe('saved');
+		expect(outboxStatus.pending).toBe(0);
+	});
+
 	test('a lane goes in order; a stuck lane does not hold the others', async () => {
 		const { createOutbox } = await import('./outbox.svelte.ts');
 		const { client, calls } = fakeClient((name, args) => {
