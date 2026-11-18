@@ -113,6 +113,35 @@ for (const key of Object.keys(Core.DIFFICULTY)) {
   console.log(`power running out: blinks with 4-3, 3-2, 2-1, 1-0 s left: ${counts.join(', ')} (first at ${firstAt} s) -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
+// A power dot scares every ghost, even those still in the pen: they come out scared and stay scared
+// until the power runs out. A ghost eaten during the power-up comes back out normal.
+{
+  let x = 7;
+  const rng = () => (x = (x * 16807) % 2147483647) / 2147483647;
+  const g = Core.createGame('normal', () => {}, rng);
+  g.state = 'playing';
+  const m = g.maze, [px, py] = m.start;
+  m.dots[py * m.W + px - 1] = 2;
+  for (let i = 0; i < 120 && g.fright <= 0; i++) g.update(1 / 120);
+  const inPen = g.enemies.filter(e => e.state === 'waiting').length, allScared = g.enemies.every(e => e.scared);
+  // Open the pen at once, send the first ghost home as if just eaten, and keep the circle still.
+  g.enemies.forEach(e => { e.releaseAt = 0; });
+  Object.assign(g.enemies[0], { state: 'returning', scared: false, x: m.home[0], y: m.home[1], t: 0, dir: -1 });
+  const out = new Map();
+  for (let i = 0; i < 120 * 12 && g.fright > 0 && g.state === 'playing'; i++) {
+    Object.assign(g.player, { t: 0, dir: -1 }); // parked on its tile
+    g.want = -1;
+    g.update(1 / 120);
+    g.enemies.forEach((e, k) => { if (e.state === 'active' && !out.has(k)) out.set(k, e.scared); });
+  }
+  const ok = inPen === 3 && allScared && out.get(0) === false && [1, 2, 3].every(k => out.get(k) === true) &&
+    g.fright === 0 && !g.enemies.some(e => e.scared);
+  if (!ok) fail++;
+  console.log(`power dot with ${inPen} ghosts in the pen: all scared ${allScared}; came out scared: ` +
+    `${[1, 2, 3].map(k => out.get(k)).join(', ')}; eaten one came out scared: ${out.get(0)}; ` +
+    `scared after the power ran out: ${g.enemies.some(e => e.scared)} -> ${ok ? 'OK' : 'FAIL'}`);
+}
+
 // Play stats. Scenes are posed by hand on level 1 (Neon), whose row 1 is a straight lane from x=1 to x=17.
 // The scene's maze has dots only where a scene puts them.
 const near = (a, b) => a != null && Math.abs(a - b) < 0.011;
@@ -217,6 +246,21 @@ const stat = (name, ok, detail) => {
   const u = s.finish('quit').powers[0];
   stat('eating a ghost', u.chased && u.ghosts_eaten === 1 && near(u.stopped_left_s, 3.25) && u.ended === 'no_ghosts_left',
     `ate ${u.ghosts_eaten} with ${u.stopped_left_s}s left, ended ${u.ended}`);
+}
+{
+  // Scared ghosts still in the pen keep a power-up going after the last one out in the maze is eaten.
+  const { g, s, ghost, power, walk, runOut } = scene();
+  power();
+  Object.assign(g.enemies[1], { state: 'waiting', scared: true });
+  walk(4);
+  ghost.scared = false;
+  ghost.state = 'returning';
+  s.event('eat');
+  walk(5);
+  g.enemies[1].scared = false;
+  runOut();
+  const u = s.finish('quit').powers[0];
+  stat('scared ghosts in the pen keep it going', u.ended === 'ran_out' && u.ghosts_eaten === 1, `ended ${u.ended}`);
 }
 {
   // Survival: Start to the last death; each life counts only time the circle could move.

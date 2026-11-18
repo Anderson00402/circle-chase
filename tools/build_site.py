@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Build the website with every version of the game, for GitHub Pages.
 
-    /               the home page: every version in tabs, played right there in a frame
-                    (/?v=<name> opens that version, so each one has a link to share)
-    /v/main/        main, the real game (the home page shows it first)
+    /               the home page: every version in tabs and dropdowns, played right there in a frame
+                    (/?v=<name> opens that version, so each one has a link to share); it opens on the
+                    control (the default game), or on main when there is no control branch
+    /v/main/        main, the repository's trunk (the same game as the timer prototype)
     /v/<branch>/    each other branch in this repository
     /pr/<number>/   each open pull request (not reviewed or merged yet)
     /versions/      a plain list of them all
@@ -33,10 +34,15 @@ OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '_site')
 # What each version is, in a sentence, for the home page. A branch that isn't listed shows its
 # latest commit message instead, and a pull request shows its title.
 NOTES = {
-    'main': 'The basic game. Eat every dot; after a power dot you can catch the ghosts for a few seconds.',
-    'control': ('The control for the class study: the default rules, without our fixes. No power timer, the ghosts '
-                'just flash white at the end, power lasts 6 s on level 1 but 1 s by level 9, the ghosts are '
-                'nearly as fast as you from the start, and one ghost is the same yellow as you.'),
+    'main': 'The repository\'s main branch: the same game as the timer prototype.',
+    'control': ('The default game, the control for the class study: no power timer, the ghosts just flash white '
+                'as the power runs out, power lasts 6 s on level 1 but 1 s by level 9, the ghosts are nearly as '
+                'fast as you from the start, and one ghost is the same yellow as you.'),
+    'timer': ('All our fixes together: a power timer bar in the top wall, ghosts that blink back to their own '
+              'color faster and faster as the power runs out, ghosts that start slower, power that never lasts '
+              'under 2 s, and no ghost the same yellow as you.'),
+    'ghost-blink': ('The default game plus one fix: in the last 3 seconds of a power-up the scared ghosts blink '
+                    'back to their own color, faster and faster.'),
     'Scream': ('Scared ghosts scream when you eat a power dot and keep wailing while you are close, '
                'and an evil laugh warns you the power-up is about to run out.'),
     'fortnite': ('Two sound clips: one gets louder as you get close to a power dot, '
@@ -48,21 +54,24 @@ NOTES = {
     'dash': 'Shift, X or a tap gives a short burst of speed, then it takes 3 seconds to recharge.',
     'fog': ("The maze is dark except the light around your circle. "
             'A power dot lights up everything for a few seconds.'),
-    'maze-blink': ('Prototype of the earlier fix: in the last 2 seconds of a power-up the maze walls blink red with '
-                   "the ghosts' 5 white flashes. Main has the ghosts blink back to their own color instead."),
+    'maze-blink': ('The default game plus one fix: in the last 2 seconds of a power-up the maze walls blink red '
+                   "with the ghosts' white flashes."),
     'timer-ring': ('A ring around your circle drains as the power runs out, so you can watch the time '
                    'without looking away from yourself. It flashes with the ghosts in the last 2 seconds.'),
 }
 
-# Fun modes: branches that change the game just for fun, in the "Fun modes" dropdown at the right
-# end of the tab row, in this order. Every other branch (except the control) is a prototype: an idea
-# for fixing the main game, in the "Prototypes" dropdown after the main game. Main itself stays the
-# basic game, without any fun-mode extras.
-FUN_MODES = ['play-as-ghost', 'two-player', 'dash', 'fog', 'Scream', 'fortnite']
-
-# Control versions for the class study: the game with the default rules, to compare main against.
-# Their tabs sit right after the main game.
+# Control versions for the class study: the default game, to compare the prototypes against. The
+# first one is the home page's first tab and opens when nobody picked a version; main then gets no
+# tab (it is the repository's trunk, the same game as the timer prototype).
 CONTROL = ['control']
+
+# Prototypes: ideas for fixing the game, in the "Prototypes" dropdown after the control. These come
+# first, in this order; any other branch that isn't a control or a fun mode follows them.
+PROTOTYPES = ['timer', 'ghost-blink', 'maze-blink']
+
+# Fun modes: branches that change the game just for fun, in the "Fun modes" dropdown at the right
+# end of the tab row, in this order.
+FUN_MODES = ['play-as-ghost', 'two-player', 'dash', 'fog', 'Scream', 'fortnite']
 
 FONTS = ('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700'
          '&family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Major+Mono+Display&display=swap')
@@ -155,7 +164,7 @@ HOME = '''<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Circle Chase</title>
-<meta name="description" content="Circle Chase, a maze game. Play the main game or any version of it.">
+<meta name="description" content="Circle Chase, a maze game. Play the default game or any version of it.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="__FONTS__">
@@ -222,7 +231,7 @@ HOME = '''<!doctype html>
   .tab .kind {
     font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--you);
   }
-  /* Dropdowns in the tab row: Prototypes after the main game, Fun modes at the right end. The button
+  /* Dropdowns in the tab row: Prototypes after the control, Fun modes at the right end. The button
      shows which one is playing; its list is placed against the window (the row itself scrolls on a
      narrow screen, which would cut it off). */
   .menu { display: flex; }
@@ -308,14 +317,14 @@ HOME = '''<!doctype html>
 <div class="notice" id="notice" role="status" hidden></div>
 <div class="about" id="about" aria-live="polite"></div>
 <div class="stage"><div class="frame" id="stage">
-  <noscript><p style="padding:16px"><a href="v/main/">Play the main game</a> &middot; <a href="versions/">every version</a></p></noscript>
+  <noscript><p style="padding:16px"><a href="__FIRST__">Play the game</a> &middot; <a href="versions/">every version</a></p></noscript>
 </div></div>
 <script type="application/json" id="versions-data">__DATA__</script>
 <script>
 (() => {
   const versions = JSON.parse(document.getElementById('versions-data').textContent);
   const byKey = new Map(versions.map(v => [v.key, v]));
-  const main = versions[0];
+  const main = versions[0]; // the version the home page opens on: the control (default game), or main
   const stage = document.getElementById('stage');
   const about = document.getElementById('about');
   const notice = document.getElementById('notice');
@@ -438,7 +447,7 @@ HOME = '''<!doctype html>
   if (first) {
     show(first, true);
   } else {
-    notice.textContent = 'There is no version called \\u201c' + asked + '\\u201d any more, so here is the main game.';
+    notice.textContent = 'There is no version called \\u201c' + asked + '\\u201d any more, so here is the default game.';
     notice.hidden = false;
     history.replaceState(null, '', urlFor(main));
     show(main, true);
@@ -450,13 +459,14 @@ HOME = '''<!doctype html>
 
 
 def groups(versions):
-    """(main, control, prototypes, fun modes, pull requests): control and fun modes in their lists'
-    order, the rest as they came."""
+    """(main, control, prototypes, fun modes, pull requests): control, prototypes and fun modes in their
+    lists' order (prototypes not listed follow, as they came)."""
     is_fun = lambda v: v['kind'] == 'branch' and v['name'] in FUN_MODES
     is_control = lambda v: v['kind'] == 'branch' and v['name'] in CONTROL
     main = [v for v in versions if v['kind'] == 'main']
     control = sorted(filter(is_control, versions), key=lambda v: CONTROL.index(v['name']))
-    prototypes = [v for v in versions if v['kind'] == 'branch' and not is_fun(v) and not is_control(v)]
+    order = lambda v: PROTOTYPES.index(v['name']) if v['name'] in PROTOTYPES else len(PROTOTYPES)
+    prototypes = sorted((v for v in versions if v['kind'] == 'branch' and not is_fun(v) and not is_control(v)), key=order)
     fun = sorted(filter(is_fun, versions), key=lambda v: FUN_MODES.index(v['name']))
     pulls = [v for v in versions if v['kind'] == 'pr']
     return main, control, prototypes, fun, pulls
@@ -478,6 +488,10 @@ def write_home(versions):
                 f'<ul class="menu-list" id="menu-{cls}" hidden>{items}</ul></li>')
 
     main, control, prototypes, fun, pulls = groups(versions)
+    # With a control, the home page opens on it and main gets no tab; otherwise main comes first.
+    if control:
+        main = []
+        control[0] = {**control[0], 'href': './'}
     versions = main + control + prototypes + pulls + fun
     tabs = ''.join(map(tab, main + control + pulls))
     if prototypes:
@@ -488,6 +502,7 @@ def write_home(versions):
     page = (HOME.replace('__FONTS__', html.escape(FONTS))
                 .replace('__README__', html.escape(f'https://github.com/{REPO}#make-your-own-version'))
                 .replace('__TABS__', tabs)
+                .replace('__FIRST__', html.escape(versions[0]['path']))
                 .replace('__DATA__', script_json(data)))
     with open(os.path.join(OUT, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(page)
@@ -512,7 +527,8 @@ def items(rows, empty):
 
 def write_versions_page(versions):
     main, control, prototypes, fun, pulls = groups(versions)
-    control_list = f'<h2>Control</h2>\n{items(control, "")}\n' if control else ''
+    # With a control, it comes first and main isn't listed (it is the same game as the timer prototype).
+    first = (f'<h2>Control: the default game</h2>\n{items(control, "")}' if control else f'<h2>Main</h2>\n{items(main, "")}')
     readme = html.escape(f'https://github.com/{REPO}#make-your-own-version')
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -534,11 +550,10 @@ def write_versions_page(versions):
 </style></head>
 <body><main>
 <h1>Circle Chase versions</h1>
-<p>Every version of the game you can play. Main is the basic game. The control plays by the default
-rules, to compare main against. Prototypes try out fixes for it; fun modes change it just for fun. You can also switch between them on the <a href="../">home page</a>.</p>
-<h2>Main</h2>
-{items(main, '')}
-{control_list}<h2>Prototypes</h2>
+<p>Every version of the game you can play. The control is the default game. Prototypes try out fixes
+for it, to compare against the control; fun modes change it just for fun. You can also switch between them on the <a href="../">home page</a>.</p>
+{first}
+<h2>Prototypes</h2>
 {items(prototypes, 'No prototypes being tried right now.')}
 <h2>Fun modes</h2>
 {items(fun, 'No fun modes right now.')}
