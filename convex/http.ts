@@ -4,6 +4,7 @@ import type { Id } from './_generated/dataModel';
 import { httpAction } from './_generated/server';
 import { PAGE_SIZE, fileName, type Kind } from './exports';
 import type { Filter } from './lib/filters';
+import { decodeChunk } from '../src/lib/telemetry/runrec';
 
 const http = httpRouter();
 
@@ -120,5 +121,48 @@ for (const [kind, format] of ROUTES) {
 		})
 	});
 }
+
+/**
+ * One run's full recording as JSON: /export/run.json?blockKey=<key>. Every chunk decoded with the
+ * app's own decoder (src/lib/telemetry/runrec.ts): scenes in run time (10 Hz), steer inputs,
+ * every game event (dots included), notes (pauses, view toggles, trials) and the pickups. Reads 60
+ * chunks (about 5 minutes of play) per query.
+ */
+http.route({
+	path: '/export/run.json',
+	method: 'GET',
+	handler: httpAction(async (ctx, req) => {
+		const blockKey = new URL(req.url).searchParams.get('blockKey') ?? '';
+		const rows = [];
+		for (let from = 0; ; ) {
+			const page = await ctx.runQuery(api.runRecordings.allChunks, { blockKey, from });
+			rows.push(...page);
+			if (page.length < 60) break;
+			from = page[page.length - 1].i + 1;
+		}
+		const chunks = rows.map((c) => {
+			const d = decodeChunk(c);
+			return {
+				i: c.i, base: c.base, t0: c.t0, t1: c.t1, wallStart: c.at, wallEnd: c.end, mazeId: c.mazeId, layout: c.layout ?? null, bytes: c.data.byteLength,
+				inputs: d.inputs, events: d.events, marks: d.marks,
+				pickupsAtStart: [...d.dots0], pickupChanges: d.changes,
+				scenes: d.scenes.map((s) => { const { events: _e, ...frame } = s.frame; return frame; })
+			};
+		});
+		const body = JSON.stringify({
+			blockKey, exportedAt: new Date().toISOString(),
+			note: 'Times in run seconds (continuous over refreshes and new games: run time = base + game time); positions in tiles; pickups: 0 none, 1 dot, 2 power dot, row-major over the maze.',
+			chunks
+		});
+		return new Response(body, {
+			headers: {
+				'content-type': 'application/json; charset=utf-8',
+				'content-disposition': `attachment; filename="run-${blockKey.slice(0, 8) || 'unknown'}.json"`,
+				'access-control-allow-origin': '*',
+				'cache-control': 'no-store'
+			}
+		});
+	})
+});
 
 export default http;

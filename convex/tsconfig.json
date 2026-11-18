@@ -10,6 +10,8 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "skipLibCheck": true,
+    /* The full-run JSON export (http.ts) decodes with the app's own decoder in src/lib, whose imports end in .ts. */
+    "allowImportingTsExtensions": true,
     "allowSyntheticDefaultImports": true,
 
     /* These compiler options are required by Convex */
