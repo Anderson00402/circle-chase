@@ -79,6 +79,8 @@ routes at `http://127.0.0.1:3211`. `npm run convex` pushes this folder on save.
 | `trialCells` | session | the session's totals for the headline numbers (`convex/lib/cells.ts`), rewritten from all its digest rows on every digest change |
 | `replayDigests` | up to 25 clips of a session (`chunk`, as above) | slim row per trial with a clip, for the replay browser (`convex/lib/replayDigest.ts`) |
 | `clips` | stored replay (engaged or caught trials) | packed scenes (`data`, 5-15 KB), `markers`, `numbers`, `cue`, `outcome`, `layout?` (the maze layout fingerprint); separate so trial scans stay light |
+| `runChunks` | ~5 s of game time of a run | the full-run recording (`src/lib/telemetry/runrec.ts`): `blockKey`, `i` (0, 1, 2...), `base` (run time of game time 0), `t0`/`t1` (run time), `at`/`end` (wall clock), `mazeId`, `layout?`, `trials?` (keys of trials stored during it), `source`, `data` (packed, 1-1.8 KB). Written once by `runRecordings.saveChunk`, never rewritten; index `by_block` [blockKey, i] |
+| `runRecordings` | recorded run (block) | index for lists: `blockKey`, session, participant, `label`, `cue`, `mode`, `source`, `orderIndex`, `duration` (s), `chunks`, `bytes`, `appVersion`, wall-clock start/end; written by `runRecordings.finish` when the block closes (again on a later close of a refreshed run) |
 | `ratings` | questionnaire answer | `kind: 'block'` (clarity, distraction 1-7) or `'session'` (clearest, leastClear, comment) |
 | `presence` | open game page | heartbeat every 5 s; rows older than 20 s are swept by a cron |
 | `cueCounters` | source, case and rules | running totals for `summary.cueCounts` (the live panel): trials, decisions, timely, early, overstayed, caught, lastTrialAt; kept by `trials.save`, recounted by `counters.rebuildCounters` |
@@ -101,6 +103,8 @@ routes at `http://127.0.0.1:3211`. `npm run convex` pushes this folder on save.
 | `blocks.start` | also takes `mode?` (rules of this run, when they differ from the session's) | |
 | `runs.setup` | `{ sessionKey, run: { participantLabel, participantNumber, orderRow } }` | session id, or null until the session exists |
 | `runs.markBlock` | `{ blockKey, pauses?, pausedSeconds? }` (pauses now also come with `blocks.end`) | block id, or null until the block exists |
+| `runRecordings.saveChunk` | one chunk (`RunChunk` of `runrec.ts`) + `source`; idempotent by `blockKey` + `i` (a chunk already stored is left as it is). Does not need the block: chunks go in their own outbox lane (`rec:<blockKey>:`), as quiet writes after the trial writes | `{ i, stored }` |
+| `runRecordings.finish` | `{ blockKey, appVersion }`: writes or updates the run's `runRecordings` row from its stored chunks | `{ chunks, bytes }`, or null until the block exists |
 
 Cue, mode, source, participant, block index and `simRun` of a trial are taken from its block and
 session, not from the caller.
@@ -156,6 +160,10 @@ gets stuck); `outboxStatus` is reactive:
 | `presence.nowPlaying` | `{}` | presence rows updated in the last 20 s (no `pid`) |
 | `runs.session` | `{ sessionKey }` | the run sheet: `participant`, `run` info, `runs[]` (one per block: `cue`, `orderIndex`, `mode`, `trials`, `counted` decisions, `wellTimed`, `caught`, `catches`, `clips`, `outcomes`, `clarity`, `distraction`); null until the session exists |
 | `runs.block` | `{ blockKey }` | one run for its summary: the same tally plus `rows[]` (each trial: `outcome`, `counted`, `total`, `turnLeft`, `eats`, `clipId`) and its rating; null until the block exists |
+| `runRecordings.outline` | `{ key }` (a block key, or the id of one of its trials) | everything the whole-run player needs but the bytes: `block`, `recording`, `chunks[]` (`i`, `base`, `t0`, `t1`, `at`, `end`, `mazeId`, `layout`, `trials`, `bytes`), `trials[]` (times, outcome, turn-away, eats, aftermath, `clipId`); `{ found: false }` for an unknown key |
+| `runRecordings.chunks` | `{ blockKey, from, to }` | chunks `from`..`to - 1` with `data`, in order, at most 12 (about a minute of play) per read |
+| `runRecordings.progress` | `{ blockKey }` | `{ next, runEnd }` (where a refreshed page carries on), null before the first chunk |
+| `runRecordings.list` | `{ source?, participant?, cue?, limit? }` | recorded runs newest first (`rows`, `total`, `participants`), from the index documents only |
 | `exports.page` | filter + `kind: 'trials'\|'ratings'\|'blocks'`, `format: 'csv'\|'json'`, `paginationOpts` | `{ header, rows, isDone, continueCursor }`: CSV lines (header separate, the same on every page) or JSON objects; a page may hold fewer rows than asked, even none. Ratings and blocks are read through an index on the session, the case or the source (`by_source_created`, `by_source_started`), not the whole table |
 
 ### Downloads (HTTP, streamed page by page, any size)
@@ -178,6 +186,7 @@ pages of N rows; R rows were written before this line, the rest are missing)`. `
 | `trials.csv` | trial | ids, `createdAt`, who (`participantLabel`, `consoleNumber` (the number the run console shows, "#4"; empty outside the console), `participantNumber` (overall order of first visit: not the console's number), `runNumber`, `orderNumber`, `orderRow`, `simRun`), `source`, `mode`, `cue`, `blockIndex` (run order in the session, from 0), `suggestedPosition` (position of the cue in the suggested order), `pauses`, `pausedSeconds` (of its block), settings, every measure flat (`after.*` spelled out), the rules-v3 raw measures (`chaseEndDist`, `chaseGain`, `chaseGhost`, `gaveUpEarly`, `chaseLog`), `outcome`, `rulesVersion`, `inRates`, `decision`, `catchLate`, `hasClip`, `practice`. `chaseLog` is one cell: one chase per `;`, each `ghost from at left dist gain end endDist` (seconds since the power started, power left, tiles; `-` for no distance); empty without chases, blank before rules version 3 (`chaseLogCell` / `parseChaseLogCell` in `exports.ts`). Every class can be recomputed from this file alone: `node scripts/csv-reclassify.mjs` |
 | `trials.json` | trial | full row + who + pauses + `decision` + `series` unpacked |
 | `ratings.csv`, `ratings.json` | questionnaire answer | ids, who, `kind`, `cue`, `blockIndex`, `clarity`, `distraction`, `note`, `clearest`, `leastClear`, `comment` |
+| `run.json?blockKey=<key>` | one run | its whole recording decoded with the app's decoder: per chunk the scenes (10 Hz, run time), steer inputs, every game event (dots included), notes (pauses with reason, view switches, trials, pages) and pickups (at the start and every change) |
 | `blocks.csv`, `blocks.json` | run of a case (block) | ids, who, `cue`, `blockIndex`, `suggestedPosition`, start/end, `trials`, `engaged`, `deaths`, `score`, `pauses`, `pausedSeconds`, its rating, `appVersion`, `inputType` |
 
 A failure part way through ends the file with a line `EXPORT FAILED: ...`. The stream reads
@@ -262,7 +271,7 @@ only on rows from an earlier guided study flow and are no longer written.
 
 | Mutation | Arguments | Effect |
 | --- | --- | --- |
-| `admin.deleteBotData` | `{ confirm: 'delete bot data' }` | deletes every row with `source: 'bot'` in every table |
+| `admin.deleteBotData` | `{ confirm: 'delete bot data' }` | deletes every row with `source: 'bot'` in every table (full-run recordings included) |
 | `admin.wipeEverything` | `{ confirm: 'wipe everything' }` | deletes all rows of all tables (fresh demo); cannot be undone |
 | `admin.reclassify` | `{ confirm: 'reclassify' }` | recomputes `outcome`, `rulesVersion`, `inRates`, `wasted` and `gaveUpEarly` of every trial and the outcome of its clip from the stored measures; rows that lack a measure the rules need (`chaseEndDist` before version 3, `lastChaseEnd` before version 2) keep their class and their older `rulesVersion`; recounts `counters` at the end |
 | `counters.rebuildCounters` | `{ confirm: 'rebuild counters' }` | recounts the `counters` table from trials, sessions and participants |
@@ -355,6 +364,11 @@ and chunks of 25 that is about 0.13 GB instead of 1.0 GB for the digests and 0.0
 Existing digests were not rewritten (a session's old single document stays chunk 0 and new trials
 go into new chunks), so the file does not shrink; only new data grows more slowly. The per-session
 totals (`trialCells`, about 5 KB per power-up) are still rewritten every time.
+
+Full-run recordings are written once and never patched: one `runChunks` row per ~5 s of play
+(1-1.8 KB, measured 15-16 KB per minute) and one small `runRecordings` row per run, patched only
+when the run closes (twice for a run resumed after a refresh). A 16-power-up run of about four
+minutes adds about 60-65 KB. The simulator stores none unless asked (`--record-runs`).
 
 The backend reads this file at start: with about 2 GB it takes about 30 s, longer than the CLI's
 default wait, so `npm run convex` sets `CONVEX_LOCAL_BACKEND_STARTUP_TIMEOUT_SECS=240`. A fresh

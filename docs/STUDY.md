@@ -504,6 +504,31 @@ The replay page redraws the clip with the real renderer and cue, so the viewer s
 moment the ghosts switch and what the player did about it. Because a clip holds everything the
 measure saw, the stored outcome of any trial can be checked against it by hand or by the audit.
 
+## Full-run recordings
+
+Every run played from the console is also kept whole, from its first frame to its last, so a
+researcher can watch the whole run (`/replays/run/<blockKey>`) and step from one close call to the
+next. Nothing here feeds a measure: trials, outcomes and rates come only from the tracker, as
+before. The recording holds what is needed to rebuild the board exactly at any moment and
+everything else that happened:
+
+- scenes at 10 Hz of game time (positions to 1/64 tile, times to 0.01 s, modes, scared flags,
+  power fields, score, lives, level, maze id and its layout fingerprint, popups);
+- the pickups left at the start of every chunk (a bitset over the maze's pickup tiles) and every
+  pickup eaten or power dot grown back after it, with its exact time;
+- every steer input (direction and game time; a repeat of the same direction is not kept), every
+  game event (`dot` events are rebuilt from the pickups eaten), pauses with their wall-clock length
+  and reason (P or Escape, the window losing focus, a hidden tab), switches between participant
+  view and the researcher's view, each trial stored, each page that played the run.
+
+It is written in chunks of about 5 s of game time (a paused game writes nothing), each sent as
+soon as it is complete and stored once, never rewritten, so at most about 5 s of a run is lost if
+the browser dies; the last partial chunk is sent when the run ends, the page is hidden, the game is
+paused for more than a second and a half, or the case is switched. A refresh carries on with the
+next chunk on the same run clock (a half-second gap marks it). Measured: about 0.25-0.28 KB per
+second of play (15-16 KB per minute, 1-1.8 KB per chunk), about 60-65 KB for a 16-power-up run.
+The simulator stores none unless asked (`--record-runs`).
+
 ## The live panel
 
 The participant can see the screen, and only the cue may tell them how much power is left. While a

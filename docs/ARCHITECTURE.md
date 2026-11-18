@@ -89,5 +89,8 @@ The old implementations of the ten ideas live on the branches listed in `legacy/
 
 `Game.svelte` calls `onframe(scene, game)` for every live frame. The telemetry module consumes
 those, keeps a rolling buffer of recent scenes, measures each power-up as one **trial**, cuts a
-**clip** around the end of the power-up, and writes both to Convex. Pages subscribe with
+**clip** around the end of the power-up, and writes both to Convex. It also keeps the **whole run**
+(`telemetry/runrec.ts`): 10 Hz scenes, inputs, events and notes in chunks of about 5 s of game
+time, each written once (`runChunks`), plus one index document when the run closes
+(`runRecordings`); `/replays/run/<blockKey>` plays it back. Pages subscribe with
 `useQuery`, so the dashboard updates while someone is playing in another tab.
