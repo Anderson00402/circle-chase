@@ -8,6 +8,9 @@ compares the cases with the statistics a report needs.
 
 It is an internal tool for the people running the study, not a public site.
 
+First time here? `SETUP.md` has the full, tested steps from a fresh clone (including loading the
+simulated demo data).
+
 ## Start it
 
 You need a recent Node (20 or later; developed on 26) and Google Chrome (for the checks).

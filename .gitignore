@@ -31,4 +31,6 @@ legacy/hub/gifs
 .logs/
 .convex-backup-*/
 .tmp/
-media/
+# Recordings: only the small MP4s of each condition are kept in git.
+media/*
+!media/countdowns/
