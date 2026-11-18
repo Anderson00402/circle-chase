@@ -31,3 +31,4 @@ legacy/hub/gifs
 .logs/
 .convex-backup-*/
 .tmp/
+media/
