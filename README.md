@@ -25,9 +25,9 @@ Your version then shows up as a tab on the [home page](https://anderson00402.git
 
 **https://anderson00402.github.io/circle-chase/** opens the default game (the control) with tabs and dropdowns above it for every version branch and every open pull request; pick one to play that version right there. The address changes to `?v=<name>`, so you can send someone a link to one version. Pull requests run sandboxed there, because nobody has reviewed their code yet, so their best scores aren't saved.
 
-The first tab, **control**, is the default game, for the class study: the default rules with none of our fixes (no power timer, ghosts that just flash white as the power runs out, power that runs out sooner on later levels, ghosts nearly as fast as you from the start, and one ghost the same yellow as you). It is listed in `CONTROL` in `tools/build_site.py`.
+The first tab, **control**, is the default game, for the class study: the default rules with none of our fixes (no power timer, ghosts that just flash white as the power runs out, power that runs out sooner on later levels, and one ghost the same yellow as you). In every version, ghosts move at 60% of your speed (35% when scared), on every level. It is listed in `CONTROL` in `tools/build_site.py`.
 
-The other versions come in two dropdowns in the tab row. **Prototypes** are fixes to compare with the control: `timer` has all our fixes together (a power timer bar, ghosts blinking back to their own color, slower ghosts at first, power never under 2 s, no yellow ghost), while `ghost-blink` and `maze-blink` are the default game plus one fix each (ghosts that blink back to their own color, or maze walls that blink red, as the power runs out). Comparing a prototype's play stats with the control's shows whether its fix helps. **Fun modes**, on the right, change the game just for fun (playing as a ghost, two players, dash, fog, Scream, fortnite). A branch counts as a prototype unless its name is in `CONTROL` or `FUN_MODES` in `tools/build_site.py` on `main`; when you send a pull request, say which kind your idea is.
+The other versions come in two dropdowns in the tab row. **Prototypes** are fixes to compare with the control: `timer` has all our fixes together (a power timer bar, ghosts blinking back to their own color, power never under 2 s, no yellow ghost), while `ghost-blink` and `maze-blink` are the default game plus one fix each (ghosts that blink back to their own color, or maze walls that blink red, as the power runs out). Comparing a prototype's play stats with the control's shows whether its fix helps. **Fun modes**, on the right, change the game just for fun (playing as a ghost, two players, dash, fog, Scream, fortnite). A branch counts as a prototype unless its name is in `CONTROL` or `FUN_MODES` in `tools/build_site.py` on `main`; when you send a pull request, say which kind your idea is.
 
 The `main` branch is the repository's trunk and holds the same game as `timer`; it has no tab of its own.
 
@@ -36,7 +36,8 @@ Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a la
 ## Where things are in index.html
 
 - `MAZES`: the maze layouts, drawn with characters (`#` wall, `.` dot, `o` power dot, space for open floor). Each row is the left half of the maze; the right half is a mirror of it.
-- `DIFFICULTY`: lives, ghost speed and how long a power dot lasts.
+- `GHOST_PACE` and `SCARED_PACE`: how fast the ghosts move, as a share of your speed (60% and 35% when scared).
+- `DIFFICULTY`: lives and how long a power dot lasts.
 - `drawGhost`, and the player section of `draw()`: how the ghosts and the circle look and move.
 - `blinkOn`: how the scared ghosts blink back to their own color, faster and faster, as a power-up runs out.
 - `sfx`: all the sounds, made in code.
