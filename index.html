@@ -746,6 +746,466 @@ const Core = (() => {
 })();
 </script>
 
+<script id="skins">
+/* Skins for the circle. Every skin is free; players pick one in the Skins dropdown on the home
+   page (tools/build_site.py copies this block from main's index.html to draw that dropdown).
+   No page access here, so tools/check.js can draw every skin on a fake canvas.
+
+   A skin is { id, name, color, draw(c, r, mouth, time) }:
+   - color: the skin's main color, used for the lives in the score bar and the rings around the circle.
+   - draw() paints the circle on the 2D context c, which is already moved to the circle's center and
+     turned so the circle faces +x (its mouth points right) with -y as the top of its head. Facing left
+     is a mirror image, so hats stay on top; facing up or down turns the head on its side.
+   - r is the radius, mouth is half the mouth opening in radians (0 = shut), time is seconds for
+     animation (always 0 with reduced motion, so a skin must look right at time 0).
+   Draw only inside about 1.35 r of the center, and leave c as you found it (save/restore). */
+const Skins = (() => {
+  const TAU = Math.PI * 2;
+
+  // The circle with its mouth wedge cut out, as a path (no fill).
+  function body(c, r, mouth) {
+    c.beginPath();
+    if (mouth > 0) {
+      c.moveTo(0, 0);
+      c.arc(0, 0, r, mouth, TAU - mouth);
+      c.closePath();
+    } else c.arc(0, 0, r, 0, TAU);
+  }
+
+  const LIST = [
+    { id: 'classic', name: 'Classic', color: '#ffd84a',
+      draw(c, r, mouth) { c.fillStyle = this.color; body(c, r, mouth); c.fill(); } },
+    { id: 'santa', name: 'Santa', color: '#e0252e',
+      draw(c, r, mouth, time) {
+        c.save();
+        // Face: warm yellow with a soft highlight.
+        const g = c.createRadialGradient(-r * 0.3, -r * 0.1, r * 0.1, 0, 0, r);
+        g.addColorStop(0, '#ffe88a');
+        g.addColorStop(1, '#ffc93a');
+        c.fillStyle = g;
+        body(c, r, mouth);
+        c.fill();
+
+        // Rosy cheek, low on the face and clear of the mouth.
+        c.fillStyle = 'rgba(240, 70, 80, 0.55)';
+        c.beginPath();
+        c.ellipse(-r * 0.02, r * 0.4, r * 0.18, r * 0.13, 0, 0, TAU);
+        c.fill();
+
+        // Eye, just under the brim.
+        c.fillStyle = '#2a1608';
+        c.beginPath();
+        c.arc(r * 0.13, -r * 0.3, r * 0.12, 0, TAU);
+        c.fill();
+
+        // Hat: a red cone that flops back over the head; the tip sways a little.
+        const sway = Math.sin(time * 2.2) * r * 0.05;
+        const tx = -r * 0.86 + sway, ty = -r * 0.68 - Math.abs(sway) * 0.4;
+        const x1 = -r * 0.92, y1 = -r * 0.34, x2 = r * 0.6, y2 = -r * 0.68, cx = -r * 0.12, cy = -r * 0.78;
+        c.fillStyle = '#e0252e';
+        c.beginPath();
+        c.moveTo(x2, y2);
+        c.bezierCurveTo(r * 0.5, -r * 1.4, -r * 0.4, -r * 1.5, tx, ty);
+        c.quadraticCurveTo(-r * 0.55, -r * 0.9, -r * 0.5, -r * 0.6);
+        c.lineTo(x1, y1);
+        c.quadraticCurveTo(cx, cy, x2, y2);
+        c.closePath();
+        c.fill();
+        // Darker fold where the tip flops over.
+        c.fillStyle = '#a8141c';
+        c.beginPath();
+        c.moveTo(tx, ty);
+        c.quadraticCurveTo(-r * 0.55, -r * 0.9, -r * 0.5, -r * 0.6);
+        c.quadraticCurveTo(-r * 0.66, -r * 0.98, tx, ty);
+        c.fill();
+
+        // White fur brim.
+        c.strokeStyle = '#ffffff';
+        c.lineWidth = r * 0.3;
+        c.lineCap = 'round';
+        c.beginPath();
+        c.moveTo(x1, y1);
+        c.quadraticCurveTo(cx, cy, x2, y2);
+        c.stroke();
+
+        // Pompom on the tip.
+        c.fillStyle = '#ffffff';
+        c.beginPath();
+        c.arc(tx, ty, r * 0.22, 0, TAU);
+        c.fill();
+        c.restore();
+      } },
+    { id: 'snowball', name: 'Snowball', color: '#e8f2fc',
+      draw(c, r, mouth, time) {
+        c.save();
+        const RED = '#e0262f', GREEN = '#169c46';
+        const flap = Math.sin(time * 5) * 0.05 * r;
+        // Point on a quadratic curve [x0, y0, cx, cy, x1, y1] (in r units) at t.
+        const q = (k, t) => {
+          const u = 1 - t;
+          return [(u * u * k[0] + 2 * u * t * k[2] + t * t * k[4]) * r,
+                  (u * u * k[1] + 2 * u * t * k[3] + t * t * k[5]) * r];
+        };
+
+        // Scarf tail, streaming back behind the head (drawn first, under the body).
+        const tailTop = [-0.45, 0.4, -0.9, 0.3, -1.3, 0.06];
+        const tailBot = [-0.5, 0.92, -1.0, 0.7, -1.22, 0.42];
+        const tail = (t0, t1) => {
+          c.beginPath();
+          let p = q(tailTop, t0); c.moveTo(p[0], p[1] + flap * t0);
+          for (let i = 1; i <= 4; i++) { const t = t0 + (t1 - t0) * i / 4; p = q(tailTop, t); c.lineTo(p[0], p[1] + flap * t); }
+          for (let i = 4; i >= 0; i--) { const t = t0 + (t1 - t0) * i / 4; p = q(tailBot, t); c.lineTo(p[0], p[1] + flap * t); }
+          c.closePath();
+        };
+        const tailCuts = [0, 0.3, 0.55, 0.78, 1];
+        for (let i = 0; i < tailCuts.length - 1; i++) {
+          c.fillStyle = i % 2 ? GREEN : RED;
+          tail(tailCuts[i], tailCuts[i + 1]); c.fill();
+        }
+
+        // Snowy body with soft blue-gray shading.
+        const g = c.createRadialGradient(-0.35 * r, -0.4 * r, 0.1 * r, 0, 0, r * 1.05);
+        g.addColorStop(0, '#ffffff');
+        g.addColorStop(0.55, '#e8f0f8');
+        g.addColorStop(1, '#a9bccf');
+        c.fillStyle = g;
+        body(c, r, mouth); c.fill();
+
+        // Scarf band round the lower head, clipped to the body so it never covers the mouth.
+        c.save();
+        body(c, r, mouth); c.clip();
+        const bandTop = [-1.0, 0.22, 0.0, 0.66, 0.92, 0.62];
+        const bandBot = [-0.8, 0.8, 0.0, 1.25, 0.7, 1.0];
+        const cuts = [0, 0.2, 0.38, 0.56, 0.74, 1];
+        for (let i = 0; i < cuts.length - 1; i++) {
+          const a = cuts[i], b = cuts[i + 1], s = 0.06; // bottom edge is shifted back for slanted stripes
+          c.fillStyle = i % 2 ? GREEN : RED;
+          c.beginPath();
+          let p = q(bandTop, a); c.moveTo(p[0], p[1]);
+          for (let k = 1; k <= 4; k++) { p = q(bandTop, a + (b - a) * k / 4); c.lineTo(p[0], p[1]); }
+          for (let k = 4; k >= 0; k--) { p = q(bandBot, Math.max(0, a + (b - a) * k / 4 - s)); c.lineTo(p[0], p[1]); }
+          c.closePath(); c.fill();
+        }
+        c.restore();
+
+        // Carrot nose, up front above the mouth, pointing forward and a little up.
+        const bx = 0.4 * r, by = -0.5 * r, tx = 1.02 * r, ty = -0.8 * r;
+        const dx = tx - bx, dy = ty - by, len = Math.hypot(dx, dy);
+        const px = -dy / len * 0.16 * r, py = dx / len * 0.16 * r;
+        c.fillStyle = '#ff7417';
+        c.beginPath();
+        c.moveTo(bx - px, by - py);
+        c.lineTo(tx, ty);
+        c.lineTo(bx + px, by + py);
+        c.closePath(); c.fill();
+        c.fillStyle = '#c94f00'; // shaded underside
+        c.beginPath();
+        c.moveTo(bx, by);
+        c.lineTo(tx, ty);
+        c.lineTo(bx + px, by + py);
+        c.closePath(); c.fill();
+
+        // Coal eye with a glint.
+        c.fillStyle = '#1b1d24';
+        c.beginPath(); c.arc(0.02 * r, -0.56 * r, 0.15 * r, 0, TAU); c.fill();
+        c.fillStyle = '#ffffff';
+        c.beginPath(); c.arc(-0.03 * r, -0.61 * r, 0.05 * r, 0, TAU); c.fill();
+
+        c.restore();
+      } },
+    { id: 'pumpkin', name: 'Pumpkin', color: '#e8590c',
+      draw(c, r, mouth, time) {
+        c.save();
+        // Candle flicker: gentle, and exactly 1 at time 0.
+        const f = 1 - 0.18 * Math.max(0, Math.sin(time * 7.3) * Math.sin(time * 2.9));
+        // Stem first, so the body hides its base.
+        c.fillStyle = '#4f6b1c';
+        c.beginPath();
+        c.moveTo(-0.13 * r, -0.8 * r);
+        c.lineTo(-0.1 * r, -1.12 * r);
+        c.quadraticCurveTo(-0.02 * r, -1.3 * r, 0.16 * r, -1.24 * r);
+        c.lineTo(0.12 * r, -1.08 * r);
+        c.lineTo(0.13 * r, -0.8 * r);
+        c.closePath();
+        c.fill();
+        c.fillStyle = '#33461a';
+        c.beginPath();
+        c.moveTo(0.02 * r, -0.8 * r);
+        c.lineTo(0.03 * r, -1.1 * r);
+        c.lineTo(0.13 * r, -1.08 * r);
+        c.lineTo(0.13 * r, -0.8 * r);
+        c.closePath();
+        c.fill();
+        // Body: deep pumpkin orange, darker toward the rim.
+        const g = c.createRadialGradient(-0.25 * r, -0.3 * r, 0.1 * r, 0, 0, r);
+        g.addColorStop(0, '#ff7a1a');
+        g.addColorStop(0.65, '#e8590c');
+        g.addColorStop(1, '#a33a05');
+        c.fillStyle = g;
+        body(c, r, mouth);
+        c.fill();
+        // Ribs, clipped to the body.
+        c.save();
+        body(c, r, mouth);
+        c.clip();
+        c.strokeStyle = 'rgba(110, 32, 0, 0.75)';
+        c.lineWidth = Math.max(1, r * 0.11);
+        for (const rx of [0.38, 0.78]) {
+          c.beginPath();
+          c.ellipse(0, 0.04 * r, rx * r, 1.02 * r, 0, 0, TAU);
+          c.stroke();
+        }
+        // Warm candle light along the cut edges of the mouth.
+        if (mouth > 0) {
+          c.strokeStyle = `rgba(255, 196, 60, ${0.9 * f})`;
+          c.lineWidth = Math.max(1, r * 0.16);
+          c.beginPath();
+          c.moveTo(r * Math.cos(mouth), r * Math.sin(mouth));
+          c.lineTo(0, 0);
+          c.lineTo(r * Math.cos(mouth), -r * Math.sin(mouth));
+          c.stroke();
+        }
+        c.restore();
+        // Carved triangle eye with a candle glow inside.
+        const ex = 0.12 * r, ey = -0.4 * r, s = 0.3 * r;
+        const tri = k => {
+          c.beginPath();
+          c.moveTo(ex, ey - s * k);
+          c.lineTo(ex + s * 0.95 * k, ey + s * 0.6 * k);
+          c.lineTo(ex - s * 0.95 * k, ey + s * 0.6 * k);
+          c.closePath();
+        };
+        c.fillStyle = '#3a1200';
+        tri(1);
+        c.fill();
+        const eg = c.createRadialGradient(ex, ey + s * 0.15, 0, ex, ey + s * 0.15, s * 0.8);
+        eg.addColorStop(0, '#fff3a0');
+        eg.addColorStop(0.5, '#ffc93a');
+        eg.addColorStop(1, '#ff8c10');
+        c.globalAlpha = f;
+        c.fillStyle = eg;
+        tri(0.74);
+        c.fill();
+        c.restore();
+      } },
+    { id: 'valentine', name: 'Sweetheart', color: '#c8102e',
+      heart(c, x, y, s) {
+        c.beginPath();
+        c.moveTo(x, y + s * 0.9);
+        c.bezierCurveTo(x - s * 1.25, y + s * 0.05, x - s * 0.95, y - s * 0.95, x, y - s * 0.35);
+        c.bezierCurveTo(x + s * 0.95, y - s * 0.95, x + s * 1.25, y + s * 0.05, x, y + s * 0.9);
+        c.closePath();
+        c.fill();
+      },
+      draw(c, r, mouth, time) {
+        c.save();
+        // Deep crimson body with a glossy radial shade.
+        const g = c.createRadialGradient(-0.35 * r, -0.4 * r, 0.1 * r, 0, 0, r);
+        g.addColorStop(0, '#ff4b5c');
+        g.addColorStop(0.55, '#c8102e');
+        g.addColorStop(1, '#7d0a1e');
+        c.fillStyle = g;
+        body(c, r, mouth);
+        c.fill();
+        // Gloss.
+        c.fillStyle = 'rgba(255,255,255,0.38)';
+        c.beginPath();
+        c.ellipse(-0.42 * r, -0.4 * r, 0.24 * r, 0.12 * r, -0.7, 0, TAU);
+        c.fill();
+        // Little hearts on the body.
+        c.fillStyle = '#ffd6e0';
+        this.heart(c, -0.48 * r, 0.3 * r, 0.21 * r);
+        c.fillStyle = '#ffffff';
+        this.heart(c, 0.02 * r, 0.62 * r, 0.15 * r);
+        // Heart-shaped eye.
+        c.fillStyle = '#ffffff';
+        this.heart(c, 0.14 * r, -0.5 * r, 0.24 * r);
+        c.fillStyle = '#5a0014';
+        this.heart(c, 0.16 * r, -0.49 * r, 0.12 * r);
+        c.restore();
+      } },
+    { id: 'easter', name: 'Easter Egg', color: '#ffe48a',
+      draw(c, r, mouth, time) {
+        c.save();
+        // Bunny ears behind the head, pivoting at their base; a small wiggle with time (still at time 0).
+        const ear = (side, phase) => {
+          c.save();
+          c.translate(side * 0.3 * r, -0.62 * r);
+          c.rotate(side * (0.12 + 0.06 * Math.sin(time * 3 + phase)));
+          c.fillStyle = '#fbf6ee';
+          c.beginPath(); c.ellipse(0, -0.32 * r, 0.19 * r, 0.36 * r, 0, 0, TAU); c.fill();
+          c.fillStyle = '#ffa3c4';
+          c.beginPath(); c.ellipse(0, -0.36 * r, 0.09 * r, 0.24 * r, 0, 0, TAU); c.fill();
+          c.restore();
+        };
+        ear(-1, 0); ear(1, 1.3);
+        // The egg: warm pastel yellow with a soft highlight.
+        const g = c.createRadialGradient(-0.35 * r, -0.4 * r, 0.1 * r, 0, 0, r);
+        g.addColorStop(0, '#fff6c8'); g.addColorStop(1, '#ffdc6e');
+        c.fillStyle = g; body(c, r, mouth); c.fill();
+        c.save();
+        body(c, r, mouth); c.clip();
+        // Sky-blue zigzag band.
+        c.strokeStyle = '#5fb8f5'; c.lineWidth = 0.2 * r; c.lineJoin = 'miter'; c.lineCap = 'butt';
+        c.beginPath();
+        for (let i = 0; i <= 10; i++) {
+          const x = -r + i * 0.2 * r, y = -0.42 * r + (i % 2 ? 0.13 : -0.13) * r;
+          if (i) c.lineTo(x, y); else c.moveTo(x, y);
+        }
+        c.stroke();
+        // Pink band across the middle.
+        c.fillStyle = '#ff9fc2';
+        c.fillRect(-r, -0.02 * r, 2 * r, 0.24 * r);
+        // A row of purple dots.
+        c.fillStyle = '#9a72e6';
+        for (const x of [-0.6, -0.2, 0.2, 0.6]) { c.beginPath(); c.arc(x * r, 0.56 * r, 0.11 * r, 0, TAU); c.fill(); }
+        c.restore();
+        c.restore();
+      } },
+    { id: 'watermelon', name: 'Watermelon', color: '#e5262b',
+      draw(c, r, mouth) {
+        c.save();
+        // The circle shape pulled in by d on every side, so each layer follows the mouth's cut edges.
+        const inset = d => {
+          const R = r - d;
+          c.beginPath();
+          if (mouth > 0) {
+            const a = mouth + Math.atan2(d, Math.sqrt(R * R - d * d));
+            c.moveTo(-d / Math.sin(mouth), 0);
+            c.arc(0, 0, R, a, TAU - a);
+            c.closePath();
+          } else c.arc(0, 0, R, 0, TAU);
+        };
+        // Rind: leaf green with dark stripes.
+        c.fillStyle = '#2f8a2f';
+        body(c, r, mouth); c.fill();
+        c.save();
+        body(c, r, mouth); c.clip();
+        c.fillStyle = '#134d1c';
+        for (let i = 0; i < 9; i++) {
+          const a = i * TAU / 9 + 0.2;
+          c.beginPath();
+          c.moveTo(0, 0);
+          c.arc(0, 0, r * 1.05, a, a + 0.32);
+          c.closePath();
+          c.fill();
+        }
+        c.restore();
+        // Pale band, then the red flesh.
+        c.fillStyle = '#eaf4c6';
+        inset(r * 0.18); c.fill();
+        const g = c.createRadialGradient(-r * 0.2, -r * 0.2, 0, 0, 0, r * 0.7);
+        g.addColorStop(0, '#f2403c');
+        g.addColorStop(1, '#d81f27');
+        c.fillStyle = g;
+        inset(r * 0.3); c.fill();
+        // Black teardrop seeds, tips toward the center, kept inside the flesh.
+        c.save();
+        inset(r * 0.3); c.clip();
+        c.fillStyle = '#141414';
+        for (const [a, d] of [[1.55, 0.47], [2.45, 0.42], [3.3, 0.5], [4.15, 0.42], [5.0, 0.47], [3.0, 0.16]]) {
+          c.save();
+          c.rotate(a);
+          c.translate(r * d, 0);
+          c.beginPath();
+          c.moveTo(-r * 0.14, 0);
+          c.quadraticCurveTo(-r * 0.02, -r * 0.09, r * 0.04, -r * 0.075);
+          c.arc(r * 0.04, 0, r * 0.075, -Math.PI / 2, Math.PI / 2);
+          c.quadraticCurveTo(-r * 0.02, r * 0.09, -r * 0.14, 0);
+          c.fill();
+          c.restore();
+        }
+        c.restore();
+        c.restore();
+      } },
+    { id: 'party', name: 'Party', color: '#ffb31a',
+      draw(c, r, mouth, time) {
+        c.save();
+        // Body: rich sunflower gold, lighter up front, deeper orange-gold at the edge.
+        const g = c.createRadialGradient(-r * 0.25, -r * 0.3, r * 0.1, 0, 0, r);
+        g.addColorStop(0, '#ffd84f');
+        g.addColorStop(0.6, '#ffb31a');
+        g.addColorStop(1, '#eb9a00');
+        c.fillStyle = g;
+        body(c, r, mouth);
+        c.fill();
+
+        // Confetti drifting around the back and top of the head (never over the mouth).
+        const bits = [
+          [-2.55, 1.13, '#2fd4ff', 0], [2.75, 1.12, '#ff2e88', 1.7], [-1.35, 1.16, '#7cf03a', 3.1],
+          [2.05, 1.1, '#ffffff', 4.4], [1.05, 1.14, '#2fd4ff', 5.6], [-0.72, 1.13, '#ff2e88', 2.3],
+        ];
+        for (const [a0, d0, col, ph] of bits) {
+          const a = a0 + Math.sin(time * 1.3 + ph) * 0.12;
+          const d = d0 + Math.sin(time * 0.9 + ph * 1.7) * 0.04;
+          c.save();
+          c.translate(Math.cos(a) * d * r, Math.sin(a) * d * r);
+          c.rotate(ph + time * 1.6);
+          c.fillStyle = col;
+          c.fillRect(-r * 0.1, -r * 0.055, r * 0.2, r * 0.11);
+          c.restore();
+        }
+
+        // Cone party hat, tilted back a little, sitting on the top of the head.
+        const up = -1.92;                       // direction from the center to the hat (up and back)
+        c.translate(Math.cos(up) * r * 0.5, Math.sin(up) * r * 0.5);
+        c.rotate(up + Math.PI / 2);
+        const w = r * 0.54, h = r * 0.66, sag = r * 0.14;
+        const cone = () => {
+          c.beginPath();
+          c.moveTo(-w, 0);
+          c.lineTo(0, -h);
+          c.lineTo(w, 0);
+          c.quadraticCurveTo(0, sag * 2, -w, 0);
+          c.closePath();
+        };
+        cone();
+        c.fillStyle = '#2a5bff';
+        c.fill();
+        c.save();
+        cone();
+        c.clip();
+        // Bold diagonal magenta stripes between the two sides of the cone.
+        const L = t => [-w * (1 - t), -h * t], R = t => [w * (1 - t), -h * t];
+        c.fillStyle = '#ff2e88';
+        for (let t = -0.32; t < 1; t += 0.42) {
+          const t1 = Math.max(t, -0.32), t2 = Math.min(t + 0.21, 1);
+          const p = [L(t1), R(Math.min(t1 + 0.22, 1)), R(Math.min(t2 + 0.22, 1)), L(t2)];
+          c.beginPath();
+          c.moveTo(p[0][0], p[0][1]);
+          for (let i = 1; i < 4; i++) c.lineTo(p[i][0], p[i][1]);
+          c.closePath();
+          c.fill();
+        }
+        c.restore();
+        // Dark outline so the hat stands off the gold head.
+        cone();
+        c.lineWidth = r * 0.08;
+        c.lineJoin = 'round';
+        c.strokeStyle = '#1b1560';
+        c.stroke();
+        // White trim along the brim.
+        c.beginPath();
+        c.moveTo(-w, 0);
+        c.quadraticCurveTo(0, sag * 2, w, 0);
+        c.lineWidth = r * 0.12;
+        c.lineCap = 'round';
+        c.strokeStyle = '#ffffff';
+        c.stroke();
+        // Pompom on the tip.
+        c.fillStyle = '#ffffff';
+        c.beginPath();
+        c.arc(0, -h, r * 0.17, 0, TAU);
+        c.fill();
+        c.restore();
+      } },
+  ];
+
+  const byId = id => LIST.find(s => s.id === id) || LIST[0];
+  return { LIST, byId, body, MOUTH: Math.PI / 5 };
+})();
+</script>
+
 <script>
 (() => {
   const $ = id => document.getElementById(id);
@@ -769,6 +1229,11 @@ const Core = (() => {
 
   const settings = { difficulty: 'normal', targets: false, sound: true, ...store.get('circle-chase:settings', {}) };
   if (!Core.DIFFICULTY[settings.difficulty]) settings.difficulty = 'normal';
+  // The skin is picked in the Skins dropdown on the home page, which saves it under this key and
+  // also sends it to the game in its frame (a sandboxed pull request can't read storage).
+  // In two-player, player 1 wears it and player 2 keeps their own color.
+  let skinId = Skins.byId(store.get('circle-chase:skin', 'classic')).id;
+  const skin = () => Skins.byId(skinId);
 
   let game, stats, running = false, paused = false, overlayMode = 'title';
   let T = 0, dpr = 1, layers = {}, lastHud = '', readyLabel = 'READY';
@@ -1156,10 +1621,16 @@ const Core = (() => {
     for (const off of [-W, 0, W]) { const px = x + off; if (px > -1 && px < W) fn((px + 0.5) * T); }
   }
 
+  // Turn the context so a skin drawn facing +x faces d. Facing left is a mirror image rather than a
+  // half turn, so whatever is on top of a skin's head stays on top.
+  function faceTurn(c, d) {
+    if (d.x < 0) c.scale(-1, 1);
+    else if (d.y) c.rotate(Math.atan2(d.y, d.x));
+  }
   // One player's circle: swallowed dots, the gulp, the mouth, the power-dot ring and the dying
   // shrink, all in that player's color. A player who is out is not drawn.
   function drawPlayer(g, p, now, reduce) {
-    const m = g.maze, color = YOU[p.id];
+    const m = g.maze, color = p.id ? YOU[p.id] : skin().color; // player 1 wears the skin
     const dying = g.state === 'dying' && g.caught === p.id;
     if (p.out) return;
     const [px, py] = g.pos(p);
@@ -1213,6 +1684,13 @@ const Core = (() => {
       const cy = (py + 0.5) * T;
       ctx.save();
       ctx.translate(cx + face.x * s * pr * 0.5, cy + face.y * s * pr * 0.5);
+      if (!p.id) {
+        // Player 1: the skin draws the circle facing +x, mouth open while open is on.
+        faceTurn(ctx, face);
+        ctx.scale(1 + s, 1 - s * 0.6);
+        skin().draw(ctx, pr, open ? Skins.MOUTH : 0, reduce ? 0 : now);
+        ctx.restore();
+      } else {
       ctx.rotate(Math.atan2(face.y, face.x));
       ctx.scale(1 + s, 1 - s * 0.6);
       ctx.fillStyle = color;
@@ -1229,6 +1707,7 @@ const Core = (() => {
       }
       ctx.fill();
       ctx.restore();
+      }
       // a power dot sends a ring out from the circle
       if (!reduce && big && since >= 0 && since < BURST && g.state === 'playing') {
         const k = since / BURST;
@@ -1377,18 +1856,22 @@ const Core = (() => {
   function updateHud() {
     const g = game, ps = g.players;
     const time = clock(stats.survival());
-    const key = [...ps.map(p => p.score + ':' + p.lives), g.level, time].join('|');
+    const key = [...ps.map(p => p.score + ':' + p.lives), g.level, time, skinId].join('|');
     if (key === lastHud) return;
     lastHud = key;
     $('hud-time').textContent = time;
     ps.forEach((p, i) => { $('hud-score' + (i + 1)).textContent = p.score.toLocaleString('en-US'); });
     $('hud-level').textContent = String(g.level);
+    document.querySelector('#hud-score1').previousElementSibling.querySelector('.pip').style.background = skin().color;
     const lives = $('hud-lives');
     lives.replaceChildren(...ps.map((p, i) => {
       const row = document.createElement('span');
       if (i) row.className = 'p2';
       const shown = Math.min(p.lives, 5);
-      for (let k = 0; k < shown; k++) row.appendChild(document.createElement('i'));
+      for (let k = 0; k < shown; k++) {
+        const dot = row.appendChild(document.createElement('i'));
+        if (!i) dot.style.background = skin().color;
+      }
       if (p.lives > shown) row.append(`+${p.lives - shown}`);
       if (!p.lives) row.append('out');
       return row;
@@ -1398,6 +1881,15 @@ const Core = (() => {
 
   // ---------- settings ----------
   function saveSettings() { store.set('circle-chase:settings', settings); }
+
+  // ---------- skins ----------
+  function setSkin(id) {
+    if (typeof id === 'string') skinId = Skins.byId(id).id;
+  }
+  addEventListener('message', ev => {
+    if (ev.source === window.parent && ev.data && typeof ev.data === 'object' && 'circleChaseSkin' in ev.data) setSkin(ev.data.circleChaseSkin);
+  });
+  addEventListener('storage', ev => { if (ev.key === 'circle-chase:skin') setSkin(store.get(ev.key, 'classic')); });
 
   function toggleSetting(name) {
     settings[name] = !settings[name];

@@ -261,7 +261,11 @@ HOME = '''<!doctype html>
     margin-top: 2px; font: 400 12.5px/1.35 var(--font-body); color: var(--ink-dim);
   }
   .menu-item:hover, .menu-item:focus-visible { background: rgba(166, 196, 255, 0.1); }
-  .menu-item[aria-current="page"] { box-shadow: inset 3px 0 0 var(--accent); }
+  .menu-item[aria-current="page"], .menu-item[aria-current="true"] { box-shadow: inset 3px 0 0 var(--accent); }
+  /* The Skins dropdown: every skin, all free, with its picture. The pick applies to every version. */
+  .skin-item { display: flex; align-items: center; gap: 10px; }
+  .skin-item canvas { width: 30px; height: 30px; flex: none; background: #000; border-radius: 4px; }
+  .menu.skins .menu-current { color: var(--ink); }
 
   /* One line about the version that is playing. */
   .about {
@@ -320,6 +324,7 @@ HOME = '''<!doctype html>
   <noscript><p style="padding:16px"><a href="__FIRST__">Play the game</a> &middot; <a href="versions/">every version</a></p></noscript>
 </div></div>
 <script type="application/json" id="versions-data">__DATA__</script>
+__SKINS__
 <script>
 (() => {
   const versions = JSON.parse(document.getElementById('versions-data').textContent);
@@ -328,7 +333,7 @@ HOME = '''<!doctype html>
   const stage = document.getElementById('stage');
   const about = document.getElementById('about');
   const notice = document.getElementById('notice');
-  const tabs = [...document.querySelectorAll('#tabs a')];
+  const tabs = [...document.querySelectorAll('#tabs a[data-key]')];
   const row = document.getElementById('tabs');
   const menus = [...document.querySelectorAll('.menu')].map(li => ({
     li, btn: li.querySelector('.menu-btn'), list: li.querySelector('.menu-list'), current: li.querySelector('.menu-current'),
@@ -350,6 +355,7 @@ HOME = '''<!doctype html>
     });
     // A dropdown holding the version that is playing says so on its button.
     menus.forEach(m => {
+      if (m.li.classList.contains('skins')) return;
       const on = [...m.list.querySelectorAll('a')].some(a => a.dataset.key === v.key);
       m.btn.classList.toggle('current', on);
       m.current.textContent = on ? v.name : '';
@@ -377,7 +383,7 @@ HOME = '''<!doctype html>
     frame.title = v.name + ' (game)';
     frame.allow = 'autoplay; fullscreen';
     if (v.sandbox) frame.setAttribute('sandbox', 'allow-scripts allow-pointer-lock');
-    frame.addEventListener('load', () => { if (focus) frame.focus(); }, { once: true });
+    frame.addEventListener('load', () => { sendSkin(); if (focus) frame.focus(); }, { once: true });
     frame.src = gameUrl(v);
     stage.querySelectorAll('iframe').forEach(f => f.remove());
     stage.append(frame);
@@ -437,6 +443,52 @@ HOME = '''<!doctype html>
   addEventListener('resize', () => closeMenus());
   row.addEventListener('scroll', () => closeMenus());
 
+  // Skins: the list is drawn from the Skins script that build_site.py copied from main's game. The
+  // pick is saved for every version (they share this site's storage) and sent to the game playing
+  // now, which matters for pull requests: their sandboxed frames can't read storage.
+  const skinMenu = menus.find(m => m.li.classList.contains('skins'));
+  let skinId = 'classic';
+  try { skinId = JSON.parse(localStorage.getItem('circle-chase:skin')) || 'classic'; } catch (e) { /* no storage */ }
+  function sendSkin() {
+    const f = stage.querySelector('iframe');
+    if (f && f.contentWindow) f.contentWindow.postMessage({ circleChaseSkin: skinId }, '*');
+  }
+  function showSkin() {
+    if (!skinMenu) return;
+    const sk = Skins.byId(skinId);
+    skinId = sk.id;
+    skinMenu.current.textContent = sk.name;
+    skinMenu.list.querySelectorAll('a').forEach(a => a.setAttribute('aria-current', String(a.dataset.skin === skinId)));
+  }
+  if (skinMenu && typeof Skins !== 'undefined') {
+    const r = Math.min(window.devicePixelRatio || 1, 3);
+    for (const sk of Skins.LIST) {
+      const li = document.createElement('li'), a = document.createElement('a'), cv = document.createElement('canvas');
+      a.className = 'menu-item skin-item';
+      a.href = '#';
+      a.dataset.skin = sk.id;
+      cv.width = cv.height = Math.round(30 * r);
+      cv.setAttribute('aria-hidden', 'true');
+      const c = cv.getContext('2d');
+      c.setTransform(r, 0, 0, r, 15 * r, 16 * r);
+      sk.draw(c, 9.5, Skins.MOUTH, 0);
+      a.append(cv, sk.name);
+      a.addEventListener('click', ev => {
+        ev.preventDefault();
+        skinId = sk.id;
+        try { localStorage.setItem('circle-chase:skin', JSON.stringify(skinId)); } catch (e) { /* no storage */ }
+        showSkin();
+        sendSkin();
+        closeMenus();
+        const f = stage.querySelector('iframe');
+        if (f) f.focus();
+      });
+      li.append(a);
+      skinMenu.list.append(li);
+    }
+    showSkin();
+  } else if (skinMenu) skinMenu.li.remove();
+
   addEventListener('popstate', () => {
     const v = byKey.get(new URLSearchParams(location.search).get('v')) || main;
     if (v !== current) show(v, true);
@@ -472,6 +524,11 @@ def groups(versions):
     return main, control, prototypes, fun, pulls
 
 
+def read_main_game():
+    with open(os.path.join(OUT, 'v', 'main', 'index.html'), encoding='utf-8') as f:
+        return f.read()
+
+
 def write_home(versions):
     def tab(v):
         return (f'<li><a class="tab" href="{html.escape(v["href"])}" data-key="{html.escape(v["key"])}">'
@@ -496,6 +553,11 @@ def write_home(versions):
     tabs = ''.join(map(tab, main + control + pulls))
     if prototypes:
         tabs += menu('Prototypes', 'proto', prototypes)
+    # Skins: drawn from the Skins script in main's game, so a new skin shows up here by itself.
+    found = re.search(r'<script id="skins">[\s\S]*?</script>', read_main_game())
+    skins = found.group(0) if found else ''
+    if skins:
+        tabs += menu('Skins', 'skins', [])
     if fun:
         tabs += menu('Fun modes', 'fun', fun)
     data =[{k: v[k] for k in ('key', 'name', 'kind', 'path', 'note', 'updated', 'sandbox', 'rev')} for v in versions]
@@ -503,7 +565,8 @@ def write_home(versions):
                 .replace('__README__', html.escape(f'https://github.com/{REPO}#make-your-own-version'))
                 .replace('__TABS__', tabs)
                 .replace('__FIRST__', html.escape(versions[0]['path']))
-                .replace('__DATA__', script_json(data)))
+                .replace('__DATA__', script_json(data))
+                .replace('__SKINS__', skins))
     with open(os.path.join(OUT, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(page)
     with open(os.path.join(OUT, 'versions.json'), 'w', encoding='utf-8') as f:
