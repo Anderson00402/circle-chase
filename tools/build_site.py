@@ -56,6 +56,12 @@ NOTES = {
             'A power dot lights up everything for a few seconds.'),
     'maze-blink': ('The default game plus one fix: in the last 2 seconds of a power-up the maze walls blink red '
                    "with the ghosts' white flashes."),
+    'timer-bar': ('The default game plus one fix: a pale-blue bar in the top wall drains as the power runs out and '
+                  'shows the seconds left, then turns amber and blinks in the last 2 seconds.'),
+    'ink-refill': ("The default game plus one fix: each scared ghost's own color rises back up inside its outline "
+                   'as the power runs out, boils in the last 2 seconds, and fills it as the power ends.'),
+    'burning-fuse': ("The default game plus one fix: the maze's outer wall becomes a fuse that burns down as the "
+                     'power runs out, burns hot in the last 2 seconds, and pops at the top when time is up.'),
     'timer-ring': ('A ring around your circle drains as the power runs out, so you can watch the time '
                    'without looking away from yourself. It flashes with the ghosts in the last 2 seconds.'),
 }
@@ -67,7 +73,7 @@ CONTROL = ['control']
 
 # Prototypes: ideas for fixing the game, in the "Prototypes" dropdown after the control. These come
 # first, in this order; any other branch that isn't a control or a fun mode follows them.
-PROTOTYPES = ['timer', 'ghost-blink', 'maze-blink']
+PROTOTYPES = ['timer', 'timer-bar', 'ghost-blink', 'maze-blink', 'ink-refill', 'burning-fuse']
 
 # Fun modes: branches that change the game just for fun, in the "Fun modes" dropdown at the right
 # end of the tab row, in this order.
