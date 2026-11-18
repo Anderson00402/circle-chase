@@ -140,6 +140,9 @@ const Core = (() => {
   const PATH = 0, WALL = 1, DOOR = 2, PEN = 3;
 
   const PLAYER_SPEED = 5.7; // tiles per second
+  // Ghost speed as a share of the player's: the same on every level and difficulty, slow enough that
+  // you can outrun any ghost. Scared ghosts are slower by the same share (they were 55%).
+  const GHOST_PACE = 0.6, SCARED_PACE = 0.35;
   const TURN_MEMORY = 0.5;  // seconds an early key press is kept
   const READY_TIME = 1.8, DEATH_TIME = 1.6, CLEAR_TIME = 2.2;
   const EXIT = [9, 7], HOME = [9, 10], BANNER_ROW = 13;
@@ -227,8 +230,7 @@ const Core = (() => {
     { id: 'drifter', name: 'Drifter', corner: [17, 19] },
   ];
 
-  // enemy: ghost speed on level 1 as a share of the player's; it rises by enemyStep every level
-  //        until it reaches enemyMax (never faster than the player, so a level can always be won).
+  // enemy, enemyStep, enemyMax: not used any more (every ghost moves at GHOST_PACE on every level).
   // waves: alternating scatter/chase lengths in seconds, starting with scatter
   const DIFFICULTY = {
     easy:   { label: 'Easy',   lives: 5, enemy: 0.6, enemyStep: 0.03, enemyMax: 0.85, fright: 9,   release: [0, 3, 7, 11], waves: [9, 15, 9, 15, 7, Infinity] },
@@ -415,14 +417,14 @@ const Core = (() => {
     }
 
     // ---- ghosts ----
-    // Ghosts start slow and get faster every level, up to the difficulty's cap.
-    const ghostPace = (level = g.level) => Math.min(diff.enemyMax, diff.enemy + (level - 1) * diff.enemyStep);
+    // Every ghost moves at GHOST_PACE of your speed, on every level (see PLAYER_SPEED).
+    const ghostPace = () => GHOST_PACE;
 
     function enemySpeed(e) {
       if (e.state === 'returning') return PLAYER_SPEED * 1.9;
       const base = PLAYER_SPEED * ghostPace();
       if (e.state === 'leaving') return base * 0.55;
-      if (e.scared) return PLAYER_SPEED * 0.55;
+      if (e.scared) return PLAYER_SPEED * SCARED_PACE;
       if (m.tunnelRows.has(e.y) && (e.x <= 1 || e.x >= m.W - 2)) return base * 0.6;
       return base;
     }
@@ -674,7 +676,7 @@ const Core = (() => {
     return { event, step, finish, survival };
   }
 
-  return { createGame, createStats, blinkOn, BLINK_FROM, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED, CHASE_PROOF };
+  return { GHOST_PACE, SCARED_PACE, createGame, createStats, blinkOn, BLINK_FROM, buildMaze, MAZES, GHOSTS, DIFFICULTY, DIRS, PATH, WALL, DOOR, PEN, EXIT, HOME, BANNER_ROW, PLAYER_SPEED, CHASE_PROOF };
 })();
 </script>
 
