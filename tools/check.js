@@ -51,17 +51,37 @@ for (const def of Core.MAZES) {
     `pen ${slots ? 'ok' : 'BROKEN'}, exit ${exit ? 'ok' : 'BROKEN'}, start ${start ? 'ok' : 'BROKEN'} -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
-// Control version: ghost speed is the default game's share of the player's on every difficulty,
-// nearly as fast as you from level 1, and faster than you from level 21.
+// Ghost speed: 60% of the player's on every level and difficulty, 35% when scared. Measured in the real
+// game as how far the first ghost travels in one second, with the circle parked far away.
 {
-  const want = { 1: 0.938, 2: 0.944, 4: 0.944, 5: 0.95, 20: 0.95, 21: 1.056 };
-  for (const key of Object.keys(Core.DIFFICULTY)) {
-    const g = Core.createGame(key);
-    const got = Object.keys(want).map(l => +g.ghostPace(+l).toFixed(3));
-    const ok = Object.values(want).every((v, i) => v === got[i]);
-    if (!ok) fail++;
-    console.log(`${key} ghost speed on levels ${Object.keys(want).join(', ')}: ${got.map(p => (p * 100).toFixed(1) + '%').join(' ')} -> ${ok ? 'OK' : 'FAIL'}`);
+  const travel = (key, level, scared) => {
+    const g = Core.createGame(key, () => {}, () => 0.5);
+    g.level = level;
+    g.state = 'playing';
+    const e = g.enemies[0];
+    if (scared) { g.fright = g.frightTotal = 100; e.scared = true; }
+    let [x0, y0] = g.pos(e), dist = 0;
+    for (let i = 0; i < 120; i++) {
+      Object.assign(g.player, { t: 0, dir: -1 });
+      g.want = -1;
+      g.update(1 / 120);
+      const [x, y] = g.pos(e);
+      let dx = Math.abs(x - x0);
+      dx = Math.min(dx, g.maze.W - dx);
+      dist += dx + Math.abs(y - y0);
+      [x0, y0] = [x, y];
+    }
+    return dist / Core.PLAYER_SPEED;
+  };
+  const rows = [];
+  let ok = true;
+  for (const key of Object.keys(Core.DIFFICULTY)) for (const level of [1, 8, 21]) {
+    const normal = travel(key, level, false), scared = travel(key, level, true);
+    if (Math.abs(normal - 0.6) > 0.01 || Math.abs(scared - 0.35) > 0.01) ok = false;
+    rows.push(`${key} ${level}: ${Math.round(normal * 100)}%/${Math.round(scared * 100)}%`);
   }
+  if (!ok) fail++;
+  console.log(`ghost speed (normal/scared, share of yours): ${rows.join(', ')} -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
 // Control version: a power dot lasts 6 s on level 1, 1 s on level 9, and 0 s from level 19, when the
