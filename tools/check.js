@@ -51,15 +51,37 @@ for (const def of Core.MAZES) {
     `pen ${slots ? 'ok' : 'BROKEN'}, exit ${exit ? 'ok' : 'BROKEN'}, start ${start ? 'ok' : 'BROKEN'} -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
-// Ghost speed: slower than the player on level 1, faster every level until the cap, never faster
-// than the player.
-for (const key of Object.keys(Core.DIFFICULTY)) {
-  const g = Core.createGame(key);
-  const paces = Array.from({ length: 12 }, (_, i) => g.ghostPace(i + 1));
-  const rising = paces.every((p, i) => i === 0 || p >= paces[i - 1]) && paces[1] > paces[0];
-  const ok = rising && paces[0] < 0.85 && Math.max(...paces) <= 1;
+// Ghost speed: 60% of the player's on every level and difficulty, 35% when scared. Measured in the real
+// game as how far the first ghost travels in one second, with the circle parked far away.
+{
+  const travel = (key, level, scared) => {
+    const g = Core.createGame(key, () => {}, () => 0.5);
+    g.level = level;
+    g.state = 'playing';
+    const e = g.enemies[0];
+    if (scared) { g.fright = g.frightTotal = 100; e.scared = true; }
+    let [x0, y0] = g.pos(e), dist = 0;
+    for (let i = 0; i < 120; i++) {
+      Object.assign(g.player, { t: 0, dir: -1 });
+      g.want = -1;
+      g.update(1 / 120);
+      const [x, y] = g.pos(e);
+      let dx = Math.abs(x - x0);
+      dx = Math.min(dx, g.maze.W - dx);
+      dist += dx + Math.abs(y - y0);
+      [x0, y0] = [x, y];
+    }
+    return dist / Core.PLAYER_SPEED;
+  };
+  const rows = [];
+  let ok = true;
+  for (const key of Object.keys(Core.DIFFICULTY)) for (const level of [1, 8, 21]) {
+    const normal = travel(key, level, false), scared = travel(key, level, true);
+    if (Math.abs(normal - 0.6) > 0.01 || Math.abs(scared - 0.35) > 0.01) ok = false;
+    rows.push(`${key} ${level}: ${Math.round(normal * 100)}%/${Math.round(scared * 100)}%`);
+  }
   if (!ok) fail++;
-  console.log(`${key} ghost speed by level: ${paces.map(p => Math.round(p * 100) + '%').join(' ')} -> ${ok ? 'OK' : 'FAIL'}`);
+  console.log(`ghost speed (normal/scared, share of yours): ${rows.join(', ')} -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
 // Fog: a small light normally; a power dot opens it to the whole maze, and it closes again over the
