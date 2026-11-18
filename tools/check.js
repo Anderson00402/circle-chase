@@ -141,6 +141,22 @@ for (const key of Object.keys(Core.DIFFICULTY)) {
   console.log(`${key}: random play (your ghost steered at random) ran without errors`);
 }
 
+// The power running out: in the last 3 s the scared ghosts blink to their own color and back,
+// more often every second, and never outside those 3 s.
+{
+  const counts = [0, 0, 0, 0]; // blinks with 4-3, 3-2, 2-1 and 1-0 s of power left
+  let on = false, firstAt = null;
+  for (let i = 4000; i > 0; i--) {
+    const left = i / 1000, now = Core.blinkOn(left);
+    if (now && !on) { counts[Math.min(3, Math.floor(4 - left))]++; if (firstAt === null) firstAt = left; }
+    on = now;
+  }
+  const ok = counts[0] === 0 && counts[1] > 0 && counts[1] < counts[2] && counts[2] < counts[3] && firstAt === 3 &&
+    !Core.blinkOn(0) && !Core.blinkOn(3.01) && !Core.blinkOn(6);
+  if (!ok) fail++;
+  console.log(`power running out: blinks with 4-3, 3-2, 2-1, 1-0 s left: ${counts.join(', ')} (first at ${firstAt} s) -> ${ok ? 'OK' : 'FAIL'}`);
+}
+
 // Play stats, playing as the ghost: survival runs from Start until the circle eats its last dot.
 // Catching it (even winning a level) doesn't stop the clock, and no power-ups or lives are saved.
 const near = (a, b) => a != null && Math.abs(a - b) < 0.011;
