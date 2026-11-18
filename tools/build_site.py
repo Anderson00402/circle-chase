@@ -36,11 +36,11 @@ OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '_site')
 NOTES = {
     'main': 'The repository\'s main branch: the same game as the timer prototype.',
     'control': ('The default game, the control for the class study: no power timer, the ghosts just flash white '
-                'as the power runs out, power lasts 6 s on level 1 but 1 s by level 9, the ghosts are nearly as '
-                'fast as you from the start, and one ghost is the same yellow as you.'),
+                'as the power runs out, power lasts 6 s on level 1 but 1 s by level 9, and one ghost is the same '
+                'yellow as you. Ghosts move at 60% of your speed, as in every version.'),
     'timer': ('All our fixes together: a power timer bar in the top wall, ghosts that blink back to their own '
-              'color faster and faster as the power runs out, ghosts that start slower, power that never lasts '
-              'under 2 s, and no ghost the same yellow as you.'),
+              'color faster and faster as the power runs out, power that never lasts under 2 s, and no ghost the '
+              'same yellow as you.'),
     'ghost-blink': ('The default game plus one fix: in the last 3 seconds of a power-up the scared ghosts blink '
                     'back to their own color, faster and faster.'),
     'Scream': ('Scared ghosts scream when you eat a power dot and keep wailing while you are close, '
