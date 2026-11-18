@@ -413,7 +413,13 @@ const Core = (() => {
     function startFright() {
       g.fright = g.frightTotal = POWER_TIME[Math.min(g.level, POWER_TIME.length) - 1];
       g.chain = 0;
-      for (const e of g.enemies) if (e.state === 'active') { e.scared = g.fright > 0; e.flip = true; }
+      // Every ghost turns scared, even those still in the pen (they come out scared); only eaten ones
+      // (eyes on their way home) don't. Ghosts out in the maze turn around.
+      for (const e of g.enemies) {
+        if (e.state === 'returning') continue;
+        e.scared = g.fright > 0;
+        if (e.state === 'active') e.flip = true;
+      }
     }
 
     // ---- ghosts ----
@@ -488,7 +494,7 @@ const Core = (() => {
     }
 
     function arrive(e) {
-      if (e.state === 'leaving' && e.x === m.exit[0] && e.y === m.exit[1]) { e.state = 'active'; e.scared = false; }
+      if (e.state === 'leaving' && e.x === m.exit[0] && e.y === m.exit[1]) e.state = 'active'; // scared or not, as it was
       else if (e.state === 'returning' && e.x === m.home[0] && e.y === m.home[1]) e.state = 'leaving';
     }
 
@@ -637,8 +643,9 @@ const Core = (() => {
       if (g.state === 'playing') inPlay += dt;
       if (!open || g.state !== 'playing') return;
       if (g.fright <= 0) return close('ran_out');
+      // Scared ghosts still in the pen keep the power-up going; only those out in the maze can be chased.
+      if (!g.enemies.some(e => e.scared)) return close('no_ghosts_left');
       const scared = g.enemies.filter(e => e.scared && e.state === 'active');
-      if (!scared.length) return close('no_ghosts_left');
       const here = tileOf(g.player);
       if (here === tile) return;
       const from = tile, m = g.maze, ghosts = distFrom(m, scared.map(tileOf)), ate = ateDot;
