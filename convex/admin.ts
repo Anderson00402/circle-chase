@@ -11,9 +11,9 @@ import type { Doc, Id } from './_generated/dataModel';
 import { patchSessionRows, rowOf } from './lib/digest';
 import { patchReplayRows } from './lib/replayDigest';
 
-const TABLES: TableNames[] = ['clips', 'trialSeries', 'trialDigests', 'trialCells', 'replayDigests', 'trials', 'ratings', 'blocks', 'presence', 'sessions', 'participants', 'counters', 'cueCounters'];
+const TABLES: TableNames[] = ['runChunks', 'runRecordings', 'clips', 'trialSeries', 'trialDigests', 'trialCells', 'replayDigests', 'trials', 'ratings', 'blocks', 'presence', 'sessions', 'participants', 'counters', 'cueCounters'];
 /** Clips are the heavy rows (10-15 KB); keep a batch well inside one mutation's limits. */
-const BATCH: Partial<Record<TableNames, number>> = { clips: 200, trialDigests: 20, trialCells: 50, replayDigests: 20 };
+const BATCH: Partial<Record<TableNames, number>> = { runChunks: 300, clips: 200, trialDigests: 20, trialCells: 50, replayDigests: 20 };
 const DEFAULT_BATCH = 500;
 /** Rows one call may read in all, well under Convex's 4,096 reads per function. */
 const READ_BUDGET = 2000;
@@ -36,7 +36,7 @@ async function purge(ctx: MutationCtx, onlyBots: boolean) {
 	return { deleted, more };
 }
 
-/** Delete every row with `source: 'bot'` (participants, sessions, blocks, trials, clips, ratings, presence, counters). */
+/** Delete every row with `source: 'bot'` (participants, sessions, blocks, trials, clips, full-run recordings, ratings, presence, counters). */
 export const deleteBotData = mutation({
 	args: { confirm: v.literal('delete bot data') },
 	handler: async (ctx) => {

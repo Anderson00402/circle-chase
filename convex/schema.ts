@@ -14,6 +14,7 @@ import { simInfo } from './sim';
 import { counterFields, cueCounterFields } from './counters';
 import { trialCellsTable, trialDigestTable } from './lib/digest';
 import { replayDigestTable } from './lib/replayDigest';
+import { runChunkFields, runRecordingFields } from './runRecordings';
 
 export default defineSchema({
 	/** One per browser (anonymous id kept in localStorage) or per bot. */
@@ -224,6 +225,19 @@ export default defineSchema({
 	})
 		.index('by_session', ['sessionKey'])
 		.index('by_updated', ['updatedAt']),
+
+	/**
+	 * Full-run recordings (convex/runRecordings.ts): one document per ~5 s of game time of a run,
+	 * written once and never rewritten (about 1-1.5 KB), keyed by block key + index.
+	 */
+	runChunks: defineTable(runChunkFields)
+		.index('by_block', ['blockKey', 'i']),
+
+	/** One small index document per recorded run, written when the block closes; lists read these. */
+	runRecordings: defineTable(runRecordingFields)
+		.index('by_block', ['blockKey'])
+		.index('by_source', ['source', 'startedAt'])
+		.index('by_participant', ['participantId', 'startedAt']),
 
 	/** Running totals per source for the live header, kept by the write mutations (convex/counters.ts). */
 	counters: defineTable(counterFields).index('by_source', ['source']),

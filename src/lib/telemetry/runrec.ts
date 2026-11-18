@@ -324,6 +324,11 @@ export interface RunRecorder {
 	mark(m: DistributiveOmit<RunMark, 't'>): void;
 	/** A new game on this page: its game time starts again at 0. */
 	newGame(): void;
+	/**
+	 * Before the first chunk is out: number from `firstIndex` and start at run time `startAt` (the
+	 * server knew more about a refreshed run than this browser). Ignored once a chunk was sent.
+	 */
+	renumber(firstIndex: number, startAt: number): void;
 	/** Send what has been kept so far as a (short) chunk. Returns it, or null when there was nothing. */
 	flush(): RunChunk | null;
 	/** Index of the next chunk. */
@@ -417,6 +422,11 @@ export function createRunRecorder(o: RunRecorderOptions): RunRecorder {
 			const full = { ...m, t: +Math.max(0, lastT).toFixed(3) } as RunMark;
 			if (cur) { cur.marks.push(full); if (full.k === 'trial') cur.trials.push(full.key); }
 			else early.marks.push(full);
+		},
+		renumber(firstIndex, startAt) {
+			if (next !== (o.firstIndex ?? 0)) return;
+			next = firstIndex;
+			base = startAt;
 		},
 		newGame,
 		flush: close,

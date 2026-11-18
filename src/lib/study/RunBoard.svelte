@@ -55,6 +55,9 @@
 	// svelte-ignore state_referenced_locally
 	const config: Partial<GameConfig> = rules === 'study' ? { ...studyRules } : { difficulty: 'normal' };
 
+	// The full-run recording notes every switch between participant view and the researcher's view.
+	$effect(() => { tel.markView(!showPanel); });
+
 	let gameRef = $state<ReturnType<typeof Game>>();
 	let started = false, ending = false;
 	/** The latest frame, read at the moment End run is pressed (the panel's readout lags up to 100 ms). */

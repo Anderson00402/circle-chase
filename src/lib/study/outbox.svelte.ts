@@ -42,18 +42,21 @@ const FNS = {
 	rateBlock: api.ratings.saveBlock,
 	rateSession: api.ratings.saveSession,
 	setup: api.runs.setup,
-	markBlock: api.runs.markBlock
+	markBlock: api.runs.markBlock,
+	runChunk: api.runRecordings.saveChunk,
+	runFinish: api.runRecordings.finish
 } as const;
 export type OutboxFn = keyof typeof FNS;
 /** The Convex function each write calls, for the JSON download. */
 const FN_NAMES: Record<OutboxFn, string> = {
 	ensure: 'participants:ensure', sessionStart: 'sessions:start', sessionUpdate: 'sessions:update',
 	blockStart: 'blocks:start', blockEnd: 'blocks:end', trial: 'trials:save', rateBlock: 'ratings:saveBlock',
-	rateSession: 'ratings:saveSession', setup: 'runs:setup', markBlock: 'runs:markBlock'
+	rateSession: 'ratings:saveSession', setup: 'runs:setup', markBlock: 'runs:markBlock',
+	runChunk: 'runRecordings:saveChunk', runFinish: 'runRecordings:finish'
 };
 
 /** These answer null while the row they refer to does not exist yet: wait, do not count as failing. */
-const WAITS = new Set<OutboxFn>(['setup', 'markBlock', 'rateBlock', 'rateSession', 'sessionUpdate', 'blockEnd']);
+const WAITS = new Set<OutboxFn>(['setup', 'markBlock', 'rateBlock', 'rateSession', 'sessionUpdate', 'blockEnd', 'runFinish']);
 
 interface Job {
 	id: string;
@@ -76,6 +79,11 @@ interface Job {
 	lastTryAt?: number;
 	/** Who and what it is about, for the researcher (participant label, case). */
 	about?: WriteAbout;
+	/**
+	 * Routine background write (a full-run chunk every 5 s): not shown as "Saving" while it is
+	 * fresh, so the indicator does not flicker. Shown like any other once it is late or failing.
+	 */
+	quiet?: boolean;
 }
 
 /** Context a caller can attach to a write so a stuck one can be named in plain words. */
@@ -139,6 +147,8 @@ export interface SendOptions {
 	onDone?: (result: unknown) => void;
 	/** Who and what it is about, shown if the write gets stuck. */
 	about?: WriteAbout;
+	/** Routine background write (see `Job.quiet`). */
+	quiet?: boolean;
 }
 
 export interface Outbox {
@@ -167,6 +177,8 @@ const LEGACY_RUN = 'cc.run.outbox';
 /** A tab rewrites its entry at least this often while it has writes; quieter entries are adopted. */
 const BEAT_MS = 3000;
 const STALE_MS = 12_000;
+/** A quiet write (a run chunk) is shown as on its way only once it has waited this long. */
+const QUIET_MS = 10_000;
 /** Server rejections in a row after which a write is parked (about a minute and a half of back-off). */
 export const PARK_AFTER = 8;
 /** A parked write is tried again this often. */
@@ -227,7 +239,9 @@ const WHAT: Record<OutboxFn, string> = {
 	rateBlock: 'Answers after a run',
 	rateSession: 'Answers at the end',
 	setup: 'Participant label and case order',
-	markBlock: 'Run notes (pauses)'
+	markBlock: 'Run notes (pauses)',
+	runChunk: 'Part of the whole-run recording',
+	runFinish: 'Whole-run recording index'
 };
 
 const str = (x: unknown): string | null => (typeof x === 'string' && x ? x : null);
@@ -238,7 +252,7 @@ export function describeWrite(job: Job): ParkedWrite {
 	const index = typeof a.trialIndex === 'number' ? ` ${a.trialIndex + 1}` : '';
 	return {
 		id: job.id, fn: job.fn,
-		what: WHAT[job.fn] + (job.fn === 'trial' ? index : ''),
+		what: WHAT[job.fn] + (job.fn === 'trial' ? index : job.fn === 'runChunk' && typeof a.i === 'number' ? ` (${a.i + 1})` : ''),
 		participant: job.about?.participant ?? str(run?.participantLabel) ?? str(a.nickname) ?? null,
 		session: str(a.sessionKey) ?? (job.fn === 'sessionStart' || job.fn === 'sessionUpdate' ? str(a.key) : null),
 		cue: job.about?.cue ?? str(a.cue) ?? null,
@@ -287,11 +301,13 @@ export function createOutbox(client: ConvexClient): Outbox {
 	function refresh() {
 		const now = Date.now();
 		const failing = jobs.filter((j) => j.tries >= 3);
+		// A fresh routine background write (a run chunk on its way) counts as nothing to report.
+		const background = jobs.filter((j) => j.quiet && !j.tries && !j.parked && now - (j.queuedAt ?? now) < QUIET_MS).length;
 		const waiting = jobs.filter((j) => j.waits && !j.tries).length;
 		outboxStatus.waiting = waiting;
 		const parked = jobs.filter((j) => j.parked);
 		// A parked write is not on the way: it is listed apart, never counted as pending.
-		outboxStatus.pending = jobs.length - waiting - parked.length;
+		outboxStatus.pending = jobs.length - waiting - parked.length - background;
 		outboxStatus.parkedWrites = parked.map(describeWrite);
 		outboxStatus.failingCount = failing.length;
 		outboxStatus.failing = failing.length > 0;
@@ -299,7 +315,7 @@ export function createOutbox(client: ConvexClient): Outbox {
 		outboxStatus.parked = parked.length;
 		outboxStatus.parkedErrors = parked.slice(0, 5).map((j) => ({ fn: j.fn, error: j.lastError ?? '' }));
 		const online = connection.status === 'connected' || connection.status === 'connecting';
-		outboxStatus.state = failing.length ? (online ? 'failing' : 'offline') : jobs.length === waiting ? 'saved' : !online ? 'offline' : 'saving';
+		outboxStatus.state = failing.length ? (online ? 'failing' : 'offline') : jobs.length === waiting + background ? 'saved' : !online ? 'offline' : 'saving';
 		if (jobs.length && now - lastBeat > BEAT_MS) persist();
 	}
 
@@ -351,7 +367,9 @@ export function createOutbox(client: ConvexClient): Outbox {
 		busy = true;
 		try {
 			const held = new Set<string>();
-			for (const job of [...jobs]) {
+			// Routine background writes (run chunks) go after the others in each pass, so a trial is
+			// never kept waiting behind them. Each lane keeps its own order: a lane is all quiet or not.
+			for (const job of [...jobs.filter((j) => !j.quiet), ...jobs.filter((j) => j.quiet)]) {
 				if (!jobs.includes(job)) continue;
 				// A parked write neither waits for its lane nor holds it.
 				const holds = !!job.lane && !job.parked;
@@ -422,7 +440,7 @@ export function createOutbox(client: ConvexClient): Outbox {
 		send(fn, args, opts) {
 			const o: SendOptions = typeof opts === 'string' ? { id: opts } : opts ?? {};
 			const id = o.id ?? uid();
-			const job: Job = { id, fn, args, tries: 0, queuedAt: Date.now(), ...(o.lane ? { lane: o.lane } : {}), ...(o.about ? { about: o.about } : {}) };
+			const job: Job = { id, fn, args, tries: 0, queuedAt: Date.now(), ...(o.lane ? { lane: o.lane } : {}), ...(o.about ? { about: o.about } : {}), ...(o.quiet ? { quiet: true } : {}) };
 			const at = jobs.findIndex((j) => j.id === id);
 			if (at >= 0) jobs[at] = job;
 			else jobs.push(job);
