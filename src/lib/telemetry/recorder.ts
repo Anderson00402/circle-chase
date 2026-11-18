@@ -169,9 +169,10 @@ export function createRecorder(opts: { keep?: number } = {}): Recorder {
 	};
 }
 
-const PHASES: Phase[] = ['ready', 'playing', 'dying', 'clear', 'over'];
-const MODES: GhostMode[] = ['waiting', 'leaving', 'active', 'returning'];
-const REASONS: PowerEndReason[] = ['expired', 'died', 'cleared', 'refreshed'];
+/** Enum orders of the packed formats (shared with the full-run recording, runrec.ts). Append only. */
+export const PHASES: Phase[] = ['ready', 'playing', 'dying', 'clear', 'over'];
+export const MODES: GhostMode[] = ['waiting', 'leaving', 'active', 'returning'];
+export const REASONS: PowerEndReason[] = ['expired', 'died', 'cleared', 'refreshed'];
 const cs = (v: number) => Math.round(v * CS);
 const ocs = (v: number) => (v < 0 ? -1 : Math.round(v * CS)); // -1 stays "never"
 const q = (v: number) => Math.round(v * POS);
@@ -270,7 +271,7 @@ export function encodeClip(kept: { frame: Frame; dots: Uint8Array; mazeId: strin
 	};
 }
 
-function roundEvent(e: GameEvent): GameEvent {
+export function roundEvent(e: GameEvent): GameEvent {
 	const out: Record<string, unknown> = {};
 	for (const [k, v] of Object.entries(e)) out[k] = typeof v === 'number' ? Math.round(v * 1000) / 1000 : v;
 	return out as GameEvent;
