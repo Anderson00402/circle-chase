@@ -57,7 +57,7 @@ for (const def of Core.MAZES) {
 for (const key of Object.keys(Core.DIFFICULTY)) {
   const g = Core.createGame(key);
   const paces = Array.from({ length: 12 }, (_, i) => g.ghostPace(i + 1));
-  const ok = paces.every(p => p === paces[0]) && paces[0] < 1 && Core.YOU_PACE < 1;
+  const ok = paces.every(p => p === Core.GHOST_PACE) && Core.YOU_PACE < 1;
   if (!ok) fail++;
   console.log(`${key} teammate speed by level: ${paces.map(p => Math.round(p * 100) + '%').join(' ')}, ` +
     `yours ${Math.round(Core.YOU_PACE * 100)}% -> ${ok ? 'OK' : 'FAIL'}`);
