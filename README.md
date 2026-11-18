@@ -78,6 +78,22 @@ it as a file, or discard it.
   complete file never has that line.
 - Every outcome can be worked out again from the Power-ups CSV alone: `node scripts/csv-reclassify.mjs`.
 
+## Simulated demo data in the repository
+
+`data/simulated-demo.zip` (about 24 MB) is a snapshot of the simulated data set: one planted and
+one flat simulator run of 40 simulated participants each, 15,380 power-ups, 10,326 replay clips and
+a few whole-run recordings. It holds no human data. The local database file itself is not in the
+repository (it is about 2 GB, mostly old revisions the snapshot leaves out).
+
+To load it into a fresh checkout, start Convex once (`npm run convex`), then in another terminal:
+
+```
+npm run data:import
+```
+
+This **replaces everything** in the local database with the snapshot, so do not run it on a
+database that holds study data. `npm run data:export` writes the current database to the same file.
+
 ## Before a real study: clear the simulated data
 
 The database ships with two simulated runs of 40 participants each (a "planted" run where the cases

@@ -18,7 +18,9 @@
 		"test": "vitest run",
 		"e2e": "node scripts/run-e2e.mjs && node scripts/outbox-e2e.mjs && node scripts/export-e2e.mjs && node scripts/fullrun-e2e.mjs",
 		"convex": "CONVEX_AGENT_MODE=anonymous CONVEX_LOCAL_BACKEND_STARTUP_TIMEOUT_SECS=240 convex dev",
-		"dev:all": "(CONVEX_AGENT_MODE=anonymous CONVEX_LOCAL_BACKEND_STARTUP_TIMEOUT_SECS=240 convex dev &) && vite dev"
+		"dev:all": "(CONVEX_AGENT_MODE=anonymous CONVEX_LOCAL_BACKEND_STARTUP_TIMEOUT_SECS=240 convex dev &) && vite dev",
+		"data:export": "CONVEX_AGENT_MODE=anonymous convex export --path data/simulated-demo.zip",
+		"data:import": "CONVEX_AGENT_MODE=anonymous convex import --replace-all data/simulated-demo.zip"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^8.0.0",
