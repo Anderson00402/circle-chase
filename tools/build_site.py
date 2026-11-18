@@ -34,8 +34,8 @@ OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '_site')
 # latest commit message instead, and a pull request shows its title.
 NOTES = {
     'main': 'The basic game. Eat every dot; after a power dot you can catch the ghosts for a few seconds.',
-    'control': ('The control for the class study: the default rules, without our fixes. No power timer and no '
-                'red walls (only the ghosts flash), power lasts 6 s on level 1 but 1 s by level 9, the ghosts are '
+    'control': ('The control for the class study: the default rules, without our fixes. No power timer, the ghosts '
+                'just flash white at the end, power lasts 6 s on level 1 but 1 s by level 9, the ghosts are '
                 'nearly as fast as you from the start, and one ghost is the same yellow as you.'),
     'Scream': ('Scared ghosts scream when you eat a power dot and keep wailing while you are close, '
                'and an evil laugh warns you the power-up is about to run out.'),
@@ -48,13 +48,16 @@ NOTES = {
     'dash': 'Shift, X or a tap gives a short burst of speed, then it takes 3 seconds to recharge.',
     'fog': ("The maze is dark except the light around your circle. "
             'A power dot lights up everything for a few seconds.'),
+    'maze-blink': ('Prototype of the earlier fix: in the last 2 seconds of a power-up the maze walls blink red with '
+                   "the ghosts' 5 white flashes. Main has the ghosts blink back to their own color instead."),
     'timer-ring': ('A ring around your circle drains as the power runs out, so you can watch the time '
                    'without looking away from yourself. It flashes with the ghosts in the last 2 seconds.'),
 }
 
-# Fun modes: branches that change the game just for fun. Their tabs sit together at the right end
-# of the tab row, in this order. Every other branch is an improvement to the main game: those go
-# on the left, after the main game. Main itself stays the basic game, without any fun-mode extras.
+# Fun modes: branches that change the game just for fun, in the "Fun modes" dropdown at the right
+# end of the tab row, in this order. Every other branch (except the control) is a prototype: an idea
+# for fixing the main game, in the "Prototypes" dropdown after the main game. Main itself stays the
+# basic game, without any fun-mode extras.
 FUN_MODES = ['play-as-ghost', 'two-player', 'dash', 'fog', 'Scream', 'fortnite']
 
 # Control versions for the class study: the game with the default rules, to compare main against.
@@ -219,13 +222,37 @@ HOME = '''<!doctype html>
   .tab .kind {
     font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--you);
   }
-  /* Group labels in the tab row: improvements follow the main game on the left, and the fun modes
-     sit at the right end. On a narrow screen the row scrolls, and the fun modes simply follow. */
-  .tabs .group {
-    align-self: center; padding: 0 4px 0 14px; white-space: nowrap;
-    font: 600 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim);
+  /* Dropdowns in the tab row: Prototypes after the main game, Fun modes at the right end. The button
+     shows which one is playing; its list is placed against the window (the row itself scrolls on a
+     narrow screen, which would cut it off). */
+  .menu { display: flex; }
+  .menu.fun { margin-left: auto; }
+  .menu-btn { cursor: pointer; }
+  .menu-btn .caret { font-size: 11px; color: var(--ink-dim); }
+  .menu-btn.current {
+    color: var(--ink); background: var(--desk); border-bottom-color: var(--desk);
+    box-shadow: inset 0 2px 0 var(--accent);
   }
-  .tabs .group.fun { margin-left: auto; }
+  .menu-btn.current .menu-label {
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--you);
+  }
+  .menu-list {
+    position: fixed; z-index: 10; margin: 0; padding: 6px; list-style: none;
+    width: max-content; min-width: 200px; max-width: min(340px, calc(100vw - 16px));
+    max-height: calc(100vh - 140px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 0 0 6px 6px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  }
+  .menu-item {
+    display: block; padding: 8px 10px; border-radius: 4px; text-decoration: none; color: var(--ink);
+    font: 600 13.5px/1.3 var(--font-mono);
+  }
+  .menu-item span {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    margin-top: 2px; font: 400 12.5px/1.35 var(--font-body); color: var(--ink-dim);
+  }
+  .menu-item:hover, .menu-item:focus-visible { background: rgba(166, 196, 255, 0.1); }
+  .menu-item[aria-current="page"] { box-shadow: inset 3px 0 0 var(--accent); }
 
   /* One line about the version that is playing. */
   .about {
@@ -244,38 +271,13 @@ HOME = '''<!doctype html>
     padding: 7px 10px; border: 1px solid var(--accent); color: var(--ink); font-size: 13.5px;
   }
 
-  /* The game area: the improvements as a column of tabs on the left, lined up under the Main game
-     tab, and the game's frame beside them. On a narrow screen the column becomes a row above the game. */
+  /* The game area. */
   .stage {
-    flex: 1; min-height: 0; display: flex; gap: 16px; width: 100%; max-width: 1192px; margin: 0 auto;
+    flex: 1; min-height: 0; display: flex; width: 100%; max-width: 1192px; margin: 0 auto;
     padding: 0 var(--gutter-r) 0 var(--gutter-l);
   }
-  .side { flex: none; width: 184px; padding-top: 16px; display: flex; flex-direction: column; gap: 8px; }
-  .side-label {
-    margin: 0; font: 600 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase;
-    color: var(--ink-dim); white-space: nowrap;
-  }
-  .side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .side-tab {
-    display: block; padding: 9px 12px; border: 1px solid var(--rule); border-radius: 4px;
-    font: 600 13.5px/1.2 var(--font-mono); color: var(--ink-dim); text-decoration: none;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .side-tab:hover { color: var(--ink); background: rgba(166, 196, 255, 0.07); }
-  .side-tab[aria-current="page"] { color: var(--ink); background: var(--panel); box-shadow: inset 3px 0 0 var(--accent); }
   .frame { flex: 1; min-width: 0; position: relative; }
   .frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: var(--desk); }
-
-  @media (max-width: 900px) {
-    .stage { flex-direction: column; gap: 4px; }
-    .side {
-      width: auto; padding-top: 8px; flex-direction: row; align-items: center; gap: 10px;
-      overflow-x: auto; scrollbar-width: none;
-    }
-    .side::-webkit-scrollbar { display: none; }
-    .side ul { flex-direction: row; }
-    .side-tab { padding: 6px 10px; }
-  }
 
   @media (max-width: 560px) {
     .brand { font-size: 20px; }
@@ -305,7 +307,7 @@ HOME = '''<!doctype html>
 </header>
 <div class="notice" id="notice" role="status" hidden></div>
 <div class="about" id="about" aria-live="polite"></div>
-<div class="stage">__SIDE__<div class="frame" id="stage">
+<div class="stage"><div class="frame" id="stage">
   <noscript><p style="padding:16px"><a href="v/main/">Play the main game</a> &middot; <a href="versions/">every version</a></p></noscript>
 </div></div>
 <script type="application/json" id="versions-data">__DATA__</script>
@@ -317,7 +319,11 @@ HOME = '''<!doctype html>
   const stage = document.getElementById('stage');
   const about = document.getElementById('about');
   const notice = document.getElementById('notice');
-  const tabs = [...document.querySelectorAll('#tabs a, #side a')];
+  const tabs = [...document.querySelectorAll('#tabs a')];
+  const row = document.getElementById('tabs');
+  const menus = [...document.querySelectorAll('.menu')].map(li => ({
+    li, btn: li.querySelector('.menu-btn'), list: li.querySelector('.menu-list'), current: li.querySelector('.menu-current'),
+  }));
   let current = null;
 
   const urlFor = v => (v === main ? location.pathname : location.pathname + '?v=' + encodeURIComponent(v.key));
@@ -327,8 +333,17 @@ HOME = '''<!doctype html>
   function show(v, focus) {
     current = v;
     tabs.forEach(a => {
-      if (a.dataset.key === v.key) { a.setAttribute('aria-current', 'page'); a.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+      if (a.dataset.key === v.key) {
+        a.setAttribute('aria-current', 'page');
+        (a.closest('.menu') ? a.closest('.menu').querySelector('.menu-btn') : a).scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
       else a.removeAttribute('aria-current');
+    });
+    // A dropdown holding the version that is playing says so on its button.
+    menus.forEach(m => {
+      const on = [...m.list.querySelectorAll('a')].some(a => a.dataset.key === v.key);
+      m.btn.classList.toggle('current', on);
+      m.current.textContent = on ? v.name : '';
     });
     document.title = v === main ? 'Circle Chase' : v.name + ' \\u00b7 Circle Chase';
 
@@ -370,8 +385,48 @@ HOME = '''<!doctype html>
   tabs.forEach(a => a.addEventListener('click', ev => {
     if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button !== 0) return; // new tab or window
     ev.preventDefault();
+    closeMenus();
     pick(a.dataset.key, true);
   }));
+
+  // Dropdowns: the button opens its list just under it. A pick, Escape, a click anywhere else or
+  // tabbing out closes it; the up and down arrows move through it.
+  function closeMenus(except) {
+    menus.forEach(m => {
+      if (m === except) return;
+      m.list.hidden = true;
+      m.btn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  function openMenu(m) {
+    closeMenus(m);
+    m.list.hidden = false;
+    m.btn.setAttribute('aria-expanded', 'true');
+    const r = m.btn.getBoundingClientRect(), w = m.list.offsetWidth;
+    const left = m.li.classList.contains('fun') ? r.right - w : r.left; // the right-hand menu opens leftward
+    m.list.style.top = r.bottom - 1 + 'px';
+    m.list.style.left = Math.max(8, Math.min(left, innerWidth - w - 8)) + 'px';
+  }
+  menus.forEach(m => {
+    m.btn.addEventListener('click', () => (m.list.hidden ? openMenu(m) : closeMenus()));
+    m.li.addEventListener('keydown', ev => {
+      if (ev.key === 'Escape' && !m.list.hidden) {
+        ev.preventDefault();
+        closeMenus();
+        m.btn.focus();
+      } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        if (m.list.hidden) openMenu(m);
+        const items = [...m.list.querySelectorAll('a')], at = items.indexOf(document.activeElement);
+        const step = ev.key === 'ArrowDown' ? 1 : -1;
+        items[at < 0 ? (step > 0 ? 0 : items.length - 1) : (at + step + items.length) % items.length].focus();
+      }
+    });
+    m.li.addEventListener('focusout', ev => { if (!m.li.contains(ev.relatedTarget)) closeMenus(); });
+  });
+  document.addEventListener('pointerdown', ev => { if (!ev.target.closest('.menu')) closeMenus(); });
+  addEventListener('resize', () => closeMenus());
+  row.addEventListener('scroll', () => closeMenus());
 
   addEventListener('popstate', () => {
     const v = byKey.get(new URLSearchParams(location.search).get('v')) || main;
@@ -395,16 +450,16 @@ HOME = '''<!doctype html>
 
 
 def groups(versions):
-    """(main, control, improvements, fun modes, pull requests): control and fun modes in their lists'
+    """(main, control, prototypes, fun modes, pull requests): control and fun modes in their lists'
     order, the rest as they came."""
     is_fun = lambda v: v['kind'] == 'branch' and v['name'] in FUN_MODES
     is_control = lambda v: v['kind'] == 'branch' and v['name'] in CONTROL
     main = [v for v in versions if v['kind'] == 'main']
     control = sorted(filter(is_control, versions), key=lambda v: CONTROL.index(v['name']))
-    improvements = [v for v in versions if v['kind'] == 'branch' and not is_fun(v) and not is_control(v)]
+    prototypes = [v for v in versions if v['kind'] == 'branch' and not is_fun(v) and not is_control(v)]
     fun = sorted(filter(is_fun, versions), key=lambda v: FUN_MODES.index(v['name']))
     pulls = [v for v in versions if v['kind'] == 'pr']
-    return main, control, improvements, fun, pulls
+    return main, control, prototypes, fun, pulls
 
 
 def write_home(versions):
@@ -413,24 +468,26 @@ def write_home(versions):
                 + (f'<span class="kind">{html.escape(v["kind_label"])}</span>' if v['kind_label'] else '')
                 + f'{html.escape(v["tab"])}</a></li>')
 
-    main, control, improvements, fun, pulls = groups(versions)
-    versions = main + control + improvements + pulls + fun
+    # A dropdown in the tab row: a button, and the list of versions it opens.
+    def menu(label, cls, rows):
+        items = ''.join(f'<li><a class="menu-item" href="{html.escape(v["href"])}" data-key="{html.escape(v["key"])}">'
+                        f'{html.escape(v["tab"])}<span>{html.escape(v["note"])}</span></a></li>' for v in rows)
+        return (f'<li class="menu {cls}"><button class="tab menu-btn" type="button" aria-expanded="false" '
+                f'aria-controls="menu-{cls}"><span class="menu-label">{label}</span><span class="menu-current"></span>'
+                f'<span class="caret" aria-hidden="true">▾</span></button>'
+                f'<ul class="menu-list" id="menu-{cls}" hidden>{items}</ul></li>')
+
+    main, control, prototypes, fun, pulls = groups(versions)
+    versions = main + control + prototypes + pulls + fun
     tabs = ''.join(map(tab, main + control + pulls))
+    if prototypes:
+        tabs += menu('Prototypes', 'proto', prototypes)
     if fun:
-        tabs += '<li class="group fun" aria-hidden="true">Fun modes</li>' + ''.join(map(tab, fun))
-    # Improvements: a column of tabs on the left of the game (left out when there are none).
-    side = ''
-    if improvements:
-        side = ('<nav class="side" id="side" aria-labelledby="side-label">'
-                '<p class="side-label" id="side-label">Improvements</p><ul>'
-                + ''.join(f'<li><a class="side-tab" href="{html.escape(v["href"])}" data-key="{html.escape(v["key"])}">'
-                          f'{html.escape(v["tab"])}</a></li>' for v in improvements)
-                + '</ul></nav>')
+        tabs += menu('Fun modes', 'fun', fun)
     data =[{k: v[k] for k in ('key', 'name', 'kind', 'path', 'note', 'updated', 'sandbox', 'rev')} for v in versions]
     page = (HOME.replace('__FONTS__', html.escape(FONTS))
                 .replace('__README__', html.escape(f'https://github.com/{REPO}#make-your-own-version'))
                 .replace('__TABS__', tabs)
-                .replace('__SIDE__', side)
                 .replace('__DATA__', script_json(data)))
     with open(os.path.join(OUT, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(page)
@@ -454,7 +511,7 @@ def items(rows, empty):
 
 
 def write_versions_page(versions):
-    main, control, improvements, fun, pulls = groups(versions)
+    main, control, prototypes, fun, pulls = groups(versions)
     control_list = f'<h2>Control</h2>\n{items(control, "")}\n' if control else ''
     readme = html.escape(f'https://github.com/{REPO}#make-your-own-version')
     page = f'''<!doctype html>
@@ -478,11 +535,11 @@ def write_versions_page(versions):
 <body><main>
 <h1>Circle Chase versions</h1>
 <p>Every version of the game you can play. Main is the basic game. The control plays by the default
-rules, to compare main against. Improvements try to make it better; fun modes change it just for fun. You can also switch between them on the <a href="../">home page</a>.</p>
+rules, to compare main against. Prototypes try out fixes for it; fun modes change it just for fun. You can also switch between them on the <a href="../">home page</a>.</p>
 <h2>Main</h2>
 {items(main, '')}
-{control_list}<h2>Improvements</h2>
-{items(improvements, 'No improvements being tried right now.')}
+{control_list}<h2>Prototypes</h2>
+{items(prototypes, 'No prototypes being tried right now.')}
 <h2>Fun modes</h2>
 {items(fun, 'No fun modes right now.')}
 <h2>Pull requests</h2>
