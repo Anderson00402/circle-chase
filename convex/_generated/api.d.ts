@@ -32,6 +32,7 @@ import type * as participants from "../participants.js";
 import type * as presence from "../presence.js";
 import type * as ratings from "../ratings.js";
 import type * as replays from "../replays.js";
+import type * as runRecordings from "../runRecordings.js";
 import type * as runs from "../runs.js";
 import type * as sessions from "../sessions.js";
 import type * as sim from "../sim.js";
@@ -70,6 +71,7 @@ declare const fullApi: ApiFromModules<{
   presence: typeof presence;
   ratings: typeof ratings;
   replays: typeof replays;
+  runRecordings: typeof runRecordings;
   runs: typeof runs;
   sessions: typeof sessions;
   sim: typeof sim;
