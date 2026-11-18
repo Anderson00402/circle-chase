@@ -100,7 +100,7 @@ for (const key of Object.keys(Core.DIFFICULTY)) {
   console.log(`${key}: random play ran without errors`);
 }
 
-// The power running out: in the last 3 s the scared ghosts blink to their own color and back,
+// The power running out: in the last 3 s the timer bar blinks,
 // more often every second, and never outside those 3 s.
 {
   const counts = [0, 0, 0, 0]; // blinks with 4-3, 3-2, 2-1 and 1-0 s of power left

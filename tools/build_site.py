@@ -34,13 +34,14 @@ OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '_site')
 # What each version is, in a sentence, for the home page. A branch that isn't listed shows its
 # latest commit message instead, and a pull request shows its title.
 NOTES = {
-    'main': 'The repository\'s main branch: the same game as the timer prototype.',
+    'main': ('The repository\'s main branch: the timer prototype\'s game, except the scared ghosts also blink '
+             'back to their own color as the power runs out.'),
     'control': ('The default game, the control for the class study: no power timer, the ghosts just flash white '
                 'as the power runs out, power lasts 6 s on level 1 but 1 s by level 9, and one ghost is the same '
                 'yellow as you. Ghosts move at 60% of your speed, as in every version.'),
-    'timer': ('All our fixes together: a power timer bar in the top wall, ghosts that blink back to their own '
-              'color faster and faster as the power runs out, power that never lasts under 2 s, and no ghost the '
-              'same yellow as you.'),
+    'timer': ('A power timer bar in the top wall that drains with the power and blinks faster and faster in '
+              'the last 3 seconds. The scared ghosts don\'t blink or flash, so the bar is the only sign of the '
+              'power running out. Power never lasts under 2 s, and no ghost is the same yellow as you.'),
     'ghost-blink': ('The default game plus one fix: in the last 3 seconds of a power-up the scared ghosts blink '
                     'back to their own color, faster and faster.'),
     'Scream': ('Scared ghosts scream when you eat a power dot and keep wailing while you are close, '

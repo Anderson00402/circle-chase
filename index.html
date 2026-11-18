@@ -538,12 +538,11 @@ const Core = (() => {
   }
 
   // ---- the power running out ----
-  // In the last BLINK_FROM seconds of a power-up the scared ghosts blink between their own color (what
-  // they are about to turn back into) and the scared outline: slowly at first, then faster and faster
-  // until the power is gone. One blink (own color, then outline) takes BLINK_SLOW seconds as the warning
-  // starts and BLINK_FAST at the very end.
+  // In the last BLINK_FROM seconds of a power-up the power timer bar blinks: slowly at first, then faster
+  // and faster until the power is gone. One blink takes BLINK_SLOW seconds as the warning starts and
+  // BLINK_FAST at the very end. Only the bar blinks; the scared ghosts look the same until the end.
   const BLINK_FROM = 3, BLINK_SLOW = 0.5, BLINK_FAST = 0.12;
-  // True while the ghosts show their own color, given the seconds of power left.
+  // True while the bar is lit up, given the seconds of power left.
   function blinkOn(left) {
     if (left <= 0 || left > BLINK_FROM) return false;
     const e = BLINK_FROM - left, f0 = 1 / BLINK_SLOW, f1 = 1 / BLINK_FAST;
@@ -1052,9 +1051,8 @@ const Core = (() => {
       c.globalAlpha = 1;
       return;
     }
-    if (look === 'scared' || look === 'scared-ending') {
-      // scared-ending (reduced motion, power nearly gone): the outline takes the ghost's own color.
-      const ink = look === 'scared-ending' ? color : C.scared;
+    if (look === 'scared') {
+      const ink = C.scared;
       c.fillStyle = C['scared-fill'];
       c.fill();
       c.setLineDash([t * 0.14, t * 0.09]);
@@ -1148,12 +1146,9 @@ const Core = (() => {
       g.enemies.forEach((e, i) => {
         let [x, y] = g.pos(e);
         if (e.state === 'waiting' && !reduce) y += Math.sin(now * 4 + i * 2) * 0.16;
-        // The power running out: scared ghosts blink to their own color and back, faster and faster
-        // (Core.blinkOn). With reduced motion they don't blink: their outline takes their own color.
-        const ending = g.fright > 0 && g.fright <= Core.BLINK_FROM;
-        const look = e.state === 'returning' ? 'eyes'
-          : e.scared ? (ending && reduce ? 'scared-ending' : Core.blinkOn(g.fright) ? 'normal' : 'scared')
-          : 'normal';
+        // Timer prototype: scared ghosts look the same until the power runs out (no blinking or
+        // flashing); the timer bar in the top wall is the only sign of the time left.
+        const look = e.state === 'returning' ? 'eyes' : e.scared ? 'scared' : 'normal';
         eachWrap(x, cx => drawGhost(ctx, cx, (y + 0.5) * T, T, e.def, look, e.dir, reduce ? 0 : now, i));
       });
     }
@@ -1244,7 +1239,8 @@ const Core = (() => {
       });
     }
 
-    // Power timer: a bar in the top wall that drains with the power and blinks white with the ghosts.
+    // Power timer: a bar in the top wall that drains with the power and blinks faster and faster in the
+    // last BLINK_FROM seconds (Core.blinkOn); with reduced motion it turns yellow without blinking.
     if (g.fright > 0 && g.frightTotal > 0 && g.state === 'playing') {
       const frac = Math.min(1, g.fright / g.frightTotal);
       const bx = T, bw = (m.W - 2) * T, by = T * 0.27, bh = T * 0.46;
