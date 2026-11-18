@@ -230,10 +230,11 @@ const Core = (() => {
     { id: 'drifter', name: 'Drifter', corner: [17, 19] },
   ];
 
-  // CONTROL VERSION: the default game's rules, for comparing the prototypes against in the class study,
-  // except ghost speed, which is GHOST_PACE as in every version. Power time below follows the default
-  // game on every difficulty (it has no difficulty setting), so fright (and enemy, enemyStep, enemyMax)
-  // is not used here; lives, release and waves still are.
+  // TIMER-BAR PROTOTYPE: the default game (the control version's rules below) plus one fix, a bar in the top
+  // wall that drains with the power and shows the seconds left (see drawPowerBar and the end of draw()).
+  // Ghost speed is GHOST_PACE as in every version. Power time below follows the default game on every
+  // difficulty (it has no difficulty setting), so fright (and enemy, enemyStep, enemyMax) is not used here;
+  // lives, release and waves still are.
   // Seconds a power dot lasts on each level; from level 19 on it lasts 0 s: the ghosts only turn around.
   const POWER_TIME = [6, 5, 4, 3, 2, 5, 2, 2, 1, 5, 2, 1, 1, 3, 1, 1, 0, 1, 0];
 
@@ -700,7 +701,7 @@ const Core = (() => {
   const rootStyle = getComputedStyle(document.documentElement);
   const C = {};
   ['paper', 'maze-bg', 'maze-wall', 'line', 'accent', 'hunter', 'ambusher', 'guard', 'drifter',
-    'scared', 'scared-fill', 'dot', 'player', 'you'].forEach(k => { C[k] = rootStyle.getPropertyValue('--' + k).trim(); });
+    'scared', 'scared-fill', 'dot', 'player', 'you', 'ink'].forEach(k => { C[k] = rootStyle.getPropertyValue('--' + k).trim(); });
 
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
@@ -1006,13 +1007,72 @@ const Core = (() => {
     return layer;
   }
 
-  // Control version, as in the default game: in the last FLASHES * FLASH_PERIOD seconds the ghosts flash white
-  // exactly FLASHES times, and the last flash ends as the power runs out.
-  const FLASHES = 5, FLASH_PERIOD = 0.4;
-  function powerFlash(left) {
-    const warn = FLASHES * FLASH_PERIOD;
-    if (left <= 0 || left > warn) return false;
-    return (warn - left) % FLASH_PERIOD < FLASH_PERIOD / 2;
+  // TIMER-BAR PROTOTYPE: the power timer bar, as in the newer study app's "timer bar" cue. It sits inside the
+  // top wall, between its two neon lines, and drains to the left with the power, with the seconds left
+  // written on it. In the last BAR_WARN seconds it turns amber and blinks white five times (0.2 s on,
+  // 0.25 s off, the last blink ending as the power runs out); with reduced motion it stays steadily amber.
+  const BAR_WARN = 2, BAR_BLINK_ON = 0.2, BAR_BLINK_PERIOD = 0.45, BAR_WARM = '#ffb347';
+  function barBlink(left) {
+    if (left <= 0 || left > BAR_WARN) return false;
+    return (BAR_WARN - left) % BAR_BLINK_PERIOD < BAR_BLINK_ON;
+  }
+  // '#rrggbb' colors: a blended k of the way from a to b, as rgba() with the given alpha.
+  function mixHex(a, b, k, alpha = 1) {
+    const ch = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+    const c = i => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * k);
+    return `rgba(${c(0)},${c(1)},${c(2)},${alpha})`;
+  }
+  function drawPowerBar(c, left, total, W, reduce) {
+    const bx = T * 1.2, bw = (W - 2.4) * T, bh = Math.max(3, T * 0.36), by = T * 0.5 - bh / 2, r = bh / 2;
+    const warn = left <= BAR_WARN;
+    const fill = warn && !reduce && barBlink(left) ? '#ffffff' : warn ? BAR_WARM : C.scared;
+    c.save();
+    // Clipped to the wall row so the bar and its glow cover neither the neon lines nor the corridor below.
+    c.beginPath();
+    c.rect(0, 0, W * T, T * 0.74);
+    c.clip();
+
+    // track
+    c.fillStyle = mixHex(C['maze-bg'], C['maze-bg'], 0, 0.92);
+    c.beginPath();
+    roundRectPath(c, bx, by, bw, bh, r);
+    c.fill();
+
+    // power left, with a soft top light and a glow
+    const w = bw * Math.min(1, left / total);
+    const grad = c.createLinearGradient(0, by, 0, by + bh);
+    grad.addColorStop(0, mixHex(fill, '#ffffff', 0.45));
+    grad.addColorStop(1, fill);
+    c.save();
+    c.shadowColor = fill;
+    c.shadowBlur = T * 0.3 * dpr;
+    c.fillStyle = grad;
+    c.beginPath();
+    roundRectPath(c, bx, by, w, bh, Math.min(r, w / 2));
+    c.fill();
+    c.restore();
+
+    // frame
+    c.strokeStyle = mixHex(C.ink, C.ink, 0, 0.75);
+    c.lineWidth = 1;
+    c.beginPath();
+    roundRectPath(c, bx + 0.5, by + 0.5, bw - 1, bh - 1, r);
+    c.stroke();
+
+    // seconds left (only when the bar is tall enough to read it)
+    if (bh >= 7) {
+      c.font = `700 ${Math.round(bh * 0.9)}px ${FONT_MONO}`;
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.lineJoin = 'round';
+      c.lineWidth = 3;
+      c.strokeStyle = C['maze-bg'];
+      const label = `${left.toFixed(1)}s`, ty = by + bh / 2 + 0.5;
+      c.strokeText(label, bx + bw / 2, ty);
+      c.fillStyle = C.ink;
+      c.fillText(label, bx + bw / 2, ty);
+    }
+    c.restore();
   }
 
   // Ghosts: a round head that tapers into a wispy tail. The tail streams away from the way the
@@ -1068,8 +1128,8 @@ const Core = (() => {
       c.globalAlpha = 1;
       return;
     }
-    if (look === 'scared' || look === 'scared-flash') {
-      const ink = look === 'scared-flash' ? C.player : C.scared;
+    if (look === 'scared') {
+      const ink = C.scared;
       c.fillStyle = C['scared-fill'];
       c.fill();
       c.setLineDash([t * 0.14, t * 0.09]);
@@ -1163,10 +1223,9 @@ const Core = (() => {
       g.enemies.forEach((e, i) => {
         let [x, y] = g.pos(e);
         if (e.state === 'waiting' && !reduce) y += Math.sin(now * 4 + i * 2) * 0.16;
-        // Control version: the default game's white flashes, not main's blink back to their own color.
-        const look = e.state === 'returning' ? 'eyes'
-          : e.scared ? (powerFlash(g.fright) ? 'scared-flash' : 'scared')
-          : 'normal';
+        // TIMER-BAR PROTOTYPE: scared ghosts look the same from the first moment to the last (no white
+        // flashes); the power bar in the top wall is the only sign of the time left.
+        const look = e.state === 'returning' ? 'eyes' : e.scared ? 'scared' : 'normal';
         eachWrap(x, cx => drawGhost(ctx, cx, (y + 0.5) * T, T, e.def, look, e.dir, reduce ? 0 : now, i));
       });
     }
@@ -1257,8 +1316,11 @@ const Core = (() => {
       });
     }
 
-    // Control version: no power timer. As in the default game, the only sign the power is running out
-    // is the ghosts' flashing.
+    // TIMER-BAR PROTOTYPE: the one change from the default game. While a power-up runs, the bar in the top
+    // wall drains and counts down the seconds, turning amber and blinking white in the last 2 s
+    // (drawPowerBar). It is gone the moment the power ends, and on a death or a maze clear; a second power dot
+    // refills it; a 0 s power-up (late levels) shows nothing. The ghosts don't flash white: one signal only.
+    if (g.fright > 0 && g.frightTotal > 0 && g.state === 'playing') drawPowerBar(ctx, g.fright, g.frightTotal, m.W, reduce);
 
     // floating points
     ctx.textAlign = 'center';
