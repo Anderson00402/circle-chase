@@ -822,8 +822,8 @@ const Core = (() => {
   // Every game is saved for the class study (tools/stats.sql sets up the database): which version,
   // how long the player survived, and when in each power-up they stopped chasing the ghosts. Nothing
   // personal is sent. Only the website and localhost send, and nothing is sent while STATS_URL is empty.
-  const STATS_URL = ''; // https://<project>.supabase.co
-  const STATS_KEY = ''; // the project's publishable key: it can only add games, so it is safe in a public page
+  const STATS_URL = 'https://dxrhqscdztghvhdxcqyu.supabase.co'; // https://<project>.supabase.co
+  const STATS_KEY = 'sb_publishable_9UzmSoNoWxQjSXnltHUt_A_Pfiije58'; // the project's publishable key: it can only add games, so it is safe in a public page
   const VERSION = (() => {
     const host = location.hostname, at = location.pathname.match(/\/(v|pr)\/([^/]+)\//);
     if (host.endsWith('github.io')) return at ? (at[1] === 'pr' ? 'pr-' : '') + decodeURIComponent(at[2]) : 'main';
