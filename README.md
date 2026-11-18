@@ -27,14 +27,15 @@ Your version then shows up as a tab on the [home page](https://anderson00402.git
 
 The versions come in two dropdowns in the tab row. **Prototypes** are ideas for fixing the main game, such as `maze-blink` (the maze walls blink red as the power runs out). **Fun modes**, on the right, change the game just for fun (playing as a ghost, two players, dash, fog, Scream, fortnite). The main game stays the basic version, without any fun-mode extras. A branch counts as a prototype unless its name is in `FUN_MODES` (or `CONTROL`) in `tools/build_site.py` on `main`; when you send a pull request, say which kind your idea is.
 
-The **control** tab, next to the main game, is for the class study: the same game with the default rules instead of our fixes (no power timer, ghosts that just flash white as the power runs out instead of blinking back to their own color, power that runs out sooner on later levels, ghosts nearly as fast as you from the start, and one ghost the same yellow as you). Comparing its play stats with main's shows whether the fixes help. It is listed in `CONTROL` in `tools/build_site.py`.
+The **control** tab, next to the main game, is for the class study: the same game with the default rules instead of our fixes (no power timer, ghosts that just flash white as the power runs out instead of blinking back to their own color, power that runs out sooner on later levels, and one ghost the same yellow as you). Comparing its play stats with main's shows whether the fixes help. It is listed in `CONTROL` in `tools/build_site.py`.
 
 Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a label in the corner, and [/versions/](https://anderson00402.github.io/circle-chase/versions/) lists them all. To give a branch a one-line description on the home page, add it to `NOTES` in `tools/build_site.py` on `main`; otherwise the home page shows the branch's latest commit message.
 
 ## Where things are in index.html
 
 - `MAZES`: the maze layouts, drawn with characters (`#` wall, `.` dot, `o` power dot, space for open floor). Each row is the left half of the maze; the right half is a mirror of it.
-- `DIFFICULTY`: lives, ghost speed and how long a power dot lasts.
+- `GHOST_PACE` and `SCARED_PACE`: how fast the ghosts move, as a share of your speed (60% and 35% when scared).
+- `DIFFICULTY`: lives and how long a power dot lasts.
 - `drawGhost`, and the player section of `draw()`: how the ghosts and the circle look and move.
 - `blinkOn`: how the scared ghosts blink back to their own color, faster and faster, as a power-up runs out (the one fix this version adds to the default game).
 - `sfx`: all the sounds, made in code.
