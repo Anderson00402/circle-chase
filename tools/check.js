@@ -358,4 +358,46 @@ const stat = (name, ok, detail) => {
     `${games} games, ${ups} power-ups, ${chased} chased${bad.length ? '; ' + bad.slice(0, 5).join('; ') : ''}`);
 }
 
+// Skins: every skin draws on a fake canvas without errors, at every size, mouth and time, keeps
+// save/restore balanced, and stays within 1.4 radii of the center (so it doesn't paint over the maze).
+{
+  const skinSrc = html.match(/<script id="skins">([\s\S]*?)<\/script>/)[1];
+  const Skins = new Function(skinSrc + '; return Skins;')();
+  const ids = Skins.LIST.map(s => s.id);
+  const bad = [];
+  if (new Set(ids).size !== ids.length) bad.push('two skins share an id');
+  if (Skins.byId('nope') !== Skins.LIST[0]) bad.push('an unknown id must give the first skin');
+  for (const skin of Skins.LIST) {
+    if (!/^#[0-9a-f]{6}$/i.test(skin.color)) bad.push(`${skin.id}: color ${skin.color}`);
+    for (const r of [8, 14, 40]) for (const mouth of [0, Skins.MOUTH]) for (const time of [0, 0.37, 123.4]) {
+      let depth = 0, far = 0;
+      const m = [[1, 0, 0, 1, 0, 0]], top = () => m[m.length - 1];
+      const pt = (x, y) => { const t = top(); far = Math.max(far, Math.hypot(t[0] * x + t[2] * y + t[4], t[1] * x + t[3] * y + t[5])); };
+      const grad = { addColorStop() {} };
+      const known = {
+        save() { depth++; m.push(top().slice()); }, restore() { depth--; if (m.length > 1) m.pop(); },
+        moveTo: pt, lineTo: pt, quadraticCurveTo: (a, b, x, y) => pt(x, y), bezierCurveTo: (a, b, c, d, x, y) => pt(x, y),
+        arc: (x, y, rr) => { pt(x + rr, y); pt(x - rr, y); pt(x, y + rr); pt(x, y - rr); },
+        ellipse: (x, y, rx, ry) => { pt(x + rx, y); pt(x - rx, y); pt(x, y + ry); pt(x, y - ry); },
+        rect: (x, y, w, h) => { pt(x, y); pt(x + w, y + h); }, fillRect: (x, y, w, h) => { pt(x, y); pt(x + w, y + h); },
+        translate(x, y) { const t = top(); t[4] += t[0] * x + t[2] * y; t[5] += t[1] * x + t[3] * y; },
+        scale(a, b) { const t = top(); t[0] *= a; t[1] *= a; t[2] *= b; t[3] *= b; },
+        rotate(q) { const t = top(), c = Math.cos(q), s = Math.sin(q), [a, b, cc, d] = t; t[0] = a * c + cc * s; t[1] = b * c + d * s; t[2] = -a * s + cc * c; t[3] = -b * s + d * c; },
+        createLinearGradient: () => grad, createRadialGradient: () => grad,
+      };
+      const ctx = new Proxy({}, {
+        get: (o, k) => known[k] ? (...a) => {
+          if (a.some(n => typeof n === 'number' && !Number.isFinite(n))) bad.push(`${skin.id}: ${String(k)} got a bad number`);
+          return known[k](...a);
+        } : k in o ? o[k] : () => {},
+        set: (o, k, v) => { o[k] = v; return true; },
+      });
+      try { skin.draw(ctx, r, mouth, time); } catch (e) { bad.push(`${skin.id} r=${r} time=${time}: ${e.message}`); continue; }
+      if (depth) bad.push(`${skin.id}: save/restore off by ${depth}`);
+      if (far > r * 1.4) bad.push(`${skin.id}: reaches ${(far / r).toFixed(2)} radii out`);
+    }
+  }
+  stat('skins', !bad.length, `${ids.length} skins (${ids.join(', ')})${bad.length ? '; ' + [...new Set(bad)].slice(0, 5).join('; ') : ''}`);
+}
+
 process.exit(fail ? 1 : 0);
