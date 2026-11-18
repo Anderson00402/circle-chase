@@ -47,7 +47,7 @@
 		return Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : lo;
 	}
 
-	async function run(opts?: { preset?: Preset; participants?: number; cues?: string[]; seed?: number }) {
+	async function run(opts?: { preset?: Preset; participants?: number; cues?: string[]; seed?: number; recordRuns?: boolean }) {
 		if (running) throw new Error('a run is already going');
 		if (opts?.preset) preset = opts.preset;
 		if (opts?.participants) participants = clampInt(opts.participants, 1, 500);
@@ -56,7 +56,7 @@
 		controller = new AbortController();
 		const seed = seedText.trim() === '' ? undefined : clampInt(+seedText, 0, 2 ** 31 - 1);
 		const result = await runSimulation(client, {
-			preset, allCues: CUE_IDS, cues, participants, seed, signal: controller.signal,
+			preset, allCues: CUE_IDS, cues, participants, seed, signal: controller.signal, recordRuns: opts?.recordRuns === true,
 			onProgress: (p) => (progress = p)
 		});
 		progress = result;

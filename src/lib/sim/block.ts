@@ -11,6 +11,7 @@ import { createBot, type BotOptions } from '../game/engine/bot';
 import { createGame, STUDY_CONFIG } from '../game/engine/game';
 import type { GameConfig } from '../game/types';
 import { createRecorder } from '../telemetry/recorder';
+import { createRunRecorder, type RunChunk } from '../telemetry/runrec';
 import { createTracker } from '../telemetry/tracker';
 import type { TrialMeasures } from '../telemetry/types';
 import { createWriteQueue, trialWrite } from '../telemetry/write';
@@ -37,6 +38,11 @@ export interface BlockPlan {
 	config?: Partial<GameConfig>;
 	/** Bot settings on top of skill and awareness (diagnosis: another way of chasing). */
 	bot?: Partial<BotOptions>;
+	/**
+	 * Also keep the whole block as a full-run recording (runrec.ts), like a browser run. Off by
+	 * default: about 15 KB per simulated minute, a lot for thousands of blocks.
+	 */
+	recordRun?: boolean;
 }
 
 export interface BlockKeys {
@@ -65,6 +71,8 @@ export interface BlockResult {
 	score: number;
 	/** Game seconds simulated. */
 	seconds: number;
+	/** The full-run recording's chunks, when `recordRun` was set. */
+	chunks?: RunChunk[];
 }
 
 export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
@@ -73,6 +81,11 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 	const bot = createBot(game, { ...plan.bot, seed: plan.seed, skill: plan.skill });
 	const tracker = createTracker();
 	const recorder = createRecorder();
+	const chunks: RunChunk[] = [];
+	// Wall-clock times of a simulated run: as if played in real time from now.
+	const wall0 = Date.now();
+	let gameT = 0;
+	const runRec = plan.recordRun ? createRunRecorder({ blockKey: keys.blockKey, onChunk: (c) => chunks.push(c), now: () => wall0 + Math.round(gameT * 1000) }) : null;
 	// Like the browser: a trial that ended in a death is stored once its clip holds the dying phase.
 	const queue = createWriteQueue();
 	const out: SimTrial[] = [];
@@ -88,6 +101,7 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 			cue: plan.cue, sound: true, reducedMotion: false, inputType: 'none', difficulty: game.config.difficulty
 		});
 		out.push({ args, measures: m, awareness: bySerial.get(m.serial) ?? null, error: errors.get(m.serial) ?? null });
+		runRec?.mark({ k: 'trial', key: args.key, s: m.startedAt, e: m.endedAt });
 	};
 
 	const steps = Math.round(plan.seconds / STEP);
@@ -110,6 +124,8 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 		game.update(STEP);
 		if (i % STEPS_PER_FRAME === 0) {
 			const scene = game.scene();
+			gameT = scene.frame.t;
+			runRec?.push(scene);
 			recorder.push(scene);
 			for (const t of tracker.onScene(scene)) queue.add(t);
 			for (const t of queue.ready(scene.frame.t)) store(t);
@@ -117,5 +133,6 @@ export function simulateBlock(plan: BlockPlan, keys: BlockKeys): BlockResult {
 	}
 	for (const t of tracker.finish()) queue.add(t);
 	for (const t of queue.drain()) store(t);
-	return { trials: out, deaths: game.deaths, score: game.peek().score, seconds: played * STEP };
+	runRec?.flush();
+	return { trials: out, deaths: game.deaths, score: game.peek().score, seconds: played * STEP, ...(runRec ? { chunks } : {}) };
 }

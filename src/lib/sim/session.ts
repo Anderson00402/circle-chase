@@ -40,6 +40,8 @@ export interface SessionOptions {
 	 * by `blockSeconds`.
 	 */
 	blockPowerUps?: number;
+	/** Store a full-run recording of every block (off by default: it adds a lot of data). */
+	recordRuns?: boolean;
 }
 
 /** Stored on the session row (`sessions.sim`) so the dashboard can show planted vs recovered. */
@@ -62,6 +64,8 @@ export interface SimBlock {
 	score: number;
 	/** Null when the participant left during this block. */
 	rating: { clarity: number; distraction: number } | null;
+	/** Full-run recording chunks (only with `recordRuns`). */
+	chunks?: import('../telemetry/runrec').RunChunk[];
 }
 
 export interface SimSession {
@@ -130,12 +134,13 @@ export function* playSession(plan: SessionPlan): Generator<SimBlock, SimSession[
 		let t = 0;
 		const res = simulateBlock({
 			cue: level.cue, seed: mix(seed, 100 + b), seconds: leaving || !powerUps ? seconds : seconds * 3, skill: profile.skill,
-			powerUps: leaving ? undefined : powerUps || undefined, bot: { chase: CHASE_STYLE },
+			powerUps: leaving ? undefined : powerUps || undefined, bot: { chase: CHASE_STYLE }, recordRun: !!plan.options.recordRuns,
 			awareness: () => trialAwareness(profile, level, sessionTrial++, rng)
 		}, { sessionKey: key, blockKey, trialKey: () => `${blockKey}:t${++t}` });
 		yield {
 			key: blockKey, cue: level.cue, orderIndex: b, seconds: Math.round(res.seconds), trials: res.trials, deaths: res.deaths, score: res.score,
-			rating: leaving ? null : blockRatings(profile, level, rng)
+			rating: leaving ? null : blockRatings(profile, level, rng),
+			...(res.chunks ? { chunks: res.chunks } : {})
 		};
 	}
 	return profile.quitAfter === null ? sessionRatings(levels, makeRng(mix(seed, 999))) : null;

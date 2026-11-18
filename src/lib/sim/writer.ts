@@ -31,6 +31,8 @@ export interface RunOptions {
 	blockSeconds?: number;
 	/** Power-ups per block (default: the run console's default run length). */
 	blockPowerUps?: number;
+	/** Store a full-run recording of every simulated block. Off by default (it adds about 15 KB per simulated minute). */
+	recordRuns?: boolean;
 	signal?: AbortSignal;
 	onProgress?: (p: RunProgress) => void;
 }
@@ -127,7 +129,7 @@ async function participant(
 	const plan0 = { run, runSeed: seed, index };
 	const pid = simPid(run, index);
 	const { number } = await send(client, api.participants.ensure, { pid, source: 'bot', device: SIM_DEVICE }) as { number: number };
-	const plan = planSession({ preset: o.preset, allCues: o.allCues, cues: o.cues, participantNumber: number, blockSeconds: o.blockSeconds, blockPowerUps: o.blockPowerUps, ...plan0 });
+	const plan = planSession({ preset: o.preset, allCues: o.allCues, cues: o.cues, participantNumber: number, blockSeconds: o.blockSeconds, blockPowerUps: o.blockPowerUps, recordRuns: o.recordRuns, ...plan0 });
 	const sessionKey = plan.key;
 	await send(client, api.sessions.start, {
 		key: sessionKey, pid, mode: 'study', source: 'bot', cueOrder: plan.cueOrder, appVersion: await loadAppVersion(),
@@ -164,6 +166,11 @@ function writeBlock(client: ConvexClient, sessionKey: string, b: SimBlock): Prom
 	out.push(send(client, api.blocks.start, { key: b.key, sessionKey, cue: b.cue, orderIndex: b.orderIndex }));
 	for (const t of b.trials) out.push(send(client, api.trials.save, t.args));
 	out.push(send(client, api.blocks.end, { key: b.key, deaths: b.deaths, score: b.score }));
+	if (b.chunks?.length) {
+		for (const c of b.chunks) out.push(send(client, api.runRecordings.saveChunk, { ...c, source: 'bot' }));
+		// After the chunks and the block: the index document counts what is stored.
+		out.push(Promise.all(out).then(() => send(client, api.runRecordings.finish, { blockKey: b.key, appVersion: 'sim' })));
+	}
 	if (b.rating) out.push(send(client, api.ratings.saveBlock, { key: b.key + ':rating', blockKey: b.key, ...b.rating }));
 	return out;
 }

@@ -7,6 +7,7 @@
 //   node scripts/simulate.mjs --preset flat --participants 10 --cues none,timer-bar,heartbeat --seed 7
 //   node scripts/simulate.mjs --fresh ...     delete all bot data first
 //   node scripts/simulate.mjs --summary       only print the summary (newest run, or --run <id>)
+//   node scripts/simulate.mjs --record-runs ...  also store a full-run recording of every block (off by default: about 15 KB per simulated minute)
 //
 // Simulated data is recorded as source: bot and never mixed with human data. A bot cannot see a
 // cue: the planted preset only checks that the pipeline can recover a difference we put in.
@@ -55,7 +56,7 @@ try {
 
 	let result = null;
 	if (!flag('summary')) {
-		const opts = { preset, participants, ...(seed !== undefined ? { seed: +seed } : {}), ...(cues !== 'all' ? { cues: cues.split(',') } : {}) };
+		const opts = { preset, participants, ...(seed !== undefined ? { seed: +seed } : {}), ...(cues !== 'all' ? { cues: cues.split(',') } : {}), ...(flag('record-runs') ? { recordRuns: true } : {}) };
 		console.log(`Simulating ${participants} participants, preset ${preset}, ${cues === 'all' ? 'all 13 conditions' : cues}`);
 		await page.evaluate((o) => { window.__simRun = window.__simulate.run(o); }, opts);
 		const until = Date.now() + timeout;
