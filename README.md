@@ -23,11 +23,11 @@ Your version then shows up as a tab on the [home page](https://anderson00402.git
 
 ## Play every version
 
-**https://anderson00402.github.io/circle-chase/** opens the main game with a tab above it for every version branch and every open pull request; click a tab to play that version right there. The address changes to `?v=<name>`, so you can send someone a link to one version. Pull requests run sandboxed there, because nobody has reviewed their code yet, so their best scores aren't saved.
+**https://anderson00402.github.io/circle-chase/** opens the main game with tabs and dropdowns above it for every version branch and every open pull request; pick one to play that version right there. The address changes to `?v=<name>`, so you can send someone a link to one version. Pull requests run sandboxed there, because nobody has reviewed their code yet, so their best scores aren't saved.
 
-The versions come in two groups. Down the left side of the game are **improvements**: ideas that make the basic game better. In the tab row on the right are **fun modes**, which change the game just for fun (playing as a ghost, two players, dash, fog, Scream, fortnite). The main game stays the basic version, without any fun-mode extras. A branch counts as an improvement unless its name is in `FUN_MODES` in `tools/build_site.py` on `main`; when you send a pull request, say which kind your idea is.
+The versions come in two dropdowns in the tab row. **Prototypes** are ideas for fixing the main game, such as `maze-blink` (the maze walls blink red as the power runs out). **Fun modes**, on the right, change the game just for fun (playing as a ghost, two players, dash, fog, Scream, fortnite). The main game stays the basic version, without any fun-mode extras. A branch counts as a prototype unless its name is in `FUN_MODES` (or `CONTROL`) in `tools/build_site.py` on `main`; when you send a pull request, say which kind your idea is.
 
-The **control** tab, next to the main game, is for the class study: the same game with the default rules instead of our fixes (no power timer, no red walls, power that runs out sooner on later levels, ghosts nearly as fast as you from the start, and one ghost the same yellow as you). Comparing its play stats with main's shows whether the fixes help. It is listed in `CONTROL` in `tools/build_site.py`.
+The **control** tab, next to the main game, is for the class study: the same game with the default rules instead of our fixes (no power timer, ghosts that just flash white as the power runs out instead of blinking back to their own color, power that runs out sooner on later levels, ghosts nearly as fast as you from the start, and one ghost the same yellow as you). Comparing its play stats with main's shows whether the fixes help. It is listed in `CONTROL` in `tools/build_site.py`.
 
 Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a label in the corner, and [/versions/](https://anderson00402.github.io/circle-chase/versions/) lists them all. To give a branch a one-line description on the home page, add it to `NOTES` in `tools/build_site.py` on `main`; otherwise the home page shows the branch's latest commit message.
 
@@ -36,6 +36,7 @@ Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a la
 - `MAZES`: the maze layouts, drawn with characters (`#` wall, `.` dot, `o` power dot, space for open floor). Each row is the left half of the maze; the right half is a mirror of it.
 - `DIFFICULTY`: lives, ghost speed and how long a power dot lasts.
 - `drawGhost`, and the player section of `draw()`: how the ghosts and the circle look and move.
+- `blinkOn`: main's scared ghosts blinking back to their own color as a power-up runs out (not used in this control version: its ghosts flash white, as in the default game).
 - `sfx`: all the sounds, made in code.
 - Colors are CSS variables at the top of the file, such as `--maze-wall`, `--you` and the ghost colors.
 - `createStats` and `STATS_URL`: the play stats below.
