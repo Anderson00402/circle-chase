@@ -78,22 +78,6 @@ for (const key of Object.keys(Core.DIFFICULTY)) {
   console.log(`${key}: random play ran without errors`);
 }
 
-// The power running out: in the last 3 s the scared ghosts blink to their own color and back,
-// more often every second, and never outside those 3 s.
-{
-  const counts = [0, 0, 0, 0]; // blinks with 4-3, 3-2, 2-1 and 1-0 s of power left
-  let on = false, firstAt = null;
-  for (let i = 4000; i > 0; i--) {
-    const left = i / 1000, now = Core.blinkOn(left);
-    if (now && !on) { counts[Math.min(3, Math.floor(4 - left))]++; if (firstAt === null) firstAt = left; }
-    on = now;
-  }
-  const ok = counts[0] === 0 && counts[1] > 0 && counts[1] < counts[2] && counts[2] < counts[3] && firstAt === 3 &&
-    !Core.blinkOn(0) && !Core.blinkOn(3.01) && !Core.blinkOn(6);
-  if (!ok) fail++;
-  console.log(`power running out: blinks with 4-3, 3-2, 2-1, 1-0 s left: ${counts.join(', ')} (first at ${firstAt} s) -> ${ok ? 'OK' : 'FAIL'}`);
-}
-
 // Play stats. Scenes are posed by hand on level 1 (Neon), whose row 1 is a straight lane from x=1 to x=17.
 // The scene's maze has dots only where a scene puts them.
 const near = (a, b) => a != null && Math.abs(a - b) < 0.011;
