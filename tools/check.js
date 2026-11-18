@@ -51,15 +51,40 @@ for (const def of Core.MAZES) {
     `pen ${slots ? 'ok' : 'BROKEN'}, exit ${exit ? 'ok' : 'BROKEN'}, start ${start ? 'ok' : 'BROKEN'} -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
-// Ghost speed: slower than the player on level 1, faster every level until the cap, never faster
-// than the player.
-for (const key of Object.keys(Core.DIFFICULTY)) {
-  const g = Core.createGame(key);
-  const paces = Array.from({ length: 12 }, (_, i) => g.ghostPace(i + 1));
-  const rising = paces.every((p, i) => i === 0 || p >= paces[i - 1]) && paces[1] > paces[0];
-  const ok = rising && paces[0] < 0.85 && Math.max(...paces) <= 1;
+// Control version: ghost speed is the default game's share of the player's on every difficulty,
+// nearly as fast as you from level 1, and faster than you from level 21.
+{
+  const want = { 1: 0.938, 2: 0.944, 4: 0.944, 5: 0.95, 20: 0.95, 21: 1.056 };
+  for (const key of Object.keys(Core.DIFFICULTY)) {
+    const g = Core.createGame(key);
+    const got = Object.keys(want).map(l => +g.ghostPace(+l).toFixed(3));
+    const ok = Object.values(want).every((v, i) => v === got[i]);
+    if (!ok) fail++;
+    console.log(`${key} ghost speed on levels ${Object.keys(want).join(', ')}: ${got.map(p => (p * 100).toFixed(1) + '%').join(' ')} -> ${ok ? 'OK' : 'FAIL'}`);
+  }
+}
+
+// Control version: a power dot lasts 6 s on level 1, 1 s on level 9, and 0 s from level 19, when the
+// ghosts only turn around. Played through the real game: the circle eats a power dot just ahead of it.
+for (const [level, secs] of [[1, 6], [2, 5], [5, 2], [9, 1], [17, 0], [19, 0], [30, 0]]) {
+  let s, powered = false;
+  const g = Core.createGame('normal', type => { s.event(type); if (type === 'power') powered = true; });
+  s = Core.createStats(g);
+  g.level = level;
+  g.state = 'playing';
+  const m = g.maze, [px, py] = m.start;
+  m.dots[py * m.W + px - 1] = 2;
+  const ghost = g.enemies[0];
+  let before = ghost.dir;
+  for (let i = 0; i < 120 && !powered; i++) { before = ghost.dir; g.update(1 / 120); s.step(1 / 120); }
+  const turned = ghost.dir === (before + 2) % 4, scared = g.enemies.some(e => e.scared);
+  for (let i = 0; i < 120 * (secs + 1); i++) { g.update(1 / 120); s.step(1 / 120); } // the power runs out
+  const u = s.finish('quit').powers[0];
+  const ok = powered && turned && g.frightTotal === secs && scared === secs > 0 && !g.enemies.some(e => e.scared) &&
+    u.length_s === secs && u.ended !== null;
   if (!ok) fail++;
-  console.log(`${key} ghost speed by level: ${paces.map(p => Math.round(p * 100) + '%').join(' ')} -> ${ok ? 'OK' : 'FAIL'}`);
+  console.log(`control power dot on level ${level}: ${g.frightTotal} s, ghosts scared ${scared}, turned around ${turned}, ` +
+    `saved ${u.length_s} s ended ${u.ended} -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
 for (const key of Object.keys(Core.DIFFICULTY)) {
@@ -76,6 +101,22 @@ for (const key of Object.keys(Core.DIFFICULTY)) {
     }
   }
   console.log(`${key}: random play ran without errors`);
+}
+
+// The power running out: in the last 3 s the scared ghosts blink to their own color and back,
+// more often every second, and never outside those 3 s.
+{
+  const counts = [0, 0, 0, 0]; // blinks with 4-3, 3-2, 2-1 and 1-0 s of power left
+  let on = false, firstAt = null;
+  for (let i = 4000; i > 0; i--) {
+    const left = i / 1000, now = Core.blinkOn(left);
+    if (now && !on) { counts[Math.min(3, Math.floor(4 - left))]++; if (firstAt === null) firstAt = left; }
+    on = now;
+  }
+  const ok = counts[0] === 0 && counts[1] > 0 && counts[1] < counts[2] && counts[2] < counts[3] && firstAt === 3 &&
+    !Core.blinkOn(0) && !Core.blinkOn(3.01) && !Core.blinkOn(6);
+  if (!ok) fail++;
+  console.log(`power running out: blinks with 4-3, 3-2, 2-1, 1-0 s left: ${counts.join(', ')} (first at ${firstAt} s) -> ${ok ? 'OK' : 'FAIL'}`);
 }
 
 // Play stats. Scenes are posed by hand on level 1 (Neon), whose row 1 is a straight lane from x=1 to x=17.
