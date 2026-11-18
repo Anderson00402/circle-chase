@@ -30,3 +30,4 @@ legacy/hub/gifs
 /.shots
 .logs/
 .convex-backup-*/
+.tmp/
