@@ -460,7 +460,7 @@ __SKINS__
     skinMenu.current.textContent = sk.name;
     skinMenu.list.querySelectorAll('a').forEach(a => a.setAttribute('aria-current', String(a.dataset.skin === skinId)));
   }
-  if (skinMenu && window.Skins) {
+  if (skinMenu && typeof Skins !== 'undefined') {
     const r = Math.min(window.devicePixelRatio || 1, 3);
     for (const sk of Skins.LIST) {
       const li = document.createElement('li'), a = document.createElement('a'), cv = document.createElement('canvas');
