@@ -150,7 +150,7 @@ gets stuck); `outboxStatus` is reactive:
 | `blocks.progress` | `{ key }` | where a block stands, for a page resuming it: `{ trials, nextIndex, decisions, deaths, score, pauses, pausedSeconds, segments }`; null if not stored |
 | `trials.list` | filter + `outcome?`, `engagedOnly?`, `paginationOpts` | Convex page of trials, newest first |
 | `trials.series` | `{ trialId }` | the series unpacked `{ t, left, dist, chasing, px, py }` or null |
-| `trials.get` | `{ id }` | trial + `series` (as above, null if missing) + `clipId`, `participant { number, nickname }`, `block { cue, orderIndex, trialCount }`; null if missing |
+| `trials.get` | `{ id }` | trial + `series` (as above, null if missing) + `clipId`, `participant { number, nickname }`, `block { key, cue, orderIndex, trialCount }`; null if missing |
 | `clips.byTrial` | `{ trialId }` | clip row with `data` (decode with `decodeClip`) or null |
 | `clips.get` | `{ id }` | clip row with `data` or null |
 | `clips.moments` | `{ cue?, outcome?, source?, paginationOpts }` | page of clips newest first, **without** `data` (`trialId`, `cue`, `outcome`, `markers`, `numbers`, `mazeId`, `level`, `t0`, `t1`, `scenes`, `size`, `createdAt`, `source`, `mode`) |
