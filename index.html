@@ -227,7 +227,8 @@ const Core = (() => {
     { id: 'drifter', name: 'Drifter', corner: [17, 19] },
   ];
 
-  // CONTROL VERSION: the default game's rules, for comparing against main in the class study.
+  // GHOST-BLINK PROTOTYPE: the default game (the control version's rules below) plus one fix, the ghosts
+  // blinking back to their own color as the power runs out (see Core.blinkOn and the ghosts in draw()).
   // Ghost speed and power time below follow the default game on every difficulty (it has no difficulty
   // setting), so enemy, enemyStep, enemyMax and fright are not used here; lives, release and waves still are.
   // Seconds a power dot lasts on each level; from level 19 on it lasts 0 s: the ghosts only turn around.
@@ -998,15 +999,6 @@ const Core = (() => {
     return layer;
   }
 
-  // Control version, as in the default game: in the last FLASHES * FLASH_PERIOD seconds the ghosts flash white
-  // exactly FLASHES times, and the last flash ends as the power runs out.
-  const FLASHES = 5, FLASH_PERIOD = 0.4;
-  function powerFlash(left) {
-    const warn = FLASHES * FLASH_PERIOD;
-    if (left <= 0 || left > warn) return false;
-    return (warn - left) % FLASH_PERIOD < FLASH_PERIOD / 2;
-  }
-
   // Ghosts: a round head that tapers into a wispy tail. The tail streams away from the way the
   // ghost is moving and sways as it floats; the eyes look where it is going.
   function ghostPath(c, cx, cy, t, d, time, phase) {
@@ -1060,8 +1052,9 @@ const Core = (() => {
       c.globalAlpha = 1;
       return;
     }
-    if (look === 'scared' || look === 'scared-flash') {
-      const ink = look === 'scared-flash' ? C.player : C.scared;
+    if (look === 'scared' || look === 'scared-ending') {
+      // scared-ending (reduced motion, power nearly gone): the outline takes the ghost's own color.
+      const ink = look === 'scared-ending' ? color : C.scared;
       c.fillStyle = C['scared-fill'];
       c.fill();
       c.setLineDash([t * 0.14, t * 0.09]);
@@ -1155,9 +1148,12 @@ const Core = (() => {
       g.enemies.forEach((e, i) => {
         let [x, y] = g.pos(e);
         if (e.state === 'waiting' && !reduce) y += Math.sin(now * 4 + i * 2) * 0.16;
-        // Control version: the default game's white flashes, not main's blink back to their own color.
+        // GHOST-BLINK PROTOTYPE: the one change from the default game. As the power runs out the scared
+        // ghosts blink to their own color and back, faster and faster (Core.blinkOn), instead of flashing
+        // white. With reduced motion they don't blink: their outline takes their own color.
+        const ending = g.fright > 0 && g.fright <= Core.BLINK_FROM;
         const look = e.state === 'returning' ? 'eyes'
-          : e.scared ? (powerFlash(g.fright) ? 'scared-flash' : 'scared')
+          : e.scared ? (ending && reduce ? 'scared-ending' : Core.blinkOn(g.fright) ? 'normal' : 'scared')
           : 'normal';
         eachWrap(x, cx => drawGhost(ctx, cx, (y + 0.5) * T, T, e.def, look, e.dir, reduce ? 0 : now, i));
       });

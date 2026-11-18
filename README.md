@@ -36,7 +36,7 @@ Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a la
 - `MAZES`: the maze layouts, drawn with characters (`#` wall, `.` dot, `o` power dot, space for open floor). Each row is the left half of the maze; the right half is a mirror of it.
 - `DIFFICULTY`: lives, ghost speed and how long a power dot lasts.
 - `drawGhost`, and the player section of `draw()`: how the ghosts and the circle look and move.
-- `blinkOn`: main's scared ghosts blinking back to their own color as a power-up runs out (not used in this control version: its ghosts flash white, as in the default game).
+- `blinkOn`: how the scared ghosts blink back to their own color, faster and faster, as a power-up runs out (the one fix this version adds to the default game).
 - `sfx`: all the sounds, made in code.
 - Colors are CSS variables at the top of the file, such as `--maze-wall`, `--you` and the ghost colors.
 - `createStats` and `STATS_URL`: the play stats below.
