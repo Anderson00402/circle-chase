@@ -39,6 +39,7 @@ Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a la
 - `GHOST_PACE` and `SCARED_PACE`: how fast the ghosts move, as a share of your speed (60% and 35% when scared).
 - `DIFFICULTY`: lives and how long a power dot lasts.
 - `drawGhost`, and the player section of `draw()`: how the ghosts and the circle look and move.
+- `Skins` (its own script block): the looks for the circle, all free (Classic, Santa, Snowball, Pumpkin, Sweetheart, Easter Egg, Watermelon, Party). Players pick one in the Skins dropdown on the home page, and it applies to every version. Each skin is a `draw()` function; the comment at the top says how to add one, and `node tools/check.js` draws every skin to catch mistakes.
 - `blinkOn`: how the scared ghosts blink back to their own color, faster and faster, as a power-up runs out.
 - `sfx`: all the sounds, made in code.
 - Colors are CSS variables at the top of the file, such as `--maze-wall`, `--you` and the ghost colors.
