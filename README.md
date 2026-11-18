@@ -37,7 +37,7 @@ Each version also has its own page (`/v/<branch>/` or `/pr/<number>/`) with a la
 - `GHOST_PACE` and `SCARED_PACE`: how fast the ghosts move, as a share of your speed (60% and 35% when scared).
 - `DIFFICULTY`: lives and how long a power dot lasts.
 - `drawGhost`, and the player section of `draw()`: how the ghosts and the circle look and move.
-- `blinkOn`: main's scared ghosts blinking back to their own color as a power-up runs out (not used in this control version: its ghosts flash white, as in the default game).
+- `drawFuse`: the maze's outer wall burning down like a fuse while a power-up runs, so the unburnt stretch shows the time left (the one fix this version adds to the default game; its ghosts don't flash white, and main's `blinkOn` is not used).
 - `sfx`: all the sounds, made in code.
 - Colors are CSS variables at the top of the file, such as `--maze-wall`, `--you` and the ghost colors.
 - `createStats` and `STATS_URL`: the play stats below.

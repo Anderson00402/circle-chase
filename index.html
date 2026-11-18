@@ -230,10 +230,11 @@ const Core = (() => {
     { id: 'drifter', name: 'Drifter', corner: [17, 19] },
   ];
 
-  // CONTROL VERSION: the default game's rules, for comparing the prototypes against in the class study,
-  // except ghost speed, which is GHOST_PACE as in every version. Power time below follows the default
-  // game on every difficulty (it has no difficulty setting), so fright (and enemy, enemyStep, enemyMax)
-  // is not used here; lives, release and waves still are.
+  // BURNING-FUSE PROTOTYPE: the default game (the control version's rules below) plus one fix, the maze's
+  // outer wall burning down like a fuse while the power runs, instead of the ghosts flashing white (see the
+  // burning fuse section and draw()). Ghost speed is GHOST_PACE as in every version. Power time below follows
+  // the default game on every difficulty (it has no difficulty setting), so fright (and enemy, enemyStep,
+  // enemyMax) is not used here; lives, release and waves still are.
   // Seconds a power dot lasts on each level; from level 19 on it lasts 0 s: the ghosts only turn around.
   const POWER_TIME = [6, 5, 4, 3, 2, 5, 2, 2, 1, 5, 2, 1, 1, 3, 1, 1, 0, 1, 0];
 
@@ -747,6 +748,25 @@ const Core = (() => {
       osc.stop(t0 + dur + 0.03);
     }
     const arp = (notes, gap, vol = 0.05) => notes.forEach((f, i) => tone(f, 0.15, { delay: i * gap, vol }));
+    // Burning-fuse prototype: a short burst of filtered noise, for the fuse's crackle and pop.
+    let noiseBuf = null;
+    function noise(dur, { vol = 0.05, freq = 800, q = 1 } = {}) {
+      if (!ac || !settings.sound) return;
+      if (!noiseBuf) {
+        noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+        const d = noiseBuf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+      const t0 = ac.currentTime, src = ac.createBufferSource(), filter = ac.createBiquadFilter(), gain = ac.createGain();
+      src.buffer = noiseBuf;
+      filter.type = 'bandpass';
+      filter.frequency.value = freq;
+      filter.Q.value = q;
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      src.connect(filter).connect(gain).connect(ac.destination);
+      src.start(t0, Math.random() * 1.5, dur + 0.05);
+    }
 
     return {
       ensure,
@@ -766,6 +786,12 @@ const Core = (() => {
       start: () => arp([523.25, 659.25, 783.99, 1046.5], 0.12),
       clear: () => arp([392, 523.25, 659.25, 783.99, 1046.5], 0.09),
       extra: () => arp([784, 988, 1175, 1568], 0.07),
+      // Burning fuse: a soft crackle on each of the five beats of the final warning, and the charge's pop.
+      crackle: () => noise(0.06, { vol: 0.03, freq: 2600, q: 0.8 }),
+      fusePop() {
+        noise(0.28, { vol: 0.06, freq: 220, q: 0.6 });
+        tone(180, 0.22, { type: 'triangle', vol: 0.05, to: 60 });
+      },
     };
   })();
 
@@ -824,7 +850,7 @@ const Core = (() => {
     stats.event(type);
     switch (type) {
       case 'dot': sfx.dot(); bite(arg, false); break;
-      case 'power': sfx.power(); bite(arg, true); break;
+      case 'power': sfx.power(); bite(arg, true); fuseSerial++; break;
       case 'eat': sfx.eat(arg); break;
       case 'die': sfx.die(); readyLabel = 'READY'; break;
       case 'clear': sfx.clear(); break;
@@ -841,6 +867,7 @@ const Core = (() => {
     readyLabel = 'READY';
     bites = [];
     lastBite = -1;
+    fuseExpiredAt = -Infinity;
     running = false;
     paused = false;
     lastHud = '';
@@ -946,15 +973,18 @@ const Core = (() => {
 
   // Walls are neon outlines on black: each wall block gets a rounded blue outline with a soft glow,
   // so the one-tile border reads as a double line and walls that reach the edge end in rounded caps.
-  // tint 'clear' turns them orange when a maze is cleared.
+  // tint 'clear' turns them orange when a maze is cleared. tint 'fuse-pop' (burning-fuse prototype) is only
+  // the outermost line, white with an orange glow, on a clear layer: the border's flash when the fuse runs out.
   function mazeLayer(tint) {
     const m = game.maze, key = m.name + (tint ? ':' + tint : '');
     if (layers[key]) return layers[key];
-    const W = m.W * T, H = m.H * T;
+    const W = m.W * T, H = m.H * T, pop = tint === 'fuse-pop';
     const isWall = (x, y) => x >= 0 && y >= 0 && x < m.W && y < m.H && m.tiles[y * m.W + x] === Core.WALL;
     const [layer, lx] = makeLayer(W, H);
-    lx.fillStyle = C['maze-bg'];
-    lx.fillRect(0, 0, W, H);
+    if (!pop) {
+      lx.fillStyle = C['maze-bg'];
+      lx.fillRect(0, 0, W, H);
+    }
 
     const cut = T * 0.17, lw = Math.max(2, T * 0.1);
     const shape = inset => {
@@ -978,17 +1008,26 @@ const Core = (() => {
     ox.globalCompositeOperation = 'destination-out';
     ox.drawImage(inner, 0, 0);
     ox.globalCompositeOperation = 'source-in';
-    const wallColor = tint === 'clear' ? C.accent : C['maze-wall'];
+    const wallColor = tint === 'clear' ? C.accent : pop ? '#ffffff' : C['maze-wall'];
     ox.fillStyle = wallColor;
     ox.fillRect(0, 0, outer.width, outer.height);
+    if (pop) {
+      // Keep only the loop along the board's edge.
+      ox.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ox.globalCompositeOperation = 'destination-in';
+      ox.lineWidth = T * 0.62;
+      const a = cut + lw / 2;
+      ox.strokeRect(a, a, W - 2 * a, H - 2 * a);
+    }
 
     lx.setTransform(1, 0, 0, 1, 0, 0);
-    lx.shadowColor = wallColor;
+    lx.shadowColor = pop ? FUSE.hotGlow : wallColor;
     lx.shadowBlur = Math.max(3, T * 0.3) * dpr; // shadow blur ignores the transform, so scale it by hand
     lx.drawImage(outer, 0, 0);
     lx.shadowBlur = 0;
     lx.shadowColor = 'transparent';
     lx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (pop) { layers[key] = layer; return layer; }
 
     lx.strokeStyle = C.line;
     lx.globalAlpha = 0.6;
@@ -1006,13 +1045,317 @@ const Core = (() => {
     return layer;
   }
 
-  // Control version, as in the default game: in the last FLASHES * FLASH_PERIOD seconds the ghosts flash white
-  // exactly FLASHES times, and the last flash ends as the power runs out.
-  const FLASHES = 5, FLASH_PERIOD = 0.4;
-  function powerFlash(left) {
-    const warn = FLASHES * FLASH_PERIOD;
-    if (left <= 0 || left > warn) return false;
-    return (warn - left) % FLASH_PERIOD < FLASH_PERIOD / 2;
+  // ---------- burning fuse ----------
+  // BURNING-FUSE PROTOTYPE: the one change from the default game (cue 03 of the study app). When a power dot
+  // is eaten, the maze's outer wall becomes a bright braided fuse that starts and ends at a small charge at
+  // the top center. A spark burns it clockwise at an even pace, so the bright stretch still left (from the
+  // spark round to the charge) is the power left. The burn runs over wall only and jumps the tunnel mouths, so
+  // the bright length is honest. In the last 2 s the fuse burns hot yellow and throbs five times with the
+  // charge; when it runs out, the charge pops and the border flashes once. With reduced motion there are no
+  // embers or flicker, and the throb becomes a steady glow that grows over the last 2 s.
+  const FUSE = { cord: '#fffaf0', cordGlow: '#ffb340', hot: '#ffd23a', hotGlow: '#ff7a00', spark: '#fff7da' };
+  const POP_TIME = 0.65, FUSE_PIECE = 6;
+  // Counts power-ups (seeds the embers) and the game time the last power ran out by itself (for the pop).
+  let fuseSerial = 0, fuseExpiredAt = -Infinity, fuseCache = null;
+
+  const clamp01 = x => (x < 0 ? 0 : x > 1 ? 1 : x);
+  const smoothstep = (e0, e1, x) => { const k = clamp01((x - e0) / (e1 - e0 || 1)); return k * k * (3 - 2 * k); };
+  const outCubic = k => 1 - (1 - clamp01(k)) ** 3;
+  // Deterministic 0..1 from any numbers, and smooth 1D noise from it (the study app's helpers).
+  function hash(...n) {
+    let h = 0x811c9dc5;
+    for (const v of n) {
+      const a = Math.floor(v * 1000) | 0, b = Math.floor(v) | 0;
+      h = Math.imul(h ^ a, 0x01000193);
+      h = Math.imul(h ^ b, 0x5bd1e995);
+      h ^= h >>> 15;
+    }
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  function noise(x, seed) {
+    const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f), a = hash(i, seed);
+    return a + (hash(i + 1, seed) - a) * u;
+  }
+  // Colors as [r, g, b, a] from #hex or rgb()/rgba(); mix blends two, rgba changes the alpha.
+  const parsedColors = new Map();
+  function rgbaOf(color) {
+    let out = parsedColors.get(color);
+    if (out) return out;
+    const hex = /^#([0-9a-f]{6})$/i.exec(color);
+    if (hex) { const n = parseInt(hex[1], 16); out = [(n >> 16) & 255, (n >> 8) & 255, n & 255, 1]; }
+    else { const v = (color.match(/[\d.]+/g) || []).map(Number); out = [v[0] || 0, v[1] || 0, v[2] || 0, v[3] ?? 1]; }
+    parsedColors.set(color, out);
+    return out;
+  }
+  const rgba = (color, alpha) => { const [r, g, b, a] = rgbaOf(color); return `rgba(${r},${g},${b},${+(a * clamp01(alpha)).toFixed(3)})`; };
+  function mix(a, b, k) {
+    const A = rgbaOf(a), B = rgbaOf(b), c = i => Math.round(A[i] + (B[i] - A[i]) * clamp01(k));
+    return `rgba(${c(0)},${c(1)},${c(2)},${+(A[3] + (B[3] - A[3]) * clamp01(k)).toFixed(3)})`;
+  }
+  function softGlow(x, y, r, color, alpha) {
+    if (r <= 0 || alpha <= 0) return;
+    const gr = ctx.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, rgba(color, 0.6 * alpha));
+    gr.addColorStop(0.4, rgba(color, 0.22 * alpha));
+    gr.addColorStop(1, rgba(color, 0));
+    ctx.fillStyle = gr;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  // A rounded rectangle `inset` in from the board edge, as a polyline loop clockwise from the top center,
+  // that can be measured and cut by length.
+  function fuseLoop(W, H, inset, r) {
+    const a = inset, pts = [[W / 2, a]];
+    const corner = (cx, cy, from) => {
+      for (let s = 0; s <= 6; s++) {
+        const ang = from + (s / 6) * (Math.PI / 2);
+        pts.push([cx + Math.cos(ang) * r, cy + Math.sin(ang) * r]);
+      }
+    };
+    corner(W - a - r, a + r, -Math.PI / 2);
+    corner(W - a - r, H - a - r, 0);
+    corner(a + r, H - a - r, Math.PI / 2);
+    corner(a + r, a + r, Math.PI);
+    pts.push([W / 2, a]);
+    const at = [0];
+    for (let i = 1; i < pts.length; i++) at.push(at[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    const length = at[at.length - 1];
+    const seg = d => {
+      let lo = 1, hi = pts.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (at[mid] < d) lo = mid + 1; else hi = mid; }
+      return lo;
+    };
+    // Point at distance d, with the direction of travel (tx, ty) and the normal into the maze (nx, ny).
+    const pointAt = d => {
+      d = Math.max(0, Math.min(length, d));
+      const i = seg(d), [x0, y0] = pts[i - 1], [x1, y1] = pts[i], len = at[i] - at[i - 1] || 1, k = (d - at[i - 1]) / len;
+      const tx = (x1 - x0) / len, ty = (y1 - y0) / len;
+      return { x: x0 + (x1 - x0) * k, y: y0 + (y1 - y0) * k, tx, ty, nx: -ty, ny: tx };
+    };
+    const slice = (from, to, p) => {
+      from = Math.max(0, Math.min(length, from));
+      to = Math.max(from, Math.min(length, to));
+      const s0 = pointAt(from);
+      p.moveTo(s0.x, s0.y);
+      for (let i = seg(from); i < pts.length && at[i] < to; i++) p.lineTo(pts[i][0], pts[i][1]);
+      const e = pointAt(to);
+      p.lineTo(e.x, e.y);
+    };
+    return { length, pointAt, slice };
+  }
+
+  // The fuse: a loop down the middle of the outer wall (one tile wide, so there is room for a thick cord),
+  // split where the tunnels open so it never runs across a tunnel mouth. Built once per maze and tile size.
+  function fuseSpans() {
+    const m = game.maze, key = m.name + ':' + m.W + 'x' + m.H + ':' + T;
+    if (fuseCache && fuseCache.key === key) return fuseCache;
+    const loop = fuseLoop(m.W * T, m.H * T, T * 0.5, T * 0.5), step = Math.max(0.5, T / 8);
+    const wallAt = (x, y) => m.tiles[Math.min(m.H - 1, Math.max(0, Math.floor(y / T))) * m.W + Math.min(m.W - 1, Math.max(0, Math.floor(x / T)))] === Core.WALL;
+    const spans = [];
+    let open = -1;
+    for (let d = 0; d <= loop.length + step / 2; d += step) {
+      const dd = Math.min(d, loop.length), p = loop.pointAt(dd);
+      // Look a little to each side along the loop, so a gap covers the whole tunnel mouth and its rounded ends.
+      const wall = [-0.3, 0, 0.3].every(o => wallAt(p.x + p.tx * o * T, p.y + p.ty * o * T));
+      if (wall && open < 0) open = dd;
+      if (!wall && open >= 0) { spans.push([open, dd]); open = -1; }
+    }
+    if (open >= 0) spans.push([open, loop.length]);
+    fuseCache = { key, loop, spans, length: spans.reduce((s, [a, b]) => s + b - a, 0) };
+    return fuseCache;
+  }
+
+  // Loop distance reached after burning `burnt` of fuse length (jumping over the gaps).
+  function fuseToLoop(f, burnt) {
+    let acc = 0;
+    for (const [a, b] of f.spans) {
+      if (burnt <= acc + (b - a)) return a + Math.max(0, burnt - acc);
+      acc += b - a;
+    }
+    return f.spans.length ? f.spans[f.spans.length - 1][1] : 0;
+  }
+
+  // One path of the fuse between two loop distances, without the gaps.
+  function fusePath(f, from, to) {
+    const path = new Path2D();
+    for (const [a, b] of f.spans) {
+      const lo = Math.max(a, from), hi = Math.min(b, to);
+      if (hi > lo) f.loop.slice(lo, hi, path);
+    }
+    return path;
+  }
+
+  // Spark position (loop distance) for a given number of seconds left.
+  function sparkAt(f, left, total) {
+    return fuseToLoop(f, (1 - clamp01(left / (total || 1))) * f.length);
+  }
+
+  // The final warning, the same clock as the default game's flashes: 0..1 peaking five times in the last 2 s
+  // and landing on 0 at the end. With reduced motion, a steady glow that grows over the last 2 s instead.
+  function finalBeat(left, reduce) {
+    if (left <= 0 || left > 2) return 0;
+    if (reduce) return 0.35 + 0.4 * (1 - left / 2);
+    const u = (2 - left) / 0.4;
+    return Math.pow(0.5 - 0.5 * Math.cos(u * Math.PI * 2), 1.5);
+  }
+
+  // True on the step the final beat peaks (1.8, 1.4, 1.0, 0.6 and 0.2 s left), for the matching crackle.
+  function beatPeakCrossed(prevLeft, left) {
+    if (left <= 0 || left >= prevLeft) return false;
+    const n = l => (l > 2 ? 5 : Math.ceil((l - 0.2) / 0.4));
+    return n(left) !== n(prevLeft);
+  }
+
+  // Called after every game step with the power left before it: notes when the power ran out by itself
+  // (not a death or a new maze, which reset it) and plays the fuse's sounds.
+  function fuseStep(before) {
+    const g = game;
+    if (before > 0 && g.fright === 0 && g.state !== 'ready') { fuseExpiredAt = g.time; sfx.fusePop(); }
+    else if (beatPeakCrossed(before, g.fright)) sfx.crackle();
+  }
+
+  function drawFuse(g, reduce) {
+    const f = fuseSpans(), P = f.loop, total = g.frightTotal, left = g.fright;
+    // The fuse's own clock: seconds since this power began. It stops in the freeze after eating a ghost.
+    const clock = total - left;
+    const s = sparkAt(f, left, total);
+    const hot = smoothstep(2.08, 1.88, left), beat = finalBeat(left, reduce);
+    const flick = reduce ? 0.5 : noise(clock * 16, 7);
+    // The cord fills most of the outer wall's width, so its length reads from anywhere.
+    const w = Math.max(2.4, T * 0.36) * (1 + 0.15 * hot);
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Burnt stretch: a thin charred cord, clearly darker than the live fuse.
+    const burnt = fusePath(f, 0, s);
+    ctx.strokeStyle = rgba(C['maze-bg'], 0.85);
+    ctx.lineWidth = w * 0.9;
+    ctx.stroke(burnt);
+    ctx.strokeStyle = 'rgba(110,96,86,0.7)';
+    ctx.lineWidth = Math.max(0.8, w * 0.22);
+    ctx.setLineDash([Math.max(1, T * 0.14), Math.max(1.5, T * 0.16)]);
+    ctx.stroke(burnt);
+    ctx.setLineDash([]);
+
+    // Live fuse: a dark bed (so it holds on the blue wall), a glow, the bright cord, then a braid so it reads
+    // as rope even when still.
+    const live = fusePath(f, s, P.length);
+    const cord = mix(FUSE.cord, FUSE.hot, hot * (0.8 + 0.2 * flick));
+    const glow = mix(FUSE.cordGlow, FUSE.hotGlow, hot);
+    ctx.strokeStyle = rgba(C['maze-bg'], 0.9);
+    ctx.lineWidth = w * 1.35;
+    ctx.stroke(live);
+    // The glow is stroked in pieces FUSE_PIECE tiles long, cut at fixed places on the loop: a blur costs as much
+    // as the box around what is drawn, and for the whole loop that box is the whole board.
+    ctx.save();
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = T * (0.5 + 0.35 * hot + 0.4 * beat) * dpr; // shadow blur ignores the transform
+    ctx.strokeStyle = glow;
+    ctx.lineWidth = w;
+    const piece = FUSE_PIECE * T;
+    for (let a = s; a < P.length; a = (Math.floor(a / piece) + 1) * piece) ctx.stroke(fusePath(f, a, (Math.floor(a / piece) + 1) * piece));
+    ctx.restore();
+    ctx.strokeStyle = cord;
+    ctx.lineWidth = w * 0.72;
+    ctx.stroke(live);
+    ctx.strokeStyle = rgba(mix(glow, '#3a1a00', 0.5), 0.5);
+    ctx.lineCap = 'butt';
+    ctx.setLineDash([w * 0.22, w * 0.5]);
+    ctx.stroke(live);
+    ctx.setLineDash([]);
+    ctx.lineCap = 'round';
+    // Final warning: the whole remaining stretch throbs with the beat.
+    if (beat > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba('#ffd2a0', 0.75 * beat);
+      ctx.lineWidth = w * 1.1;
+      ctx.stroke(live);
+      ctx.restore();
+    }
+
+    // The charge at the top center where the fuse starts and ends.
+    const c0 = P.pointAt(0), cr = Math.max(3, T * 0.36) * (1 + 0.18 * beat);
+    softGlow(c0.x, c0.y, cr * (2.6 + 1.6 * beat), mix(FUSE.cordGlow, FUSE.hotGlow, hot), 0.35 + 0.25 * hot + 0.4 * beat);
+    ctx.fillStyle = mix('#2a1a10', '#5a1606', hot);
+    ctx.strokeStyle = mix(FUSE.cord, '#ffffff', beat);
+    ctx.lineWidth = Math.max(1.2, T * 0.09);
+    ctx.beginPath();
+    ctx.arc(c0.x, c0.y, cr, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    // A bright core that heats up in the last 2 s.
+    ctx.fillStyle = mix(FUSE.cordGlow, '#fff4e0', 0.3 + 0.7 * beat);
+    ctx.globalAlpha = 0.45 + 0.55 * Math.max(hot * 0.5, beat);
+    ctx.beginPath();
+    ctx.arc(c0.x, c0.y, cr * 0.45, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // The spark: a hot point with a spray of embers (no embers with reduced motion).
+    const p = P.pointAt(s), sflick = reduce ? 0.5 : noise(clock * 22, 3);
+    const sr = Math.max(1.6, T * 0.15) * (1 + 0.3 * hot) * (0.85 + 0.3 * sflick);
+    softGlow(p.x, p.y, T * (0.9 + 0.5 * hot), mix('#ffcf6a', FUSE.hotGlow, hot), 0.9);
+    ctx.fillStyle = FUSE.spark;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, sr, 0, TAU);
+    ctx.fill();
+    if (!reduce) {
+      // Embers are born on a fixed clock at the spark's position at that moment, so none are stored.
+      const RATE = 36 + 30 * hot, LIFE = 0.42;
+      for (let n = Math.floor((clock - LIFE) * RATE); n <= Math.floor(clock * RATE); n++) {
+        const age = clock - n / RATE;
+        if (age < 0 || age > LIFE || age > clock) continue;
+        const q = P.pointAt(sparkAt(f, left + age, total));
+        const h1 = hash(n, fuseSerial, 1), h2 = hash(n, fuseSerial, 2);
+        // Mostly into the maze and back along the burnt side, a little outward.
+        const into = (h1 - 0.3) * T * 3.2, back = -(0.4 + h2) * T * 1.6;
+        const vx = q.nx * into + q.tx * back, vy = q.ny * into + q.ty * back, u = age / LIFE;
+        const x = q.x + vx * age, y = q.y + vy * age + T * 2.2 * age * age;
+        ctx.globalAlpha = (1 - u) * 0.95;
+        ctx.fillStyle = mix('#fff2b0', FUSE.hot, Math.min(1, u * 1.4 + hot * 0.4));
+        const sz = Math.max(0.8, T * 0.07 * (1 - u * 0.6));
+        ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  // When the fuse reaches the charge: a pop at the top center and one flash along the whole border.
+  function drawFusePop(g, reduce) {
+    const t = g.time - fuseExpiredAt;
+    if (!(t >= 0 && t < POP_TIME)) return;
+    const u = t / POP_TIME, p = fuseSpans().loop.pointAt(0), e = outCubic(u);
+    ctx.save();
+    // The border flashes once and fades (one change, so it stays with reduced motion too).
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 0.9 * (1 - u) ** 2;
+    ctx.drawImage(mazeLayer('fuse-pop'), 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    softGlow(p.x, p.y, T * (1.6 + 3.5 * e), '#ffd08a', 1 - u);
+    ctx.globalAlpha = 1 - u;
+    ctx.strokeStyle = '#fff2d0';
+    ctx.lineWidth = Math.max(1.2, T * 0.22 * (1 - u));
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, T * (0.4 + 4.2 * e), 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    if (!reduce) {
+      for (let i = 0; i < 18; i++) {
+        const a = Math.PI * (0.05 + 0.9 * (i / 17)) + (hash(i, fuseSerial) - 0.5) * 0.25;
+        const d = T * (0.4 + 3.4 * e * (0.6 + 0.4 * hash(i, 9)));
+        ctx.fillStyle = rgba(i % 3 ? '#ffd27a' : '#ff6a3a', 1 - u);
+        ctx.beginPath();
+        ctx.arc(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, Math.max(0.8, T * 0.09 * (1 - u)), 0, TAU);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   // Ghosts: a round head that tapers into a wispy tail. The tail streams away from the way the
@@ -1068,16 +1411,15 @@ const Core = (() => {
       c.globalAlpha = 1;
       return;
     }
-    if (look === 'scared' || look === 'scared-flash') {
-      const ink = look === 'scared-flash' ? C.player : C.scared;
+    if (look === 'scared') {
       c.fillStyle = C['scared-fill'];
       c.fill();
       c.setLineDash([t * 0.14, t * 0.09]);
       c.lineWidth = lw;
-      c.strokeStyle = ink;
+      c.strokeStyle = C.scared;
       c.stroke();
       c.setLineDash([]);
-      ghostEyes(c, cx, hy, t, d, ink, false);
+      ghostEyes(c, cx, hy, t, d, C.scared, false);
       return;
     }
     c.fillStyle = color;
@@ -1133,6 +1475,13 @@ const Core = (() => {
       if (m.dots[y * m.W + x] === 2) drawPowerDot(ctx, (x + 0.5) * T, (y + 0.5) * T, T, pulse);
     }
 
+    // BURNING-FUSE PROTOTYPE: the fuse on the outer wall, above the maze and dots and below the characters.
+    // It burns only while the game is playing with power on (so it holds in the freeze after eating a ghost,
+    // restarts with a second power dot, and just stops at a death or a maze clear); the pop plays only when
+    // the power ran out by itself.
+    if (g.state === 'playing' && g.fright > 0) drawFuse(g, reduce);
+    drawFusePop(g, reduce);
+
     const showGhosts = g.state !== 'clear' && !(g.state === 'dying' && g.stateTime > 0.35);
 
     // target lines
@@ -1163,10 +1512,9 @@ const Core = (() => {
       g.enemies.forEach((e, i) => {
         let [x, y] = g.pos(e);
         if (e.state === 'waiting' && !reduce) y += Math.sin(now * 4 + i * 2) * 0.16;
-        // Control version: the default game's white flashes, not main's blink back to their own color.
-        const look = e.state === 'returning' ? 'eyes'
-          : e.scared ? (powerFlash(g.fright) ? 'scared-flash' : 'scared')
-          : 'normal';
+        // BURNING-FUSE PROTOTYPE: no white flashes. Scared ghosts look the same from the first moment to the
+        // last; the fuse on the outer wall is the only sign of the power running out.
+        const look = e.state === 'returning' ? 'eyes' : e.scared ? 'scared' : 'normal';
         eachWrap(x, cx => drawGhost(ctx, cx, (y + 0.5) * T, T, e.def, look, e.dir, reduce ? 0 : now, i));
       });
     }
@@ -1257,8 +1605,7 @@ const Core = (() => {
       });
     }
 
-    // Control version: no power timer. As in the default game, the only sign the power is running out
-    // is the ghosts' flashing.
+    // BURNING-FUSE PROTOTYPE: no other power timer; the fuse (drawn under the characters) is the only one.
 
     // floating points
     ctx.textAlign = 'center';
@@ -1391,7 +1738,7 @@ const Core = (() => {
     last = now;
     if (running && !paused) {
       acc += dt;
-      while (acc >= STEP) { game.update(STEP); stats.step(STEP); acc -= STEP; }
+      while (acc >= STEP) { const before = game.fright; game.update(STEP); stats.step(STEP); fuseStep(before); acc -= STEP; }
     } else acc = 0;
     draw();
     updateHud();
