@@ -29,7 +29,7 @@
 	import { targetOf, type Target } from '#lib/replay/target.ts';
 	import { WRONG_MAZE_NOTE } from '#lib/replay/layout.ts';
 	import { clock, extraMarks, nextJump, spanAt, spansOf, type Span } from '#lib/replay/runline.ts';
-	import { tilesText, ghostName } from '#lib/replay/story.ts';
+	import { tilesNum, tilesText, ghostName, signed } from '#lib/replay/story.ts';
 	import { modeLabel, outcomeColor, outcomeLabel, secs, turnWords } from '#lib/outcomes.ts';
 	import { summaryHref } from '#lib/study/run.svelte.ts';
 
@@ -291,7 +291,9 @@
 		const g = (at ?? s.key) - s.base;
 		return `/replays/${t._id}?run=${encodeURIComponent(blockKey)}#left=${(clockEnd - g).toFixed(2)}`;
 	}
-	const turnText = (s: Span) => (s.trial.outcome === 'interrupted' ? '-' : s.trial.turnLeft === null ? 'never' : turnWords(s.trial.outcome, s.trial.turnLeft, s.trial.lastChaseEnd) ?? '-');
+	/** Power left when the player turned away (or ate the ghost), short. */
+	const turnText = (s: Span) => (s.trial.outcome === 'interrupted' || s.trial.turnLeft === null ? '-' : `${signed(s.trial.turnLeft, s.trial.turnLeft !== 0 && Math.abs(s.trial.turnLeft) < 0.1 ? 2 : 1)} s`);
+	const turnTitle = (s: Span) => (s.trial.outcome === 'interrupted' ? 'Cut short' : s.trial.turnLeft === null ? 'Never turned away' : turnWords(s.trial.outcome, s.trial.turnLeft, s.trial.lastChaseEnd) ?? '');
 	const distOf = (s: Span) => (s.keyKind === 'turnAway' ? s.trial.turnDist : s.trial.endDist);
 	const site = import.meta.env.PUBLIC_CONVEX_SITE_URL ?? 'http://127.0.0.1:3211';
 	const kb = (n: number) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`);
@@ -392,8 +394,7 @@
 					<section class="now" aria-label="This power-up">
 						<p>
 							<span class="dot" style:background={outcomeColor(current.trial.outcome)}></span>
-							<strong>Power-up {current.trial.n}</strong>: {outcomeLabel(current.trial.outcome)}
-							<span class="dim">· {secs(current.trial.total)} power</span>
+							<span><strong>Power-up {current.trial.n}:</strong> {outcomeLabel(current.trial.outcome)} <span class="dim">· {secs(current.trial.total)} power</span></span>
 						</p>
 						<a class="more" href={detailHref(current, time >= current.start && time <= current.until ? time : undefined)}>Detailed replay of this power-up</a>
 					</section>
@@ -402,14 +403,15 @@
 				<section class="moments" aria-label="Moments of this run">
 					<h2 class="eyebrow">Moments <span class="dim">{spans.length} power-up{spans.length === 1 ? '' : 's'}</span></h2>
 					{#if spans.length}
+						<p class="mhead" aria-hidden="true"><span>#</span><span>Outcome</span><span title="Power left when the player turned away or ate the ghost">Left</span><span title="Distance to the ghost at the turn-away, else at the end">Tiles</span><span title="Time in the run of the jump point">At</span></p>
 						<ol>
 							{#each spans as s (s.trial._id)}
 								<li class:at={current?.trial._id === s.trial._id}>
 									<button type="button" class="jumpto" onclick={() => goTo(s)} title="Jump to 2 s before the {s.keyKind === 'turnAway' ? 'turn-away' : 'end of the power'}">
 										<span class="n num">{s.trial.n}</span>
 										<span class="o"><span class="dot" style:background={outcomeColor(s.trial.outcome)}></span>{outcomeLabel(s.trial.outcome)}</span>
-										<span class="num turn">{turnText(s)}</span>
-										<span class="num d">{tilesText(distOf(s))}</span>
+										<span class="num turn" title={turnTitle(s)}>{turnText(s)}</span>
+										<span class="num d">{tilesNum(distOf(s))}</span>
 										<span class="num when">{clock(s.jump - t0, 0)}</span>
 									</button>
 									<a class="detail" href={detailHref(s)} title="Detailed replay of power-up {s.trial.n}">Replay</a>
@@ -502,7 +504,7 @@
 	.moments li { display: flex; align-items: center; gap: 4px; border-radius: var(--radius-sm); }
 	.moments li.at { background: var(--accent-soft); }
 	.jumpto {
-		flex: 1; min-width: 0; display: grid; grid-template-columns: 20px minmax(0, 1fr) 58px 68px 38px; gap: 6px; align-items: center;
+		flex: 1; min-width: 0; display: grid; grid-template-columns: 20px minmax(0, 1fr) 50px 40px 40px; gap: 6px; align-items: center;
 		padding: 3px 6px; border: 0; background: none; color: var(--ink); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; border-radius: var(--radius-sm);
 	}
 	.jumpto:hover { background: var(--surface-2); }
@@ -510,7 +512,9 @@
 	.jumpto .n { color: var(--ink-faint); text-align: right; }
 	.jumpto .o { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.jumpto .turn, .jumpto .d, .jumpto .when { text-align: right; color: var(--ink-dim); font-size: var(--text-xs); white-space: nowrap; }
-	.detail { font-size: var(--text-xs); padding: 0 6px; }
+	.detail { font-size: var(--text-xs); padding: 0 6px; width: 48px; }
+	.mhead { display: grid; grid-template-columns: 20px minmax(0, 1fr) 50px 40px 40px 52px; gap: 6px; margin: 0 0 2px; padding: 0 6px; font-size: var(--text-xs); color: var(--ink-faint); }
+	.mhead span:first-child, .mhead span:nth-child(n + 3) { text-align: right; }
 
 	.tools { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; }
 	.check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--ink-dim); cursor: pointer; }

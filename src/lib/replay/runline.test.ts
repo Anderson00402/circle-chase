@@ -111,5 +111,7 @@ describe('run timeline', () => {
 		expect(clock(65.34)).toBe('1:05.3');
 		expect(clock(5)).toBe('0:05.0');
 		expect(clock(125, 0)).toBe('2:05');
+		expect(clock(59.6, 0)).toBe('1:00');
+		expect(clock(119.97)).toBe('2:00.0');
 	});
 });

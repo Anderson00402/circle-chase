@@ -141,7 +141,9 @@ export function extraMarks(events: { type: string; t: number }[], spans: Span[])
 
 /** "1:05.3" for a run time in seconds. */
 export function clock(t: number, digits = 1): string {
-	const s = Math.max(0, t);
+	// Round first, so 59.97 s reads 1:00.0, never 0:60.0.
+	const k = 10 ** digits;
+	const s = Math.round(Math.max(0, t) * k) / k;
 	const m = Math.floor(s / 60);
 	const r = s - m * 60;
 	return `${m}:${r.toFixed(digits).padStart(digits ? 3 + digits : 2, '0')}`;
